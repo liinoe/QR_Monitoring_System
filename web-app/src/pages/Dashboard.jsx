@@ -1,5 +1,6 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
+import Card from "../components/Card";
 
 const Dashboard = () => {
   return (
@@ -43,33 +44,14 @@ const Dashboard = () => {
           </p>
 
 					{/* CARDS */}
-					<div className="grid grid-cols-4 gap-[20px]">
+          <div className="grid grid-cols-4 gap-[20px]">
+            
+            <Card title="Total visitors today" value="500" subtitle="14% vs. yesterday" color="text-[#1B651B]" border="border-[#1B651B]"/>
+            <Card title="Currently Inside"  value="143" subtitle="Peak at 2-4 pm" color="text-[#225276]" border="border-[#225276]"/>
+            <Card title="Pending Registrations" value="20" subtitle="needs review" color="text-[#E76D22]" border="border-[#E76D22]"/>
+            <Card title="Avg. Stay Duration" value="1.8 hr" subtitle="up from 1.4 hr" color="text-[#1E8C60]" border="border-[#1E8C60]"/>
 
-						<div className="h-[130px] bg-white border-t-2 border-[#1B651B] rounded p-[15px]">
-								<p className="text-[#666] text-[16px]">Total visitors today</p>
-								<p className="text-[#1B651B] text-[30px]">500</p>
-								<p className="text-[#1B651B] text-[13px]">14% vs yesterday</p>
-						</div>
-
-						<div className="h-[130px] bg-white border-t-2 border-[#225276] rounded p-[15px]">
-								<p className="text-[#666] text-[16px]">Currently Inside</p>
-								<p className="text-[#225276] text-[30px]">143</p>
-								<p className="text-[#225276] text-[13px]">Peak at 2-4 PM</p>
-						</div>
-
-						<div className="h-[130px] bg-white border-t-2 border-[#E76D22] rounded p-[15px]">
-								<p className="text-[#666] text-[16px]">Pending Registrations</p>
-								<p className="text-[#E76D22] text-[30px]">20</p>
-								<p className="text-[#E76D22] text-[13px]">Needs review</p>
-						</div>
-
-						<div className="h-[130px] bg-white border-t-2 border-[#1E8C60] rounded p-[15px]">
-								<p className="text-[#666] text-[16px]">Avg. Stay Duration</p>
-								<p className="text-[#1E8C60] text-[30px]">1.8 hr</p>
-								<p className="text-[#1E8C60] text-[13px]">Up from 1.4 hr</p>
-						</div>
-
-					</div>
+          </div>
 
 					{/* ANALYTICS GRAPHS */}
 					<div className="grid grid-cols-2 gap-[20px] mt-[20px]">
