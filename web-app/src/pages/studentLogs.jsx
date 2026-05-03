@@ -1,5 +1,6 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
+import StudentLogTable from "../components/StudentLogTable";
 
 const StudentLogs = () => {
   return (
@@ -93,54 +94,7 @@ const StudentLogs = () => {
           </div>
 
           {/* TABLE */}
-          <div className="bg-white rounded-[10px] border overflow-hidden">
-
-            <table className="w-full text-sm">
-
-              <thead className="bg-[#F3FAF3] text-[#1B651B]">
-                <tr>
-                  <th className="p-3 text-left">No.</th>
-                  <th className="p-3 text-left">Student No.</th>
-                  <th className="p-3 text-left">Name</th>
-                  <th className="p-3 text-left">College</th>
-                  <th className="p-3 text-left">Date</th>
-                  <th className="p-3 text-left">Time</th>
-                  <th className="p-3 text-left">Type</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-left">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {[1, 2, 3, 4, 5].map((row) => (
-                  <tr key={row} className="border-t">
-                    <td className="p-3">{row}</td>
-                    <td className="p-3">202302075</td>
-                    <td className="p-3">Kyla Payad</td>
-                    <td className="p-3">CON</td>
-                    <td className="p-3">2026-04-01</td>
-                    <td className="p-3">12:01:12</td>
-
-                    <td className="p-3">
-                      <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">
-                        Entry
-                      </span>
-                    </td>
-
-                    <td className="p-3">
-                      <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">
-                        Active
-                      </span>
-                    </td>
-
-                    <td className="p-3">...</td>
-                  </tr>
-                ))}
-              </tbody>
-
-            </table>
-
-          </div>
+          <StudentLogTable data={sampleData} />
 
         </div>
       </div>
@@ -158,5 +112,26 @@ const Card = ({ title, value, color }) => {
     </div>
   );
 };
+
+const sampleData = [
+  {
+    studentNo: "202302075",
+    name: "Kyla Payad",
+    college: "CON",
+    date: "2026-04-01",
+    time: "12:01:12",
+    type: "Entry",
+    status: "Active",
+  },
+  {
+    studentNo: "202302076",
+    name: "Juan Dela Cruz",
+    college: "CEIT",
+    date: "2026-04-01",
+    time: "12:15:45",
+    type: "Exit",
+    status: "Inactive",
+  },
+];
 
 export default StudentLogs;
