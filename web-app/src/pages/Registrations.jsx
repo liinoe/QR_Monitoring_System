@@ -1,5 +1,6 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
+import Header from "../components/Header";
 import Card from "../components/Card";
 import FilterButton from "../components/FilterButton";
 import RegistrationItem from "../components/RegistrationItem";
@@ -9,30 +10,7 @@ const Registrations = () => {
     <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
 
       {/* HEADER */}
-      <div className="w-full h-[140px] bg-[#1B651B] border-b-[5px] border-[#D4A017] relative flex-shrink-0">
-        <img
-          src="https://placehold.co/94x82"
-          alt="logo"
-          className="w-[94px] h-[82px] absolute left-[29px] top-[28px]"
-        />
-
-        <h1 className="absolute left-[150px] top-[40px] text-white text-[30px] font-bold">
-          Library Patron Access and Monitoring System
-        </h1>
-
-        <p className="absolute left-[153px] top-[82px] text-white text-[15px]">
-          CvSU - Main Campus Library
-        </p>
-
-        <p className="absolute right-[150px] top-[58px] text-white text-[20px]">
-          Friday, Apr 3, 2026
-        </p>
-
-        <div className="w-[60px] h-[56px] bg-[#539C7FBA] rounded-full absolute right-[40px] top-[40px]" />
-        <span className="absolute right-[58px] top-[50px] text-white text-[30px] font-bold">
-          K
-        </span>
-      </div>
+      <Header />
 
       {/* BODY */}
       <div className="flex flex-1">

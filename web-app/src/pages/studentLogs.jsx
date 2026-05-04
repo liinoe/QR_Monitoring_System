@@ -1,42 +1,21 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
+import Header from "../components/Header";
+import Card from "../components/Card";
+import FilterButton from "../components/FilterButton";
 import StudentLogTable from "../components/StudentLogTable";
 
 const StudentLogs = () => {
   return (
     <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
 
-      {/* HEADER (same as Dashboard for consistency) */}
-      <div className="w-full h-[140px] bg-[#1B651B] border-b-[5px] border-[#D4A017] relative flex-shrink-0">
-        <img
-          src="https://placehold.co/94x82"
-          alt="logo"
-          className="w-[94px] h-[82px] absolute left-[29px] top-[28px]"
-        />
-
-        <h1 className="absolute left-[150px] top-[40px] text-white text-[30px] font-bold">
-          Library Patron Access and Monitoring System
-        </h1>
-
-        <p className="absolute left-[153px] top-[82px] text-white text-[15px] font-medium">
-          CvSU - Main Campus Library
-        </p>
-
-        <p className="absolute right-[150px] top-[58px] text-white text-[20px]">
-          Friday, Apr 3, 2026
-        </p>
-
-        {/* PROFILE */}
-        <div className="w-[60px] h-[56px] bg-[#539C7FBA] rounded-full absolute right-[40px] top-[40px]" />
-        <span className="absolute right-[58px] top-[50px] text-white text-[30px] font-bold">
-          K
-        </span>
-      </div>
+      {/* HEADER  */}
+      <Header />
 
       {/* BODY */}
       <div className="flex flex-1">
 
-        {/* ✅ REUSABLE SIDEBAR */}
+        {/* SIDEBAR */}
         <Sidebar />
 
         {/* MAIN CONTENT */}
@@ -54,12 +33,10 @@ const StudentLogs = () => {
 
           {/* CARDS */}
           <div className="grid grid-cols-4 gap-[20px]">
-
-            <Card title="Total logs today" value="382" color="text-green-700" />
-            <Card title="Currently Inside" value="143" color="text-blue-700" />
-            <Card title="Total exits today" value="235" color="text-orange-700" />
-            <Card title="Avg. Stay Duration" value="1.8 hr" color="text-emerald-700" />
-
+            <Card title="Total logs today"    value="382"    subtitle="Updated today" color="text-green-700"   border="border-green-700" />
+            <Card title="Currently Inside"    value="143"    subtitle="Updated today" color="text-blue-700"    border="border-blue-700" />
+            <Card title="Total exits today"   value="235"    subtitle="Updated today" color="text-orange-700"  border="border-orange-700" />
+            <Card title="Avg. Stay Duration"  value="1.8 hr" subtitle="Updated today" color="text-emerald-700" border="border-emerald-700" />
           </div>
 
           {/* FILTERS */}
@@ -72,15 +49,9 @@ const StudentLogs = () => {
             />
 
             <div className="flex gap-2">
-              <button className="bg-green-700 text-white px-4 py-1 rounded-full">
-                All
-              </button>
-              <button className="border px-4 py-1 rounded-full">
-                Entry
-              </button>
-              <button className="border px-4 py-1 rounded-full">
-                Exit
-              </button>
+              <FilterButton active>All</FilterButton>
+              <FilterButton>Entry</FilterButton>
+              <FilterButton>Exit</FilterButton>
             </div>
 
             <select className="border px-3 py-2 rounded">
@@ -102,16 +73,6 @@ const StudentLogs = () => {
   );
 };
 
-/* CARD COMPONENT */
-const Card = ({ title, value, color }) => {
-  return (
-    <div className="bg-white rounded p-4 border-t-4 border-green-700 shadow-sm">
-      <p className="text-gray-500 text-sm">{title}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-gray-400">Updated today</p>
-    </div>
-  );
-};
 
 const sampleData = [
   {

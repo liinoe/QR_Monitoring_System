@@ -1,5 +1,6 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
+import Header from "../components/Header";
 import Card from "../components/Card";
 import FilterButton from "../components/FilterButton";
 import GuestLogTable from "../components/GuestLogTable";
@@ -9,26 +10,7 @@ const GuestLogs = () => {
     <div className="bg-[#F6F6F5] min-h-screen font-sans">
       
       {/* HEADER */}
-      <div className="bg-[#1B651B] border-b-4 border-[#D4A017] text-white flex justify-between items-center px-8 py-4">
-        <div className="flex items-center gap-4">
-          <img src="https://placehold.co/94x82" alt="logo" className="w-16 h-14" />
-          <div>
-            <h1 className="text-xl font-bold">
-              Library Patron Access and Monitoring System
-            </h1>
-            <p className="text-sm">
-              Ladislao N. Diwa Memorial Library - CvSU
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <span>Friday, Apr 3, 2026</span>
-          <div className="w-12 h-12 bg-green-400 rounded-full flex items-center justify-center font-bold">
-            K
-          </div>
-        </div>
-      </div>
+      <Header />
 
       <div className="flex">
         
