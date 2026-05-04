@@ -1,9 +1,9 @@
 import React from "react";
-import Sidebar from "../components/Sidebar";
-import Header from "../components/Header";
-import Card from "../components/Card";
-import FilterButton from "../components/FilterButton";
-import StudentLogTable from "../components/StudentLogTable";
+import Sidebar from "../../components/Sidebar";
+import Header from "../../components/Header";
+import Card from "../../components/Card";
+import FilterButton from "../../components/FilterButton";
+import StudentLogTable from "../../components/StudentLogTable";
 
 const StudentLogs = () => {
   return (

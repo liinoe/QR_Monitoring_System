@@ -1,7 +1,7 @@
 import React from "react";
-import Sidebar from "../components/Sidebar";
-import Card from "../components/Card";
-import Header from "../components/Header";
+import Sidebar from "../../components/Sidebar";
+import Card from "../../components/Card";
+import Header from "../../components/Header";
 
 const Dashboard = () => {
   return (

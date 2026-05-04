@@ -1,9 +1,9 @@
 import React from "react";
-import Sidebar from "../components/Sidebar";
-import Header from "../components/Header";
-import Card from "../components/Card";
-import FilterButton from "../components/FilterButton";
-import RegistrationItem from "../components/RegistrationItem";
+import Sidebar from "../../components/Sidebar";
+import Header from "../../components/Header";
+import Card from "../../components/Card";
+import FilterButton from "../../components/FilterButton";
+import RegistrationItem from "../../components/RegistrationItem";
 
 const Registrations = () => {
   return (
