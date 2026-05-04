@@ -7,12 +7,12 @@ import GuestLogTable from "../../components/GuestLogTable";
 
 const GuestLogs = () => {
   return (
-    <div className="bg-[#F6F6F5] min-h-screen font-sans">
+    <div className="bg-[#F6F6F5] min-h-screen font-sans flex flex-col">
       
       {/* HEADER */}
       <Header />
 
-      <div className="flex">
+      <div className="flex flex-1">
         
         {/* SIDEBAR */}
         <Sidebar />
