@@ -9,11 +9,20 @@
       "resizeMode": "contain",
       "backgroundColor": "#1B5E20"
     },
-    "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": true },
-    "android": {
-      "adaptiveIcon": { "backgroundColor": "#1B5E20" }
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
     },
-    "web": { "favicon": "./assets/favicon.png" }
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1B5E20"
+      },
+      "package": "com.anonymous.qrlibrary"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }

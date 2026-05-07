@@ -64,7 +64,7 @@ export default function HomeScreen() {
         <View style={styles.headerInner}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
-            <Text style={styles.name}>James Angelo L.</Text>
+            <Text style={styles.name}>Kyla P.</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
           <View style={styles.avatar}>
