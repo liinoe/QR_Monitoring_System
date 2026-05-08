@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator, // Added for loading state
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import QRModal from '../components/QRModal';
 
 const screenWidth = Dimensions.get('window').width;
 
+// Helper Functions
 function formatDateTime(d) {
   const date = d.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -26,29 +28,39 @@ function formatDateTime(d) {
   const time = d.toLocaleTimeString(undefined, {
     hour: 'numeric',
     minute: '2-digit',
-
   });
   return `${date} • ${time}`;
 }
 
 function getGreeting(d) {
   const hour = d.getHours();
-  if (hour < 12) {
-    return 'Good Morning!';
-  }
-  if (hour < 18) {
-    return 'Good Afternoon!';
-  }
-  if (hour >= 18) {
-    return 'Good Evening!';
-  }
+  if (hour < 12) return 'Good Morning!';
+  if (hour < 18) return 'Good Afternoon!';
+  return 'Good Evening!';
 }
 
 export default function HomeScreen() {
   const [now, setNow] = useState(new Date());
   const [qrOpen, setQrOpen] = useState(false);
+  const [studentData, setStudentData] = useState(null); // Dynamic data state
+  const [loading, setLoading] = useState(true); // Loading state
 
+  // 1. Fetch Dynamic Data from MySQL Backend
   useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        // Points to your Node.js server
+        const response = await fetch('http://192.168.1.38:5000/api/student/profile/202302075');
+        const data = await response.json();
+        setStudentData(data);
+      } catch (error) {
+        console.error("Error fetching dynamic data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -58,13 +70,23 @@ export default function HomeScreen() {
     datasets: [{ data: [3, 6, 4, 5, 7, 2] }],
   };
 
+  // Loading indicator to prevent layout shifts
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
         <View style={styles.headerInner}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
-            <Text style={styles.name}>Kyla P.</Text>
+            {/* Dynamic Name from DB */}
+            <Text style={styles.name}>{studentData?.full_name || 'Student'}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
           <View style={styles.avatar}>
@@ -77,8 +99,10 @@ export default function HomeScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      ><View style={{ height: 40 }} />
-        {/* Stats */}
+      >
+        <View style={{ height: 40 }} />
+        
+        {/* Stats Section */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { marginRight: 8 }]}>
             <Text style={styles.statLabel}>Live Occupancy</Text>
@@ -92,7 +116,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* QR */}
+        {/* Dynamic QR Section */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => setQrOpen(true)}
@@ -100,18 +124,23 @@ export default function HomeScreen() {
         >
           <View style={{ flex: 1 }}>
             <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
-            <Text style={styles.qrSub}>Tap to enlarge your QR code</Text>
+            <Text style={styles.qrSub}>Status: {studentData?.status || 'approved'}</Text>
             <View style={styles.tapHint}>
               <Ionicons name="expand" size={14} color={colors.primary} />
               <Text style={styles.tapHintText}>Tap to expand</Text>
             </View>
           </View>
           <View style={styles.qrPreview}>
-            <QRCode value="CVSU-LIB-SOPHIA-A" size={84} color={colors.primary} />
+            {/* Generates QR from the unique token string */}
+            <QRCode 
+              value={studentData?.qr_code || "PENDING"} 
+              size={84} 
+              color={colors.primary} 
+            />
           </View>
         </TouchableOpacity>
 
-        {/* Chart */}
+        {/* Activity Chart */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Library Activity</Text>
           <Text style={styles.sectionSub}>Hours spent per day this week</Text>
@@ -137,7 +166,7 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Visit info */}
+        {/* Visit Information */}
         <View style={styles.statsRow}>
           <View style={[styles.infoCard, { marginRight: 8 }]}>
             <View style={styles.iconCircle}>
@@ -158,7 +187,12 @@ export default function HomeScreen() {
         <View style={{ height: 2 }} />
       </ScrollView>
 
-      <QRModal visible={qrOpen} onClose={() => setQrOpen(false)} value="CVSU-LIB-SOPHIA-A" />
+      {/* Dynamic Modal */}
+      <QRModal 
+        visible={qrOpen} 
+        onClose={() => setQrOpen(false)} 
+        value={studentData?.qr_code || "PENDING"} 
+      />
     </View>
   );
 }

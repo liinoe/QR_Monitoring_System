@@ -20,30 +20,33 @@ const STEPS = ['Personal Info', 'Academic Info', 'Review & Submit'];
 
 export default function RegisterScreen({ navigation }) {
   const [step, setStep] = useState(0);
+  
+  // State updated to snake_case to match database columns
   const [form, setForm] = useState({
-    fullName: '',
+    full_name: '',
     email: '',
-    studentNumber: '',
+    student_number: '',
     college: '',
     program: '',
-    yearLevel: '',
+    year_level: '', // Changed from yearLevel
   });
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const validateStep = () => {
     if (step === 0) {
-      if (!form.fullName || !form.email || !form.studentNumber) {
+      if (!form.full_name || !form.email || !form.student_number) {
         Alert.alert('Missing info', 'Please fill in all personal info fields.');
         return false;
       }
-      if (form.studentNumber.length !== 9 || !/^\d{9}$/.test(form.studentNumber)) {
+      // Fixed: Student number must be 9 digits as per research requirements
+      if (form.student_number.length !== 9 || !/^\d{9}$/.test(form.student_number)) {
         Alert.alert('Invalid Student Number', 'Student number must be exactly 9 digits.');
         return false;
       }
     }
     if (step === 1) {
-      if (!form.college || !form.program || !form.yearLevel) {
+      if (!form.college || !form.program || !form.year_level) {
         Alert.alert('Missing info', 'Please complete all academic info fields.');
         return false;
       }
@@ -51,28 +54,51 @@ export default function RegisterScreen({ navigation }) {
     return true;
   };
 
+  const handleRegister = async () => {
+    try {
+      // NOTE: Replace 192.168.1.38 with your current IPv4 from 'ipconfig'
+      const response = await fetch('http://192.168.1.38:5000/api/register', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(form), 
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        Alert.alert('Success', 'Registration submitted! Please wait for admin approval.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              setForm({
+                full_name: '',
+                email: '',
+                student_number: '',
+                college: '',
+                program: '',
+                year_level: '',
+              });
+              setStep(0);
+              navigation?.navigate?.('Home');
+            },
+          },
+        ]);
+      } else {
+        Alert.alert('Registration Error', result.message || 'Submission failed');
+      }
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      Alert.alert('Connection Error', 'Check if server is running and on the same Wi-Fi.');
+    }
+  };
+
   const next = () => {
     if (!validateStep()) return;
     if (step < STEPS.length - 1) setStep(step + 1);
-    else {
-      Alert.alert('Success', 'Registration submitted!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setForm({
-              fullName: '',
-              email: '',
-              studentNumber: '',
-              college: '',
-              program: '',
-              yearLevel: '',
-            });
-            setStep(0);
-            navigation?.navigate?.('Home');
-          },
-        },
-      ]);
-    }
+    else handleRegister();
   };
 
   const cancel = () => {
@@ -109,8 +135,8 @@ export default function RegisterScreen({ navigation }) {
                     <Text style={styles.stepHeading}>Personal Information</Text>
                     <Field
                       label="Full Name"
-                      value={form.fullName}
-                      onChangeText={(v) => update('fullName', v)}
+                      value={form.full_name}
+                      onChangeText={(v) => update('full_name', v)}
                       placeholder="Enter your full name"
                     />
                     <Field
@@ -123,8 +149,8 @@ export default function RegisterScreen({ navigation }) {
                     />
                     <Field
                       label="Student Number"
-                      value={form.studentNumber}
-                      onChangeText={(v) => update('studentNumber', v)}
+                      value={form.student_number}
+                      onChangeText={(v) => update('student_number', v)}
                       placeholder="202300001"
                       keyboardType="numeric"
                       maxLength={9}
@@ -151,8 +177,8 @@ export default function RegisterScreen({ navigation }) {
                     />
                     <DropdownField
                       label="Year Level"
-                      value={form.yearLevel}
-                      onChange={(v) => update('yearLevel', v)}
+                      value={form.year_level} 
+                      onChange={(v) => update('year_level', v)} 
                       options={yearLevels}
                       placeholder="Select year level"
                     />
@@ -162,12 +188,12 @@ export default function RegisterScreen({ navigation }) {
                 {step === 2 && (
                   <>
                     <Text style={styles.stepHeading}>Review & Submit</Text>
-                    <ReviewRow label="Full Name" value={form.fullName} />
+                    <ReviewRow label="Full Name" value={form.full_name} />
                     <ReviewRow label="Email" value={form.email} />
-                    <ReviewRow label="Student Number" value={form.studentNumber} />
+                    <ReviewRow label="Student Number" value={form.student_number} />
                     <ReviewRow label="College" value={form.college} />
                     <ReviewRow label="Program" value={form.program} />
-                    <ReviewRow label="Year Level" value={form.yearLevel} />
+                    <ReviewRow label="Year Level" value={form.year_level} />
                   </>
                 )}
               </View>
@@ -190,6 +216,7 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
+// Components and Styles remain the same as your current file
 function Field({ label, ...rest }) {
   return (
     <View style={{ marginBottom: 16 }}>
@@ -225,10 +252,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   headerSub: { color: '#BFD9C2', fontSize: 13, marginTop: 4 },
-
   scroll: { flex: 1, marginTop: -16 },
   scrollContent: { padding: 12, paddingBottom: 32 },
-
   card: {
     backgroundColor: '#fff',
     borderRadius: 20,
@@ -242,20 +267,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   indicatorCol: { width: 130, paddingRight: 8 },
   formCol: { flex: 1, paddingLeft: 8 },
-
-  stepHeading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 16,
-  },
-
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 8,
-  },
+  stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -266,29 +279,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textPrimary,
   },
-
-  reviewRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.grayLight,
-  },
+  reviewRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.grayLight },
   reviewLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
   reviewValue: { fontSize: 14, color: colors.textPrimary, marginTop: 4 },
-
-  actions: {
-    flexDirection: 'row',
-    marginTop: 12,
-    justifyContent: 'flex-end',
-  },
-  btn: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    minWidth: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
+  actions: { flexDirection: 'row', marginTop: 12, justifyContent: 'flex-end' },
+  btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, minWidth: 110, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
   cancelBtn: { backgroundColor: colors.grayLight },
   cancelText: { color: colors.textPrimary, fontWeight: '700' },
   continueBtn: { backgroundColor: colors.primary },
