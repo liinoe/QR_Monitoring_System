@@ -5,79 +5,70 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
-  ActivityIndicator, // Added for loading state
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
-import { BarChart } from 'react-native-chart-kit';
 import { colors } from '../theme/colors';
 import QRModal from '../components/QRModal';
 
-const screenWidth = Dimensions.get('window').width;
-
-// Helper Functions
-function formatDateTime(d) {
-  const date = d.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  const time = d.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  return `${date} • ${time}`;
-}
-
-function getGreeting(d) {
-  const hour = d.getHours();
-  if (hour < 12) return 'Good Morning!';
-  if (hour < 18) return 'Good Afternoon!';
-  return 'Good Evening!';
-}
-
 export default function HomeScreen() {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(new Date()); 
   const [qrOpen, setQrOpen] = useState(false);
-  const [studentData, setStudentData] = useState(null); // Dynamic data state
-  const [loading, setLoading] = useState(true); // Loading state
+  const [studentData, setStudentData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // 1. Fetch Dynamic Data from MySQL Backend
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        // Points to your Node.js server
-        const response = await fetch('http://192.168.1.38:5000/api/student/profile/202302075');
-        const data = await response.json();
-        setStudentData(data);
-      } catch (error) {
-        console.error("Error fetching dynamic data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProfile();
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const chartData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    datasets: [{ data: [3, 6, 4, 5, 7, 2] }],
+  const formatDateTime = (d) => {
+    const options = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+    const datePart = d.toLocaleDateString('en-US', options);
+    const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${datePart} • ${timePart}`;
   };
 
-  // Loading indicator to prevent layout shifts
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
+  const getGreeting = (d) => {
+    const hour = d.getHours();
+    if (hour < 12) return 'Good Morning!';
+    if (hour < 18) return 'Good Afternoon!';
+    return 'Good Evening!';
+  };
+
+  const fetchProfileData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      const response = await fetch('http://192.168.1.38:5000/api/student/profile/202302075');
+      const data = await response.json();
+      setStudentData(data);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  // LOGOUT 
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to log out of LibraPass?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Logout", onPress: () => console.log("User logged out") },
+    ]);
+  };
+
+  useEffect(() => {
+    fetchProfileData(true);
+    const clockInterval = setInterval(() => setNow(new Date()), 1000);
+    const refreshInterval = setInterval(() => fetchProfileData(false), 240000); 
+
+    return () => {
+      clearInterval(clockInterval);
+      clearInterval(refreshInterval);
+    };
+  }, []);
+
+  if (loading) return <ActivityIndicator size="large" style={{flex:1}} color="#1B5E20" />;
+
+  const isApproved = studentData?.status === 'approved';
 
   return (
     <View style={styles.root}>
@@ -85,238 +76,96 @@ export default function HomeScreen() {
         <View style={styles.headerInner}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
-            {/* Dynamic Name from DB */}
             <Text style={styles.name}>{studentData?.full_name || 'Student'}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={28} color={colors.primary} />
-          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+            <Ionicons name="log-out-outline" size={26} color="#1B5E20" />
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
       
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={{ height: 40 }} />
         
-        {/* Stats Section */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { marginRight: 8 }]}>
-            <Text style={styles.statLabel}>Live Occupancy</Text>
-            <Text style={styles.statNumber}>1,732</Text>
-            <Text style={styles.statSub}>currently inside the library</Text>
-          </View>
-          <View style={[styles.statCard, { marginLeft: 8 }]}>
-            <Text style={styles.statLabel}>Total Visits</Text>
-            <Text style={styles.statNumber}>23</Text>
-            <Text style={styles.statSub}>this month</Text>
-          </View>
-        </View>
-
-        {/* Dynamic QR Section */}
         <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => setQrOpen(true)}
-          style={styles.qrCard}
+          activeOpacity={isApproved ? 0.85 : 1}
+          onPress={() => isApproved && setQrOpen(true)}
+          style={[styles.qrCard, !isApproved && styles.lockedCard]}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
-            <Text style={styles.qrSub}>Status: {studentData?.status || 'approved'}</Text>
-            <View style={styles.tapHint}>
-              <Ionicons name="expand" size={14} color={colors.primary} />
-              <Text style={styles.tapHintText}>Tap to expand</Text>
+          {isApproved ? (
+            <>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
+                <Text style={styles.statusText}>Status: {studentData?.status}</Text>
+                <View style={styles.enlargeContainer}>
+                  <Ionicons name="expand-outline" size={14} color="#666" />
+                  <Text style={styles.enlargeText}>Tap to enlarge</Text>
+                </View>
+              </View>
+              <View style={styles.qrPreview}>
+                <QRCode value={studentData?.qr_code || "NA"} size={85} color="#1B5E20" />
+              </View>
+            </>
+          ) : (
+            <View style={styles.restrictedContainer}>
+              <Ionicons name="lock-closed" size={32} color="#D48806" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.qrTitle, { color: '#856404' }]}>Access Restricted</Text>
+                <Text style={{ fontSize: 12, color: '#856404' }}>Pending admin approval.</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.qrPreview}>
-            {/* Generates QR from the unique token string */}
-            <QRCode 
-              value={studentData?.qr_code || "PENDING"} 
-              size={84} 
-              color={colors.primary} 
-            />
-          </View>
+          )}
         </TouchableOpacity>
-
-        {/* Activity Chart */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Library Activity</Text>
-          <Text style={styles.sectionSub}>Hours spent per day this week</Text>
-          <BarChart
-            data={chartData}
-            width={screenWidth - 64}
-            height={200}
-            yAxisSuffix="h"
-            fromZero
-            withInnerLines={false}
-            showBarTops={false}
-            chartConfig={{
-              backgroundColor: '#fff',
-              backgroundGradientFrom: '#fff',
-              backgroundGradientTo: '#fff',
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(27, 94, 32, ${opacity})`,
-              labelColor: () => colors.textSecondary,
-              barPercentage: 0.6,
-              propsForBackgroundLines: { stroke: '#EEF1EF' },
-            }}
-            style={{ marginLeft: -16, marginTop: 8 }}
-          />
-        </View>
-
-        {/* Visit Information */}
-        <View style={styles.statsRow}>
-          <View style={[styles.infoCard, { marginRight: 8 }]}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="calendar" size={18} color={colors.primary} />
-            </View>
-            <Text style={styles.infoLabel}>Frequent Visit Day</Text>
-            <Text style={styles.infoValue}>Tuesday</Text>
-          </View>
-          <View style={[styles.infoCard, { marginLeft: 8 }]}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="time" size={18} color={colors.primary} />
-            </View>
-            <Text style={styles.infoLabel}>Avg Stay Duration</Text>
-            <Text style={styles.infoValue}>2 - 3 Hrs</Text>
-          </View>
-        </View>
-
-        <View style={{ height: 2 }} />
       </ScrollView>
 
-      {/* Dynamic Modal */}
-      <QRModal 
-        visible={qrOpen} 
-        onClose={() => setQrOpen(false)} 
-        value={studentData?.qr_code || "PENDING"} 
-      />
+      {isApproved && (
+        <QRModal visible={qrOpen} onClose={() => setQrOpen(false)} value={studentData?.qr_code} />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  headerWrap: {
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    paddingBottom: 24,
-    zIndex: 2,
-    elevation: 3,
+  root: { flex: 1, backgroundColor: '#F8F9F8' },
+  headerWrap: { 
+    backgroundColor: '#1B5E20', 
+    borderBottomLeftRadius: 28, 
+    borderBottomRightRadius: 28, 
+    paddingBottom: 25 
   },
-  headerInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
+  headerInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  greeting: { color: '#E8F5E9', fontSize: 13 },
+  name: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 2 },
+  dateText: { color: '#A5D6A7', fontSize: 12, marginTop: 4 },
+  logoutBtn: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 24, 
+    backgroundColor: '#fff', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
   },
-  greeting: { color: '#D8EAD9', fontSize: 14 },
-  name: { color: '#fff', fontSize: 22, fontWeight: '700', marginTop: 2 },
-  dateText: { color: '#BFD9C2', fontSize: 12, marginTop: 6 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 30 },
+  qrCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#fff', 
+    borderRadius: 20, 
+    padding: 22, 
+    elevation: 3 
   },
-  scroll: { flex: 1, marginTop: -28, backgroundColor: 'transparent' },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
-
-  statsRow: { flexDirection: 'row', marginBottom: 16 },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+  lockedCard: { backgroundColor: '#FFF9E6', borderColor: '#FFE58F', borderWidth: 1 },
+  qrTitle: { color: '#333', fontSize: 16, fontWeight: '700' },
+  statusText: { color: '#888', fontSize: 13, marginTop: 4 },
+  enlargeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 4 },
+  enlargeText: { color: '#666', fontSize: 12, fontWeight: '500' },
+  qrPreview: { 
+    padding: 8, 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#F0F0F0' 
   },
-  statLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
-  statNumber: {
-    color: colors.primary,
-    fontSize: 26,
-    fontWeight: '800',
-    marginTop: 6,
-  },
-  statSub: { color: colors.textSecondary, fontSize: 11, marginTop: 4 },
-
-  qrCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  qrTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: '700' },
-  qrSub: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
-  tapHint: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  tapHintText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  qrPreview: {
-    padding: 8,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.grayLight,
-  },
-
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  sectionSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-
-  infoCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#E8F1E9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  infoLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
-  infoValue: {
-    fontSize: 18,
-    color: colors.textPrimary,
-    fontWeight: '700',
-    marginTop: 4,
-  },
+  restrictedContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 15 },
 });
