@@ -143,6 +143,31 @@ app.post('/api/admin/approve', async (req, res) => {
      }
 });
 
+// STUDENT LOGS
+app.get('/api/logs/all', async (req, res) => {
+     try {
+          const query = `
+               SELECT 
+                    l.log_id, 
+                    s.full_name, 
+                    s.student_number, 
+                    s.program,
+                    l.time_in, 
+                    l.time_out, 
+                    l.visit_date, 
+                    l.status
+               FROM student_logs l
+               LEFT JOIN students s ON l.user_id = s.user_id
+               ORDER BY l.time_in DESC
+          `;
+          const [rows] = await db.query(query);
+          res.json(rows);
+     } catch (err) {
+          console.error("Database Error:", err);
+          res.status(500).json({ error: err.message });
+     }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`LibraPass Server running at http://localhost:${PORT}`);
 });
