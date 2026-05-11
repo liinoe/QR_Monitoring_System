@@ -37,7 +37,7 @@ export default function HomeScreen() {
   const fetchProfileData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const response = await fetch('http://192.168.1.38:5000/api/student/profile/202302075');
+      const response = await fetch('http://192.168.18.10:5000/api/student/profile/202304639');
       const data = await response.json();
       setStudentData(data);
     } catch (error) {

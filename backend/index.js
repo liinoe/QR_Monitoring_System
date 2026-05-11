@@ -103,14 +103,14 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
 // REGISTRATION AND ADMIN APPROVAL
 app.post('/api/register', async (req, res) => {
-     const { full_name, email, student_number, program, year_level } = req.body;
-     if (!full_name || !email || !student_number || !program || !year_level) {
+     const { full_name, email, student_number, college, program, year_level } = req.body;
+     if (!full_name || !email || !student_number || !college || !program || !year_level) {
           return res.status(400).json({ message: "Please fill in all required fields." });
      }
      try {
           await db.query(
-               'INSERT INTO registration_requests (full_name, email, student_number, program, year_level, approval_status, created_at) VALUES (?, ?, ?, ?, ?, "pending", NOW())',
-               [full_name, email, student_number, program, year_level]
+               'INSERT INTO registration_requests (full_name, email, student_number, college, program, year_level, approval_status, created_at) VALUES (?, ?, ?, ?, ?, ?, "pending", NOW())',
+               [full_name, email, student_number, college, program, year_level]
           );
           res.status(201).json({ message: "Registration submitted successfully!" });
      } catch (err) {
@@ -142,6 +142,28 @@ app.post('/api/admin/approve', async (req, res) => {
           res.status(500).json({ error: err.message });
      }
 });
+
+app.get('/api/admin/pending', async (req, res) => {
+     try {
+          const [rows] = await db.query(`
+               SELECT *
+               FROM registration_requests
+               WHERE approval_status = 'pending'
+               ORDER BY created_at DESC
+          `);
+
+          res.json(rows);
+
+     } catch (err) {
+          console.error("Pending Requests Error:", err);
+
+          res.status(500).json({
+               error: err.message
+          });
+     }
+});
+
+
 
 // STUDENT LOGS
 app.get('/api/logs/all', async (req, res) => {

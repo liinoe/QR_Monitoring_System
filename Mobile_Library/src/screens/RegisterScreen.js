@@ -57,7 +57,7 @@ export default function RegisterScreen({ navigation }) {
   const handleRegister = async () => {
     try {
       // NOTE: Replace 192.168.1.38 with your current IPv4 from 'ipconfig'
-      const response = await fetch('http://192.168.1.38:5000/api/register', {
+      const response = await fetch('http://192.168.18.10:5000/api/register', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
