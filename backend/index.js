@@ -27,29 +27,83 @@ app.get('/api/students', async (req, res) => {
 // This route updates the DB every time the mobile app fetches data
 app.get('/api/student/profile/:student_number', async (req, res) => {
      const { student_number } = req.params;
+
      try {
-     const [rows] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
-     if (rows.length === 0) return res.status(404).json({ message: "Student not found" });
 
-     const student = rows[0];
-     const today = new Date();
-     
-     // Semester Expiration Logic
-     if (student.valid_until && new Date(student.valid_until) < today) {
-          return res.status(403).json({ message: "Semester membership expired", status: 'expired' });
-     }
+          // FIRST: Check approved students table
+          const [students] = await db.query(
+               'SELECT * FROM students WHERE student_number = ?',
+               [student_number]
+          );
 
-     const fresh_qr = jwt.sign(
-          { student_number: student.student_number },
-          SECRET_KEY,
-          { expiresIn: '5m' }
-     );
+          // =========================
+          // APPROVED STUDENT FOUND
+          // =========================
+          if (students.length > 0) {
 
-     await db.query('UPDATE students SET qr_code = ? WHERE student_number = ?', [fresh_qr, student_number]);
-     res.json({ ...student, qr_code: fresh_qr });
-     
+               const student = students[0];
+               const today = new Date();
+
+               // Expiration check
+               if (student.valid_until && new Date(student.valid_until) < today) {
+                    return res.status(403).json({
+                         message: "Semester membership expired",
+                         status: 'expired'
+                    });
+               }
+
+               // Generate fresh QR
+               const fresh_qr = jwt.sign(
+                    { student_number: student.student_number },
+                    SECRET_KEY,
+                    { expiresIn: '5m' }
+               );
+
+               await db.query(
+                    'UPDATE students SET qr_code = ? WHERE student_number = ?',
+                    [fresh_qr, student_number]
+               );
+
+               return res.json({
+                    ...student,
+                    qr_code: fresh_qr,
+                    status: 'approved'
+               });
+          }
+
+          // =========================
+          // CHECK PENDING REQUESTS
+          // =========================
+          const [requests] = await db.query(
+               'SELECT * FROM registration_requests WHERE student_number = ?',
+               [student_number]
+          );
+
+          if (requests.length > 0) {
+
+               const request = requests[0];
+
+               return res.json({
+                    full_name: request.full_name,
+                    student_number: request.student_number,
+                    status: 'pending'
+               });
+          }
+
+          // =========================
+          // NOT REGISTERED
+          // =========================
+          return res.status(404).json({
+               message: "Student not found"
+          });
+
      } catch (err) {
-     res.status(500).json({ error: err.message });
+
+          console.error(err);
+
+          res.status(500).json({
+               error: err.message
+          });
      }
 });
 
