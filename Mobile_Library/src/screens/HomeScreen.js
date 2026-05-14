@@ -8,6 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../theme/colors';
@@ -41,9 +42,18 @@ export default function HomeScreen({ navigation }) {
     abortControllerRef.current = controller;
 
     try {
-      const response = await fetch('http://192.168.18.10:5000/api/student/profile/202304639', {
-        signal: controller.signal,
-      });
+      const storedStudent = await AsyncStorage.getItem('student');
+
+      if (!storedStudent) return;
+
+      const student = JSON.parse(storedStudent);
+
+      const response = await fetch(
+        `http://192.168.18.10:5000/api/student/profile/${student.student_number}`,
+        {
+          signal: controller.signal,
+        }
+      );
 
       if (response.status === 404) {
         setStudentData(null);
@@ -61,9 +71,16 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to log out of LibraPass?', [
+    Alert.alert('Logout', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', onPress: () => console.log('User logged out') },
+
+      {
+        text: 'Logout',
+        onPress: async () => {
+          await AsyncStorage.removeItem('student');
+          navigation.replace('Login');
+        },
+      },
     ]);
   };
 

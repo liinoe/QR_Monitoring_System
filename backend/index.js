@@ -217,7 +217,59 @@ app.get('/api/admin/pending', async (req, res) => {
      }
 });
 
+// LOGIN USING EMAIL ONLY
+app.post('/api/login', async (req, res) => {
+     const { email } = req.body;
+     try {
+          // Check approved students
+          const [students] = await db.query(
+               'SELECT * FROM students WHERE email = ?',
+               [email]
+          );
 
+          // Check pending registrations if not approved
+          const [requests] = await db.query(
+               'SELECT * FROM registration_requests WHERE email = ?',
+               [email]
+          );
+
+          if (students.length === 0 && requests.length === 0) {
+               return res.status(404).json({
+                    message: 'Email not found'
+               });
+          }
+          // Approved student
+          if (students.length > 0) {
+               const student = students[0];
+               return res.json({
+                    success: true,
+                    student: {
+                         user_id: student.user_id,
+                         full_name: student.full_name,
+                         email: student.email,
+                         student_number: student.student_number,
+                         status: 'approved'
+                    }
+               });
+          }
+          // Pending student
+          const request = requests[0];
+          return res.json({
+               success: true,
+               student: {
+                    full_name: request.full_name,
+                    email: request.email,
+                    student_number: request.student_number,
+                    status: 'pending'
+               }
+          });
+     } catch (err) {
+          console.error(err);
+          res.status(500).json({
+               error: err.message
+          });
+     }
+});
 
 // STUDENT LOGS
 app.get('/api/logs/all', async (req, res) => {

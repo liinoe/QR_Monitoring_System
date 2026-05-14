@@ -82,7 +82,7 @@ export default function RegisterScreen({ navigation }) {
                 year_level: '',
               });
               setStep(0);
-              navigation?.navigate?.('Home');
+              navigation?.navigate?.('HomeScreen');
             },
           },
         ]);
@@ -200,15 +200,41 @@ export default function RegisterScreen({ navigation }) {
             </View>
 
             <View style={styles.actions}>
-              <TouchableOpacity style={[styles.btn, styles.cancelBtn]} onPress={cancel}>
-                <Text style={styles.cancelText}>{step === 0 ? 'Cancel' : 'Back'}</Text>
+              <TouchableOpacity
+                style={[styles.btn, styles.cancelBtn]}
+                onPress={cancel}
+              >
+                <Text style={styles.cancelText}>
+                  {step === 0 ? 'Cancel' : 'Back'}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.continueBtn]} onPress={next}>
+
+              <TouchableOpacity
+                style={[styles.btn, styles.continueBtn]}
+                onPress={next}
+              >
                 <Text style={styles.continueText}>
                   {step === STEPS.length - 1 ? 'Submit' : 'Continue'}
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* BACK TO LOGIN */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Login')}
+              style={{ marginTop: 20 }}
+            >
+              <Text
+                style={{
+                  textAlign: 'center',
+                  color: colors.primary,
+                  fontWeight: '600',
+                  fontSize: 15,
+                }}
+              >
+                Already have an account? Back to Login
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
