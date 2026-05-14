@@ -69,7 +69,7 @@ export default function RegisterScreen({ navigation }) {
       const result = await response.json();
 
       if (response.ok) {
-        Alert.alert('Success', 'Registration submitted! Please wait for admin approval.', [
+        Alert.alert('Registration Submitted', 'Please proceed to the library registration booth and provide your proof of enrollment for account verification.', [
           {
             text: 'OK',
             onPress: () => {
