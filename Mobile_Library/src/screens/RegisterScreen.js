@@ -21,14 +21,13 @@ const STEPS = ['Personal Info', 'Academic Info', 'Review & Submit'];
 export default function RegisterScreen({ navigation }) {
   const [step, setStep] = useState(0);
   
-  // State updated to snake_case to match database columns
   const [form, setForm] = useState({
     full_name: '',
     email: '',
     student_number: '',
     college: '',
     program: '',
-    year_level: '', // Changed from yearLevel
+    year_level: '', 
   });
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -39,7 +38,6 @@ export default function RegisterScreen({ navigation }) {
         Alert.alert('Missing info', 'Please fill in all personal info fields.');
         return false;
       }
-      // Fixed: Student number must be 9 digits as per research requirements
       if (form.student_number.length !== 9 || !/^\d{9}$/.test(form.student_number)) {
         Alert.alert('Invalid Student Number', 'Student number must be exactly 9 digits.');
         return false;
@@ -56,8 +54,7 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     try {
-      // NOTE: Replace 192.168.1.38 with your current IPv4 from 'ipconfig'
-      const response = await fetch('http://192.168.18.10:5000/api/register', {
+      const response = await fetch('http://192.168.1.13:5000/api/register', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -69,23 +66,28 @@ export default function RegisterScreen({ navigation }) {
       const result = await response.json();
 
       if (response.ok) {
-        Alert.alert('Registration Submitted', 'Please proceed to the library registration booth and provide your proof of enrollment for account verification.', [
-          {
-            text: 'OK',
-            onPress: () => {
-              setForm({
-                full_name: '',
-                email: '',
-                student_number: '',
-                college: '',
-                program: '',
-                year_level: '',
-              });
-              setStep(0);
-              navigation?.navigate?.('HomeScreen');
+        Alert.alert(
+          'Registration Submitted', 
+          'Please proceed to the library registration booth and provide your proof of enrollment for account verification.', 
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setForm({
+                  full_name: '',
+                  email: '',
+                  student_number: '',
+                  college: '',
+                  program: '',
+                  year_level: '',
+                });
+                setStep(0);
+                // FIX: Navigate directly back to the Login Screen instead of Home Dashboard
+                navigation.replace('Login');
+              },
             },
-          },
-        ]);
+          ]
+        );
       } else {
         Alert.alert('Registration Error', result.message || 'Submission failed');
       }
@@ -103,7 +105,7 @@ export default function RegisterScreen({ navigation }) {
 
   const cancel = () => {
     if (step > 0) setStep(step - 1);
-    else navigation?.navigate?.('Home');
+    else navigation?.navigate?.('Login');
   };
 
   return (
@@ -219,19 +221,11 @@ export default function RegisterScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* BACK TO LOGIN */}
             <TouchableOpacity
               onPress={() => navigation.navigate('Login')}
               style={{ marginTop: 20 }}
             >
-              <Text
-                style={{
-                  textAlign: 'center',
-                  color: colors.primary,
-                  fontWeight: '600',
-                  fontSize: 15,
-                }}
-              >
+              <Text style={{ textAlign: 'center', color: colors.primary, fontWeight: '600', fontSize: 15 }}>
                 Already have an account? Back to Login
               </Text>
             </TouchableOpacity>
@@ -242,7 +236,6 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
-// Components and Styles remain the same as your current file
 function Field({ label, ...rest }) {
   return (
     <View style={{ marginBottom: 16 }}>
@@ -269,42 +262,18 @@ function ReviewRow({ label, value }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  headerWrap: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
+  headerWrap: { backgroundColor: colors.primary, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   headerSub: { color: '#BFD9C2', fontSize: 13, marginTop: 4 },
   scroll: { flex: 1, marginTop: -16 },
   scrollContent: { padding: 12, paddingBottom: 32 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
+  card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   row: { flexDirection: 'row' },
   indicatorCol: { width: 130, paddingRight: 8 },
   formCol: { flex: 1, paddingLeft: 8 },
   stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: colors.textPrimary,
-  },
+  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
   reviewRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.grayLight },
   reviewLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
   reviewValue: { fontSize: 14, color: colors.textPrimary, marginTop: 4 },

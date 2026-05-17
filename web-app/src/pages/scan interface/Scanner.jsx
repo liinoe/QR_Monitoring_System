@@ -1,121 +1,335 @@
-import React, { useEffect, useState, useRef } from "react";
-import Header from "../../components/Header";
-import ScannerSideBar from "../../components/ScannerSideBar";
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import React, { useEffect, useState, useRef, useCallback } from "react";
+
+const QRIcon = () => (
+  <svg viewBox="0 0 100 100" width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="#1B5E20" strokeWidth="6"/>
+    <rect x="15" y="15" width="18" height="18" rx="2" fill="#1B5E20"/>
+    <rect x="57" y="5" width="38" height="38" rx="4" fill="none" stroke="#1B5E20" strokeWidth="6"/>
+    <rect x="67" y="15" width="18" height="18" rx="2" fill="#1B5E20"/>
+    <rect x="5" y="57" width="38" height="38" rx="4" fill="none" stroke="#1B5E20" strokeWidth="6"/>
+    <rect x="15" y="67" width="18" height="18" rx="2" fill="#1B5E20"/>
+    <rect x="57" y="57" width="10" height="10" fill="#1B5E20"/>
+    <rect x="73" y="57" width="10" height="10" fill="#1B5E20"/>
+    <rect x="57" y="73" width="10" height="10" fill="#1B5E20"/>
+    <rect x="73" y="73" width="22" height="10" fill="#1B5E20"/>
+    <rect x="89" y="57" width="10" height="10" fill="#1B5E20"/>
+  </svg>
+);
 
 const Scanner = () => {
-		const [scanResult, setScanResult] = useState(null);
-		const [status, setStatus] = useState("idle");
-	const [isProcessing, setIsProcessing] = useState(false); // Only for UI feedback
+    const [scanResult, setScanResult] = useState(null);
+    const [status, setStatus] = useState("searching");
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [currentTime, setCurrentTime] = useState(new Date());
+    const [boardData, setBoardData] = useState({});
+    const [totalInside, setTotalInside] = useState(0);
 
-	// Use Ref for the lock to prevent re-initializing the scanner
-	const isLockedRef = useRef(false); 
-		const beep = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"));
+    const isLockedRef = useRef(false);
+    const lastKeyTimeRef = useRef(Date.now());
+    const beep = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"));
 
-		useEffect(() => {
-		const scanner = new Html5QrcodeScanner("reader", {
-			fps: 10,
-			qrbox: { width: 250, height: 250 },
-			aspectRatio: 1.0,
-			supportedScanTypes: [0]
-		});
+    const fetchBoardData = async () => {
+        try {
+            const response = await fetch('http://localhost:5000/api/logs/live-board');
+            const data = await response.json();
+            const counts = {};
+            let total = 0;
+            data.forEach(item => {
+                counts[item.college] = item.count;
+                total += item.count;
+            });
+            setBoardData(counts);
+            setTotalInside(total);
+        } catch (err) {
+            console.error("Board fetch error:", err);
+        }
+    };
 
-		const onScanSuccess = async (decodedText) => {
-			// Check the Ref lock
-			if (isLockedRef.current) return; 
+    useEffect(() => {
+        fetchBoardData();
+        const boardInterval = setInterval(fetchBoardData, 5000);
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => {
+            clearInterval(boardInterval);
+            clearInterval(timer);
+        };
+    }, []);
 
-			isLockedRef.current = true; // Lock immediately
-			setIsProcessing(true); // Trigger UI overlay
-			setStatus("scanning");
-			
-			try {
-				const response = await fetch('http://localhost:5000/api/logs/scan', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ qr_code: decodedText }),
-				});
+    const handleScanAction = useCallback(async (decodedText) => {
+        if (isLockedRef.current) return;
+        isLockedRef.current = true;
+        setIsProcessing(true);
 
-				const data = await response.json();
+        try {
+            const response = await fetch('http://localhost:5000/api/logs/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ qr_code: decodedText }),
+            });
 
-				if (data.success) {
-					beep.current.play(); 
-					setScanResult(data); 
-					setStatus("success");
-				} else {
-					setStatus("error");
-					alert(`Access Denied: ${data.message}`);
-				}
-			} catch (err) {
-				console.error("Scanner API Error:", err);
-				setStatus("error");
-			}
+            const data = await response.json();
 
-			// Cooldown period before allowing next scan
-			setTimeout(() => {
-				isLockedRef.current = false;
-				setIsProcessing(false);
-				setStatus("idle");
-			}, 5000); 
-		};
+            if (response.ok) {
+                beep.current.play();
+                setScanResult(data);
+                setStatus("ready");
+                fetchBoardData(); 
+            } else {
+                setStatus("error");
+                // FIX: Displays the server's actual error payload text dynamically
+                setScanResult({ 
+                    full_name: "ACCESS DENIED", 
+                    message: data.message || "Invalid or deactivated library pass token." 
+                });
+            }
+        } catch (err) {
+            setStatus("error");
+            setScanResult({ full_name: "CONNECTION ERROR", message: "Cannot reach backend network." });
+        }
 
-		scanner.render(onScanSuccess, (err) => {});
+        setTimeout(() => {
+            setScanResult(null);
+            setStatus("searching");
+            isLockedRef.current = false;
+            setIsProcessing(false);
+        }, 5000); 
+    }, []);
+    
+    useEffect(() => {
+        let buffer = "";
+        const handleKeyDown = (e) => {
+            const now = Date.now();
+            if (now - lastKeyTimeRef.current > 300) buffer = ""; 
+            lastKeyTimeRef.current = now;
+            if (e.key === "Enter") {
+                if (buffer.length > 5) handleScanAction(buffer);
+                buffer = "";
+            } else if (e.key.length === 1) { buffer += e.key; }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [handleScanAction]);
 
-		return () => {
-			scanner.clear().catch(err => console.error("Scanner cleanup failed", err));
-		};
-		}, []); // EMPTY dependency array - Scanner only initializes ONCE
+    const colleges = [
+        { id: 'CAFENR', color: '#16a34a' },
+        { id: 'CEIT',   color: '#ea580c' },
+        { id: 'CAS',    color: '#ca8a04' },
+        { id: 'CON',    color: '#dc2626' },
+        { id: 'CCJ',    color: '#9333ea' },
+        { id: 'CSPEAR', color: '#7f1d1d' },
+        { id: 'CEMDS',  color: '#ef4444' },
+        { id: 'CTHM',   color: '#f97316' },
+        { id: 'CED',    color: '#2563eb' },
+        { id: 'CVMBS',  color: '#ec4899' },
+    ];
 
-	return (
-	<div className="min-h-screen bg-white font-sans">
-		<Header />
-		<div className="flex">
-		<ScannerSideBar />
-		<div className="flex-1 flex flex-col items-center justify-center p-10 space-y-8">
-			<div className="bg-[#F3FAF3] border border-green-300 rounded-lg p-6 text-center shadow-sm relative">
-			<p className="text-gray-600 text-xl mb-4 font-semibold">Scan your QR code below!</p>
-			
-			{/* Visual Lock Overlay */}
-			{isProcessing && (
-			<div className="absolute inset-x-0 top-16 bottom-6 bg-white/40 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-lg">
-				<div className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-bold animate-pulse shadow-lg">
-				PROCESSING...
-				</div>
-			</div>
-			)}
-			<div id="reader" className="w-80 h-80 mx-auto overflow-hidden rounded-lg border-2 border-dashed border-green-200"></div>
-			</div>
+    const formatTime = (date) =>
+        date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-			<div className="w-full max-w-md border-t border-gray-100" />
+    const weekday = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+    const monthDay = currentTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-			<div className={`w-full max-w-md bg-white border rounded-lg p-6 shadow-md transition-all duration-500 ${status === 'error' ? 'border-red-300' : 'border-green-300'}`}>
-			<p className="text-center text-gray-600 text-lg mb-4">Last scan result</p>
-			<div className="flex items-center gap-4">
-			<div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center p-2">
-				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="green" className="w-8 h-8">
-				<path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-				</svg>
-			</div>
-			<div>
-				<h3 className="text-xl font-bold text-gray-800">{scanResult?.full_name || "Ready to Scan"}</h3>
-				<p className="text-sm text-gray-500">
-				{scanResult?.program || "Program Info"} <br />
-				{scanResult?.student_number || "--- --- ---"}
-				</p>
-			</div>
-			</div>
-			<div className="mt-6 flex justify-between items-center">
-			<div className={`flex items-center gap-2 px-4 py-1.5 rounded-full border ${scanResult ? 'bg-green-100 border-green-400' : 'bg-gray-50 border-gray-200'}`}>
-				<span className={`font-bold text-xs ${scanResult ? 'text-green-800' : 'text-gray-400'}`}>
-				{scanResult ? (scanResult.action === 'entry' ? "ENTRY ALLOWED" : "EXIT RECORDED") : "WAITING..."}
-				</span>
-			</div>
-			<span className="text-gray-400 text-xs font-medium">{new Date().toLocaleTimeString()}</span>
-			</div>
-			</div>
-		</div>
-		</div>
-	</div>
-	);
+    return (
+        <div style={{ minHeight: '100vh', backgroundColor: '#f0f4f0', display: 'flex', flexDirection: 'column', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
+
+            {/* ── HEADER ── */}
+            <div style={{
+                backgroundColor: '#1B5E20',
+                color: 'white',
+                padding: '0 24px',
+                height: '72px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                borderBottom: '3px solid #4CAF50',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{
+                        width: 44, height: 44, backgroundColor: '#fff',
+                        borderRadius: '8px', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', flexShrink: 0,
+                        border: '2px solid #4CAF50',
+                    }}>
+                        <svg width="28" height="28" viewBox="0 0 28 28">
+                            <polygon points="14,2 26,14 14,26 2,14" fill="#1B5E20"/>
+                            <polygon points="14,6 22,14 14,22 6,14" fill="#4CAF50"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1.2 }}>
+                            Library Patron Access and Monitoring System
+                        </div>
+                        <div style={{ fontSize: '11px', opacity: 0.75, marginTop: 2 }}>
+                            Entry &amp; Exit Station — Ladislao N. Diwa Memorial Library and Museum
+                        </div>
+                    </div>
+                </div>
+                <div style={{ fontSize: '30px', fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+                    {formatTime(currentTime)}
+                </div>
+            </div>
+
+            {/* ── BODY ── */}
+            <div style={{ display: 'flex', flex: 1, padding: '20px', gap: '20px' }}>
+
+                {/* ── LEFT SIDEBAR ── */}
+                <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{
+                        backgroundColor: '#1B5E20', color: 'white',
+                        borderRadius: '10px', padding: '18px 16px',
+                        textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    }}>
+                        <div style={{ fontSize: '14px', opacity: 0.85, marginBottom: '4px' }}>{weekday},</div>
+                        <div style={{ fontSize: '19px', fontWeight: 700, lineHeight: 1.3 }}>{monthDay}</div>
+                    </div>
+
+                    <div style={{
+                        backgroundColor: '#fff', borderRadius: '10px',
+                        padding: '18px 16px', textAlign: 'center',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                        border: '1px solid #e2e8e2',
+                    }}>
+                        <div style={{ fontSize: '64px', fontWeight: 800, color: '#1B5E20', lineHeight: 1 }}>
+                            {totalInside}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '6px' }}>
+                            Total Visitors Today
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', marginLeft: '2px' }}>
+                            Live Visitor Board
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            {colleges.map((col) => (
+                                <div key={col.id} style={{
+                                    backgroundColor: '#fff',
+                                    borderRadius: '6px',
+                                    padding: '8px 10px',
+                                    borderLeft: `4px solid ${col.color}`,
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
+                                }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#374151' }}>{col.id}</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>{boardData[col.id] ?? 0}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── MAIN CENTER ── */}
+                <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+                    <div style={{
+                        backgroundColor: '#fff',
+                        borderRadius: '16px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+                        padding: '40px 48px',
+                        width: '100%',
+                        maxWidth: '560px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                    }}>
+                        <div style={{
+                            width: '180px', height: '180px',
+                            border: `3px dashed ${status === "error" ? '#ef4444' : isProcessing ? '#22c55e' : '#d1d5db'}`,
+                            borderRadius: '16px',
+                            backgroundColor: status === "error" ? '#fef2f2' : isProcessing ? '#f0fdf4' : '#f9fafb',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'all 0.3s ease',
+                        }}>
+                            <QRIcon />
+                        </div>
+
+                        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                            <div style={{ fontSize: '16px', fontWeight: 600, color: '#374151' }}>
+                                Scan your QR code below!
+                            </div>
+                            <div style={{ color: '#374151', fontSize: '20px', marginTop: '6px', animation: 'bounce 1s infinite' }}>↓</div>
+                        </div>
+
+                        <hr style={{ width: '100%', border: 'none', borderTop: '1px solid #e5e7eb', margin: '24px 0' }} />
+
+                        {/* Last scan result */}
+                        <div style={{ width: '100%' }}>
+                            <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
+                                Last scan result
+                            </div>
+
+                            <div style={{
+                                border: `2px solid ${
+                                    status === "error" ? '#fca5a5' : // Red for Expired
+                                    !scanResult ? '#e5e7eb' : 
+                                    scanResult.action === 'entry' ? '#bbf7d0' : '#fef08a'
+                                }`,
+                                borderRadius: '14px',
+                                padding: '18px 20px',
+                                backgroundColor: status === "error" ? '#fef2f2' : !scanResult ? '#f9fafb' : scanResult.action === 'entry' ? '#f0fdf4' : '#fefce8',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '16px',
+                                transition: 'all 0.4s ease',
+                            }}>
+                                <div style={{
+                                    width: '52px', height: '52px', borderRadius: '50%',
+                                    backgroundColor: status === "error" ? '#fee2e2' : !scanResult ? '#e5e7eb' : scanResult.action === 'entry' ? '#dcfce7' : '#fef9c3',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>
+                                    <span style={{ fontSize: '24px' }}>
+                                        {status === "error" ? '❌' : !scanResult ? '👤' : scanResult.action === 'entry' ? '✅' : '⚠️'}
+                                    </span>
+                                </div>
+
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: '18px', fontWeight: 800, color: status === "error" ? '#b91c1c' : '#111827' }}>
+                                        {status === "error" ? "QR CODE EXPIRED" : scanResult?.full_name || "Waiting..."}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                                        {status === "error" ? "Student must refresh their mobile app." : scanResult ? `${scanResult.program} | ${scanResult.student_number}` : "Scan code to verify access"}
+                                    </div>
+                                    {scanResult && status !== "error" && (
+                                        <div style={{
+                                            marginTop: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '3px 10px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${scanResult.action === 'entry' ? '#86efac' : '#fde047'}`,
+                                            backgroundColor: scanResult.action === 'entry' ? '#dcfce7' : '#fef9c3',
+                                            color: scanResult.action === 'entry' ? '#15803d' : '#854d0e',
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            letterSpacing: '0.05em',
+                                        }}>
+                                            {scanResult.action === 'entry' ? '✓ ENTRY ALLOWED' : '⚠ EXIT RECORDED'}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', textAlign: 'right', flexShrink: 0 }}>
+                                    {scanResult ? new Date().toLocaleTimeString() : '--:--:--'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style>{`
+                @keyframes bounce {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(5px); }
+                }
+            `}</style>
+        </div>
+    );
 };
 
 export default Scanner;

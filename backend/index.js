@@ -6,296 +6,195 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// FIXED: ONE consistent key for signing and verifying
 const SECRET_KEY = process.env.JWT_SECRET;
 
 app.use(cors());
 app.use(express.json());
 
-// GET ALL STUDENTS
-app.get('/api/students', async (req, res) => {
-     try {
-          const [rows] = await db.query('SELECT * FROM students');
-          res.json(rows);
-     } catch (err) {
-          res.status(500).json({ error: err.message });
-     }
-});
-
-// STUDENT PROFILE WITH AUTO-JWT 
-// This route updates the DB every time the mobile app fetches data
-app.get('/api/student/profile/:student_number', async (req, res) => {
-     const { student_number } = req.params;
-
-     try {
-
-          // FIRST: Check approved students table
-          const [students] = await db.query(
-               'SELECT * FROM students WHERE student_number = ?',
-               [student_number]
-          );
-
-          // =========================
-          // APPROVED STUDENT FOUND
-          // =========================
-          if (students.length > 0) {
-
-               const student = students[0];
-               const today = new Date();
-
-               // Expiration check
-               if (student.valid_until && new Date(student.valid_until) < today) {
-                    return res.status(403).json({
-                         message: "Semester membership expired",
-                         status: 'expired'
-                    });
-               }
-
-               // Generate fresh QR
-               const fresh_qr = jwt.sign(
-                    { student_number: student.student_number },
-                    SECRET_KEY,
-                    { expiresIn: '5m' }
-               );
-
-               await db.query(
-                    'UPDATE students SET qr_code = ? WHERE student_number = ?',
-                    [fresh_qr, student_number]
-               );
-
-               return res.json({
-                    ...student,
-                    qr_code: fresh_qr,
-                    status: 'approved'
-               });
-          }
-
-          // =========================
-          // CHECK PENDING REQUESTS
-          // =========================
-          const [requests] = await db.query(
-               'SELECT * FROM registration_requests WHERE student_number = ?',
-               [student_number]
-          );
-
-          if (requests.length > 0) {
-
-               const request = requests[0];
-
-               return res.json({
-                    full_name: request.full_name,
-                    student_number: request.student_number,
-                    status: 'pending'
-               });
-          }
-
-          // =========================
-          // NOT REGISTERED
-          // =========================
-          return res.status(404).json({
-               message: "Student not found"
-          });
-
-     } catch (err) {
-
-          console.error(err);
-
-          res.status(500).json({
-               error: err.message
-          });
-     }
-});
-
-// SCAN INTERFACE LOGIC (Verify and Log)
-app.post('/api/logs/scan', async (req, res) => {
-     const { qr_code } = req.body;
-     try {
-     const decoded = jwt.verify(qr_code, SECRET_KEY);
-     const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [decoded.student_number]);
-
-     if (students.length === 0 || students[0].status !== 'approved') {
-          return res.status(403).json({ success: false, message: "Access Denied: Not Approved" });
-     }
-
-     // Secondary security check for semester date
-     if (students[0].valid_until && new Date(students[0].valid_until) < new Date()) {
-          return res.status(403).json({ success: false, message: "Access Denied: Semester Expired" });
-     }
-
-     const student = students[0];
-     const [activeLogs] = await db.query('SELECT log_id FROM student_logs WHERE user_id = ? AND status = "inside"', [student.user_id]);
-
-     if (activeLogs.length > 0) {
-          await db.query('UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE log_id = ?', [activeLogs[0].log_id]);
-          res.json({ success: true, action: 'exit', full_name: student.full_name });
-     } else {
-          await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
-          res.json({ success: true, action: 'entry', full_name: student.full_name });
-     }
-     } catch (err) {
-     res.status(401).json({ success: false, message: "Invalid or Expired QR" });
-     }
-});
-
-// LIVE DASHBOARD STATS
-app.get('/api/dashboard/stats', async (req, res) => {
-     try {
-          const [inside] = await db.query('SELECT COUNT(*) as count FROM student_logs WHERE status = "inside"');
-          const [totalToday] = await db.query('SELECT COUNT(DISTINCT user_id) as count FROM student_logs WHERE visit_date = CURDATE()');
-          const [pending] = await db.query('SELECT COUNT(*) as count FROM registration_requests WHERE approval_status = "pending"');
-
-          res.json({
-               currentlyInside: inside[0].count,
-               totalVisitorsToday: totalToday[0].count,
-               pendingRegistrations: pending[0].count
-          });
-     } catch (err) {
-          res.status(500).json({ error: err.message });
-     }
-});
-
-// REGISTRATION AND ADMIN APPROVAL
+// ==========================================
+// 1. UPDATED REGISTRATION ROUTE
+// ==========================================
 app.post('/api/register', async (req, res) => {
-     const { full_name, email, student_number, college, program, year_level } = req.body;
-     if (!full_name || !email || !student_number || !college || !program || !year_level) {
-          return res.status(400).json({ message: "Please fill in all required fields." });
-     }
-     try {
-          await db.query(
-               'INSERT INTO registration_requests (full_name, email, student_number, college, program, year_level, approval_status, created_at) VALUES (?, ?, ?, ?, ?, ?, "pending", NOW())',
-               [full_name, email, student_number, college, program, year_level]
-          );
-          res.status(201).json({ message: "Registration submitted successfully!" });
-     } catch (err) {
-          res.status(500).json({ error: "Database error." });
-     }
+    const { full_name, email, student_number, college, program, year_level } = req.body;
+    if (!full_name || !email || !student_number || !college || !program || !year_level) {
+        return res.status(400).json({ message: "Please fill in all required fields." });
+    }
+    try {
+        const [existing] = await db.query('SELECT * FROM students WHERE email = ? OR student_number = ?', [email, student_number]);
+        if (existing.length > 0) {
+            return res.status(400).json({ message: "This student number or email is already registered." });
+        }
+
+        await db.query(
+            'INSERT INTO registration_requests (full_name, email, student_number, college, program, year_level, approval_status, created_at) VALUES (?, ?, ?, ?, ?, ?, "pending", NOW())',
+            [full_name, email, student_number, college, program, year_level]
+        );
+
+        await db.query(
+            `INSERT INTO students (
+                full_name, email, student_number, college, program, year_level, qr_code, status
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, "pending")`,
+            [full_name, email, student_number, college, program, year_level]
+        );
+
+        res.status(201).json({ message: "Registration submitted successfully!" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Database transaction error during entry configuration." });
+    }
 });
 
-app.post('/api/admin/approve', async (req, res) => {
-     const { request_id, admin_id } = req.body; 
-     try {
-          const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
-          if (request.length === 0) return res.status(404).json({ message: "Request not found" });
-
-          const student = request[0];
-          const qr_jwt = jwt.sign({ student_number: student.student_number }, SECRET_KEY, { expiresIn: '5m' });
-
-          await db.query(
-               'INSERT INTO students (full_name, email, student_number, program, year_level, qr_code, status) VALUES (?, ?, ?, ?, ?, ?, "approved")',
-               [student.full_name, student.email, student.student_number, student.program, student.year_level, qr_jwt]
-          );
-
-          await db.query(
-               'UPDATE registration_requests SET approval_status = "approved", approved_by = ?, approved_at = NOW() WHERE request_id = ?', 
-               [admin_id || null, request_id] 
-          );
-
-          res.json({ message: "Approved successfully!" });
-     } catch (err) {
-          res.status(500).json({ error: err.message });
-     }
-});
-
+// ADMIN DASHBOARD ROUTE
 app.get('/api/admin/pending', async (req, res) => {
      try {
-          const [rows] = await db.query(`
-               SELECT *
-               FROM registration_requests
-               WHERE approval_status = 'pending'
-               ORDER BY created_at DESC
-          `);
-
-          res.json(rows);
-
-     } catch (err) {
-          console.error("Pending Requests Error:", err);
-
-          res.status(500).json({
-               error: err.message
-          });
-     }
-});
-
-// LOGIN USING EMAIL ONLY
-app.post('/api/login', async (req, res) => {
-     const { email } = req.body;
-     try {
-          // Check approved students
-          const [students] = await db.query(
-               'SELECT * FROM students WHERE email = ?',
-               [email]
-          );
-
-          // Check pending registrations if not approved
-          const [requests] = await db.query(
-               'SELECT * FROM registration_requests WHERE email = ?',
-               [email]
-          );
-
-          if (students.length === 0 && requests.length === 0) {
-               return res.status(404).json({
-                    message: 'Email not found'
-               });
-          }
-          // Approved student
-          if (students.length > 0) {
-               const student = students[0];
-               return res.json({
-                    success: true,
-                    student: {
-                         user_id: student.user_id,
-                         full_name: student.full_name,
-                         email: student.email,
-                         student_number: student.student_number,
-                         status: 'approved'
-                    }
-               });
-          }
-          // Pending student
-          const request = requests[0];
-          return res.json({
-               success: true,
-               student: {
-                    full_name: request.full_name,
-                    email: request.email,
-                    student_number: request.student_number,
-                    status: 'pending'
-               }
-          });
-     } catch (err) {
-          console.error(err);
-          res.status(500).json({
-               error: err.message
-          });
-     }
-});
-
-// STUDENT LOGS
-app.get('/api/logs/all', async (req, res) => {
-     try {
-          const query = `
-               SELECT 
-                    l.log_id, 
-                    s.full_name, 
-                    s.student_number, 
-                    s.program,
-                    l.time_in, 
-                    l.time_out, 
-                    l.visit_date, 
-                    l.status
-               FROM student_logs l
-               LEFT JOIN students s ON l.user_id = s.user_id
-               ORDER BY l.time_in DESC
-          `;
-          const [rows] = await db.query(query);
+          const [rows] = await db.query('SELECT * FROM registration_requests WHERE approval_status = "pending" ORDER BY created_at DESC');
           res.json(rows);
      } catch (err) {
-          console.error("Database Error:", err);
           res.status(500).json({ error: err.message });
      }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`LibraPass Server running at http://localhost:${PORT}`);
+// ==========================================
+// 2. UPDATED ADMIN APPROVE ROUTE
+// ==========================================
+app.post('/api/admin/approve', async (req, res) => {
+    const { request_id, admin_id } = req.body; 
+
+    try {
+        const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
+        if (request.length === 0) return res.status(404).json({ message: "Request not found" });
+
+        const student = request[0];
+
+        // FIX: We no longer generate or save a static token here. 
+        // We just change their status to approved!
+        await db.query(
+            `UPDATE students SET status = "approved" WHERE student_number = ?`,
+            [student.student_number]
+        );
+
+        await db.query(
+            'UPDATE registration_requests SET approval_status = "approved", approved_by = ?, approved_at = NOW() WHERE request_id = ?', 
+            [admin_id || 1, request_id] 
+        );
+
+        res.json({ success: true, message: "Approved successfully!" });
+    } catch (err) {
+        console.error("SQL ERROR during Approval:", err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
+
+app.post('/api/admin/reject', async (req, res) => {
+     const { request_id } = req.body;
+     try {
+          const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
+          if (request.length > 0) {
+              await db.query('DELETE FROM students WHERE student_number = ?', [request[0].student_number]);
+          }
+          await db.query('UPDATE registration_requests SET approval_status = "rejected" WHERE request_id = ?', [request_id]);
+          res.json({ message: "Registration rejected." });
+     } catch (err) {
+          res.status(500).json({ error: err.message });
+     }
+});
+
+// SCANNING
+app.post('/api/logs/scan', async (req, res) => {
+    const { qr_code } = req.body;
+    try {
+        // Decodes and strictly checks the 15-second window
+        const decoded = jwt.verify(qr_code, SECRET_KEY);
+        const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [decoded.student_number]);
+
+        if (students.length === 0 || students[0].status !== 'approved') {
+            return res.status(403).json({ success: false, message: "Access Denied" });
+        }
+
+        const student = students[0];
+        const [activeLogs] = await db.query('SELECT log_id FROM student_logs WHERE user_id = ? AND status = "inside"', [student.user_id]);
+
+        if (activeLogs.length > 0) {
+            await db.query('UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE log_id = ?', [activeLogs[0].log_id]);
+            res.json({ success: true, action: 'exit', full_name: student.full_name, program: student.program, student_number: student.student_number });
+        } else {
+            await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
+            res.json({ success: true, action: 'entry', full_name: student.full_name, program: student.program, student_number: student.student_number });
+        }
+    } catch (err) {
+        res.status(401).json({ success: false, message: "QR Code Expired" });
+    }
+});
+
+app.get('/api/logs/all', async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT sl.log_id, sl.visit_date, sl.time_in, sl.time_out, sl.status, s.full_name, s.student_number, s.program
+            FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
+            ORDER BY sl.visit_date DESC, sl.time_in DESC
+        `);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// LOGIN ENDPOINT
+app.post('/api/login', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const [students] = await db.query('SELECT * FROM students WHERE email = ?', [email.trim().toLowerCase()]);
+    if (!students || students.length === 0) {
+      return res.status(404).json({ message: 'School email not registered.' });
+    }
+    return res.status(200).json({ message: 'Login successful', student: students[0] });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PROFILE API DATA FETCHER
+app.get('/api/student/profile/:student_number', async (req, res) => {
+  const { student_number } = req.params;
+  
+  try {
+    const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+    if (!students || students.length === 0) {
+      return res.status(404).json({ message: 'Student profile not found.' });
+    }
+
+    const student = students[0];
+
+    // FIX: Generate a fresh 15-second expiration token inside the profile fetcher!
+    // Every time the mobile app requests an update (every 10 seconds), it generates a new token.
+    if (student.status === 'approved') {
+        const freshToken = jwt.sign(
+            { student_number: student.student_number }, 
+            SECRET_KEY, 
+            { expiresIn: '15s' }
+        );
+        student.qr_code = freshToken; 
+    }
+
+    return res.status(200).json(student);
+    
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/api/logs/live-board', async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT s.college, COUNT(*) as count FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
+            WHERE sl.status = 'inside' GROUP BY s.college
+        `);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

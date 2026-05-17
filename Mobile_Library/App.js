@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,10 +6,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import HomeScreen from './src/screens/HomeScreen';
+import HomeScreenComponent from './src/screens/HomeScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import LoginScreen from './src/screens/LoginScreen';
-import SplashScreen from './src/screens/SplashScreen';
 import { colors } from './src/theme/colors';
 
 const Tab = createBottomTabNavigator();
@@ -17,15 +16,11 @@ const Stack = createNativeStackNavigator();
 
 // BOTTOM TAB NAVIGATION
 function MainTabs() {
-
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-
+      screenOptions={{
         headerShown: false,
-
         tabBarShowLabel: true,
-
         tabBarStyle: {
           height: 64,
           paddingBottom: 8,
@@ -35,100 +30,37 @@ function MainTabs() {
           backgroundColor: '#fff',
           marginBottom: 35,
         },
-
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
-
-        tabBarIcon: ({ focused, size }) => {
-
-          const tint = focused
-            ? colors.primary
-            : '#9AA0A6';
-
-          return (
-            <Ionicons
-              name="home"
-              size={size}
-              color={tint}
-            />
-          );
-        },
-
-      })}
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+      }}
     >
       <Tab.Screen
-        name="Home"
-        component={HomeScreen}
+        name="HomeTab"
+        component={HomeScreenComponent}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name="home" size={24} color={focused ? colors.primary : '#9AA0A6'} />
+          ),
+        }}
       />
-
     </Tab.Navigator>
   );
 }
 
-
-// =========================
-// APP
-// =========================
+// SIMPLE FLAT STACK NAVIGATOR
 export default function App() {
-
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-
-  }, []);
-
-
-  // =========================
-  // SPLASH SCREEN
-  // =========================
-  if (isLoading) {
-    return <SplashScreen />;
-  }
-
-
   return (
     <SafeAreaProvider>
-
       <NavigationContainer>
-
         <StatusBar style="light" />
-
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-          }}
-        >
-
-          {/* LOGIN */}
-          <Stack.Screen
-            name="Login"
-            component={LoginScreen}
-          />
-
-          {/* REGISTER */}
-          <Stack.Screen
-            name="Register"
-            component={RegisterScreen}
-          />
-
-          {/* HOME AFTER LOGIN */}
-          <Stack.Screen
-            name="MainTabs"
-            component={MainTabs}
-          />
-
+        <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+          {/* Auth Screens */}
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          
+          {/* Main Dashboard - Named HomeScreen to satisfy the payload call */}
+          <Stack.Screen name="HomeScreen" component={MainTabs} />
         </Stack.Navigator>
-
       </NavigationContainer>
-
     </SafeAreaProvider>
   );
 }

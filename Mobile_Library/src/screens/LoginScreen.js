@@ -26,35 +26,31 @@ export default function LoginScreen({ navigation }) {
 
     try {
       setLoading(true);
-
-      const response = await fetch('http://192.168.18.10:5000/api/login', {
+      
+      // Standardized connection endpoint matching the Register and Home setups
+      const response = await fetch('http://192.168.1.13:5000/api/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }), 
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        Alert.alert('Login Failed', data.message || 'Email not found');
+        Alert.alert('Login Failed', data.message);
         return;
       }
 
-      // Save student session locally
-      await AsyncStorage.setItem(
-        'student',
-        JSON.stringify(data.student)
-      );
-
+      // 1. Stores the complete student object returned by the database session backend
+      await AsyncStorage.setItem('student', JSON.stringify(data.student));
       Alert.alert('Success', 'Login successful');
-
-      navigation.replace('MainTabs');
+      
+      // 2. Redirects directly to the main dashboard stack
+      navigation.replace('HomeScreen'); 
 
     } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Cannot connect to server');
+      console.error("Network Error:", error);
+      Alert.alert('Connection Error', 'Ensure phone and laptop are on the same Wi-Fi.');
     } finally {
       setLoading(false);
     }
@@ -118,13 +114,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F4F6F8',
   },
-
   content: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 25,
   },
-
   title: {
     fontSize: 34,
     fontWeight: 'bold',
@@ -132,7 +126,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     textAlign: 'center',
   },
-
   subtitle: {
     fontSize: 16,
     color: '#666',
@@ -140,7 +133,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 40,
   },
-
   input: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -149,7 +141,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
   },
-
   button: {
     backgroundColor: '#1B5E20',
     height: 55,
@@ -157,7 +148,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   buttonText: {
     color: '#fff',
     fontWeight: 'bold',
