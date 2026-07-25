@@ -8,15 +8,19 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -26,12 +30,12 @@ export default function LoginScreen({ navigation }) {
 
     try {
       setLoading(true);
-      
+
       // Standardized connection endpoint matching the Register and Home setups
-      const response = await fetch('http://192.168.1.13:5000/api/login', {
+      const response = await fetch('http://192.168.1.54:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }), 
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       const data = await response.json();
@@ -41,12 +45,8 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
-      // 1. Stores the complete student object returned by the database session backend
       await AsyncStorage.setItem('student', JSON.stringify(data.student));
-      Alert.alert('Success', 'Login successful');
-      
-      // 2. Redirects directly to the main dashboard stack
-      navigation.replace('HomeScreen'); 
+      navigation.replace('HomeScreen');
 
     } catch (error) {
       console.error("Network Error:", error);
@@ -57,100 +57,141 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.root}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <View style={styles.content}>
-          <Ionicons name="library" size={70} color="#1B5E20" />
+        {/* PHOTO HEADER */}
+        <View style={styles.hero}>
+          <View style={styles.imagePlaceholder} />
+          <View style={styles.heroOverlay} />
+          <SafeAreaView edges={['top']} />
+        </View>
 
-          <Text style={styles.title}>LibraPass</Text>
+        {/* CARD */}
+        <View style={styles.card}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="library-outline" size={26} color={colors.primary} />
+          </View>
 
-          <Text style={styles.subtitle}>
-            Login using your school email
-          </Text>
+          <Text style={styles.title}>eDiwa</Text>
+          <Text style={styles.subtitle}>Library App</Text>
 
+          {/* TAB SWITCHER */}
+          <View style={styles.tabRow}>
+            <View style={styles.tabItemActive}>
+              <Text style={styles.tabTextActive}>Login</Text>
+              <View style={styles.tabUnderline} />
+            </View>
+            <TouchableOpacity
+              style={styles.tabItem}
+              onPress={() => navigation.navigate('Register')}
+            >
+              <Text style={styles.tabText}>Signup</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 8 }} />
+
+          <Text style={styles.fieldLabel}>E-mail Address</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Enter school email"
+            style={[styles.input, focused && styles.inputFocused]}
+            placeholder="name@cvsu.edu.ph"
+            placeholderTextColor={colors.gray}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
           />
-          <TouchableOpacity
-            style={styles.button}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>
-              {loading ? 'Logging in...' : 'Login'}
-            </Text>
-          </TouchableOpacity>
+
+          <View style={{ height: 28 }} />
 
           <TouchableOpacity
-            onPress={() => navigation.navigate('Register')}
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
           >
-            <Text
-              style={{
-                textAlign: 'center',
-                marginTop: 20,
-                color: '#1B5E20',
-                fontWeight: '600',
-              }}
-            >
-              No account yet? Register here
-            </Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>LOGIN</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
+const HERO_HEIGHT = 280;
+
 const styles = StyleSheet.create({
-  container: {
+  root: { flex: 1, backgroundColor: colors.background },
+
+  hero: { height: HERO_HEIGHT, backgroundColor: '#16382399' },
+  imagePlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: '#16382399' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6, 31, 17, 0.5)' },
+
+  card: {
     flex: 1,
-    backgroundColor: '#F4F6F8',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 25,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginTop: 20,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 40,
-  },
-  input: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    height: 55,
-    fontSize: 16,
-    marginBottom: 20,
+    marginTop: -36,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 28,
+    paddingTop: 40,
+    alignItems: 'center',
   },
+  logoBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -30,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.grayLight,
+  },
+  title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginTop: 8 },
+  subtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 2, marginBottom: 20 },
+
+  tabRow: { flexDirection: 'row', gap: 28, marginBottom: 28, width: '100%', justifyContent: 'center' },
+  tabItem: { paddingBottom: 8 },
+  tabItemActive: { alignItems: 'center', paddingBottom: 4 },
+  tabText: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+  tabTextActive: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
+  tabUnderline: { width: 40, height: 2.5, backgroundColor: colors.primary, borderRadius: 2 },
+
+  fieldLabel: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  input: {
+    width: '100%',
+    borderBottomWidth: 1.5,
+    borderBottomColor: colors.border,
+    paddingBottom: 10,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  inputFocused: { borderBottomColor: colors.primary },
+
   button: {
-    backgroundColor: '#1B5E20',
-    height: 55,
-    borderRadius: 12,
+    width: '100%',
+    backgroundColor: colors.primary,
+    height: 54,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  buttonDisabled: { opacity: 0.7 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 15, letterSpacing: 1 },
 });

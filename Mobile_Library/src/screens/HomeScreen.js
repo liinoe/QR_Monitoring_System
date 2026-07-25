@@ -13,11 +13,26 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 
+const CHART_MAX_BAR_HEIGHT = 80;
+
+const formatHoursLabel = (hrs) => {
+  if (!hrs || hrs <= 0) return '';
+  if (hrs < 1) return `${Math.round(hrs * 60)}min`;
+  return `${hrs}hr`;
+};
+
+const formatStayRange = (hrs) => {
+  if (!hrs || hrs <= 0) return '--';
+  const lower = Math.floor(hrs);
+  return `${lower} - ${lower + 1} Hrs`;
+};
+
 export default function HomeScreen({ navigation }) {
   const [now, setNow] = useState(new Date());
   const [qrOpen, setQrOpen] = useState(false);
   const [studentData, setStudentData] = useState(null);
-  const [fetched, setFetched] = useState(false); 
+  const [fetched, setFetched] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
   const abortControllerRef = React.useRef(null);
 
   const formatDateTime = (d) => {
@@ -44,9 +59,9 @@ export default function HomeScreen({ navigation }) {
       if (!storedStudent) return;
       const student = JSON.parse(storedStudent);
 
-      // FIX: Standardized IP endpoints across initialization threads
+      // Standardized IP endpoints, change depends on your IPv4
       const response = await fetch(
-        `http://192.168.1.13:5000/api/student/profile/${student.student_number}`,
+        `http://192.168.1.54:5000/api/student/profile/${student.student_number}`,
         { signal: controller.signal }
       );
 
@@ -61,6 +76,25 @@ export default function HomeScreen({ navigation }) {
       console.error('Error fetching data:', error);
     } finally {
       if (isInitial) setFetched(true);
+    }
+  };
+
+  // Live personal + library-wide analytics for the dashboard cards/chart.
+  const fetchAnalytics = async () => {
+    try {
+      const storedStudent = await AsyncStorage.getItem('student');
+      if (!storedStudent) return;
+      const student = JSON.parse(storedStudent);
+
+      const response = await fetch(
+        `http://192.168.1.54:5000/api/student/analytics/${student.student_number}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setAnalytics(data);
+      }
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
     }
   };
 
@@ -79,10 +113,14 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     fetchProfileData(true);
+    fetchAnalytics();
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
-    
-    // Checks backend approval status updates every 10 seconds automatically
-    const refreshInterval = setInterval(() => fetchProfileData(false), 10000);
+
+    // Checks backend approval status + analytics updates every 10 seconds automatically
+    const refreshInterval = setInterval(() => {
+      fetchProfileData(false);
+      fetchAnalytics();
+    }, 10000);
 
     return () => {
       clearInterval(clockInterval);
@@ -95,6 +133,10 @@ export default function HomeScreen({ navigation }) {
   // Display the restriction view if the status is explicitly 'pending' OR if data exists but isn't approved yet
   const isPending = studentData && !isApproved;
   const isNotRegistered = fetched && !studentData;
+
+  const maxChartHours = analytics
+    ? Math.max(1, ...analytics.weekly_activity.map((w) => w.hours))
+    : 1;
 
   return (
     <View style={styles.root}>
@@ -153,25 +195,97 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* APPROVED — DYNAMIC QR IS SHOWN HERE */}
+        {/* APPROVED — DASHBOARD ANALYTICS + QR (QR UNTOUCHED) */}
         {isApproved && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setQrOpen(true)}
-            style={styles.qrCard}
-          >
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
-              <Text style={styles.statusText}>Status: Approved</Text>
-              <View style={styles.enlargeContainer}>
-                <Ionicons name="expand-outline" size={14} color="#666" />
-                <Text style={styles.enlargeText}>Tap to enlarge</Text>
+          <>
+            {/* LIVE OCCUPANCY + TOTAL VISITS */}
+            <View style={styles.kpiRow}>
+              <View style={styles.kpiCard}>
+                <Text style={styles.kpiLabel}>Live Occupancy</Text>
+                <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
+                <Text style={styles.kpiSub}>currently inside the library</Text>
+              </View>
+              <View style={styles.kpiCard}>
+                <Text style={styles.kpiLabel}>Total Visits</Text>
+                <Text style={styles.kpiValue}>{analytics ? analytics.total_visits : '--'}</Text>
+                <Text style={styles.kpiSub}>all-time</Text>
               </View>
             </View>
-            <View style={styles.qrPreview}>
-              <QRCode value={studentData?.qr_code || 'NA'} size={85} color="#1B5E20" />
+
+            <View style={{ height: 16 }} />
+
+            {/* QR CARD — unchanged */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setQrOpen(true)}
+              style={styles.qrCard}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
+                <Text style={styles.statusText}>Status: Approved</Text>
+                <View style={styles.enlargeContainer}>
+                  <Ionicons name="expand-outline" size={14} color="#666" />
+                  <Text style={styles.enlargeText}>Tap to enlarge</Text>
+                </View>
+              </View>
+              <View style={styles.qrPreview}>
+                <QRCode value={studentData?.qr_code || 'NA'} size={85} color="#1B5E20" />
+              </View>
+            </TouchableOpacity>
+
+            <View style={{ height: 16 }} />
+
+            {/* LIBRARY ACTIVITY CHART + FOOTER STATS */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Library Activity</Text>
+
+              {analytics ? (
+                <View style={styles.chartRow}>
+                  {analytics.weekly_activity.map((item) => {
+                    const barHeight = item.hours > 0
+                      ? Math.max(6, (item.hours / maxChartHours) * CHART_MAX_BAR_HEIGHT)
+                      : 4;
+                    return (
+                      <View key={item.day} style={styles.chartBarWrap}>
+                        <Text style={styles.chartValueLabel}>{formatHoursLabel(item.hours)}</Text>
+                        <View
+                          style={[
+                            styles.chartBar,
+                            { height: barHeight, backgroundColor: item.hours > 0 ? '#1B5E20' : '#E0E0E0' },
+                          ]}
+                        />
+                        <Text style={styles.chartDayLabel}>{item.day}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.chartLoadingText}>Loading activity...</Text>
+              )}
+
+              <View style={styles.footerDividerLine} />
+
+              <View style={styles.footerStatsRow}>
+                <View style={styles.footerStatItem}>
+                  <Ionicons name="calendar-outline" size={16} color="#1B5E20" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={styles.footerStatLabel}>Frequent Visit</Text>
+                    <Text style={styles.footerStatValue}>{analytics ? analytics.frequent_day : '--'}</Text>
+                  </View>
+                </View>
+                <View style={styles.footerVerticalDivider} />
+                <View style={styles.footerStatItem}>
+                  <Ionicons name="time-outline" size={16} color="#1B5E20" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={styles.footerStatLabel}>Avg. Stay Duration</Text>
+                    <Text style={styles.footerStatValue}>
+                      {analytics ? formatStayRange(analytics.avg_stay_hours) : '--'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
-          </TouchableOpacity>
+          </>
         )}
       </ScrollView>
 
@@ -208,7 +322,7 @@ const styles = StyleSheet.create({
   enlargeText: { color: '#666', fontSize: 12, fontWeight: '500' },
   qrPreview: { padding: 8, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#F0F0F0' },
 
-  // Lhanz's Restricted Pending Stylesheet Override
+  // Restricted Pending Stylesheet Override
   lockedCard: { backgroundColor: '#FFFDF0', borderColor: '#FCEFBC', borderWidth: 1 },
   restrictedContainer: { flex: 1, flexDirection: 'row', alignItems: 'flex-start' },
   lockIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFF9C4', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
@@ -217,4 +331,28 @@ const styles = StyleSheet.create({
   pendingBadge: { backgroundColor: '#FCEFBC', alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, marginTop: 12 },
   badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4A017', marginRight: 6 },
   pendingBadgeText: { color: '#7F6000', fontWeight: '700', fontSize: 13 },
+
+  // KPI cards (Live Occupancy / Total Visits)
+  kpiRow: { flexDirection: 'row', gap: 12 },
+  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
+  kpiLabel: { fontSize: 12, color: '#888', fontWeight: '600' },
+  kpiValue: { fontSize: 28, color: '#1B5E20', fontWeight: '800', marginTop: 6 },
+  kpiSub: { fontSize: 10, color: '#aaa', marginTop: 4 },
+
+  // Library Activity chart card
+  chartCard: { backgroundColor: '#fff', borderRadius: 20, padding: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
+  chartTitle: { fontSize: 15, fontWeight: '700', color: '#1B1B1B', marginBottom: 16 },
+  chartLoadingText: { fontSize: 12, color: '#aaa', textAlign: 'center', paddingVertical: 30 },
+  chartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: CHART_MAX_BAR_HEIGHT + 40 },
+  chartBarWrap: { alignItems: 'center', flex: 1 },
+  chartValueLabel: { fontSize: 9, color: '#666', marginBottom: 4 },
+  chartBar: { width: 10, borderRadius: 5 },
+  chartDayLabel: { fontSize: 11, color: '#888', marginTop: 8, fontWeight: '600' },
+
+  footerDividerLine: { height: 1, backgroundColor: '#EEE', marginTop: 20, marginBottom: 14 },
+  footerStatsRow: { flexDirection: 'row', alignItems: 'center' },
+  footerStatItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  footerStatLabel: { fontSize: 11, color: '#888' },
+  footerStatValue: { fontSize: 14, fontWeight: '700', color: '#1B1B1B', marginTop: 2 },
+  footerVerticalDivider: { width: 1, height: 32, backgroundColor: '#EEE', marginHorizontal: 12 },
 });

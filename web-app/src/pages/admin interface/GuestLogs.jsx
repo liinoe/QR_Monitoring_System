@@ -1,107 +1,140 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
-import FilterButton from "../../components/FilterButton";
 import GuestLogTable from "../../components/GuestLogTable";
 
+const STATUS_TABS = ["All", "Inside", "Exited"];
+
 const GuestLogs = () => {
+  const [logs, setLogs] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const fetchLogs = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/guests/all');
+      const data = await response.json();
+      setLogs(data);
+    } catch (error) {
+      console.error("Fetch error:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleMarkExited = async (log_id) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/guests/exit/${log_id}`, { method: 'PATCH' });
+      if (response.ok) fetchLogs();
+    } catch (error) {
+      console.error("Exit error:", error);
+    }
+  };
+
+  // STATS
+  const todayStr = new Date().toDateString();
+  const logsToday = logs.filter(l => l.visit_date && new Date(l.visit_date).toDateString() === todayStr);
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const logsYesterday = logs.filter(l => l.visit_date && new Date(l.visit_date).toDateString() === yesterday.toDateString());
+  const vsYesterday = logsToday.length - logsYesterday.length;
+
+  const currentlyInside = logs.filter(l => l.status === 'inside').length;
+  const alreadyExited = logs.filter(l => l.status === 'exited').length;
+
+  const visitorTypesPresent = Array.from(new Set(logs.map(l => l.guest_type).filter(Boolean)))
+    .map(t => t.charAt(0).toUpperCase() + t.slice(1));
+
+  // FILTER 
+  const filteredData = logs.filter(log => {
+    const matchesSearch =
+      (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (log.purpose || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus =
+      statusFilter === "All" ||
+      (statusFilter === "Inside" && log.status === 'inside') ||
+      (statusFilter === "Exited" && log.status === 'exited');
+    return matchesSearch && matchesStatus;
+  });
+
   return (
-    <div className="bg-[#F6F6F5] min-h-screen font-sans flex flex-col">
-      
-      {/* HEADER */}
+    <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
       <Header />
-
       <div className="flex flex-1">
-        
-        {/* SIDEBAR */}
         <Sidebar />
+        <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
 
-        {/* MAIN CONTENT */}
-        <div className="flex-1 p-6">
-          
-          {/* CARDS */}
-          <div className="grid grid-cols-4 gap-6 mb-6">
+          {/* KPI CARDS */}
+          <div className="grid grid-cols-4 gap-[20px]">
             <Card
               title="Total logs today"
-              value="34"
-              subtitle="8 more than yesterday"
-              border="border-green-700"
+              value={logsToday.length}
+              subtitle={`${vsYesterday >= 0 ? '↑' : '↓'} ${Math.abs(vsYesterday)} ${vsYesterday >= 0 ? 'more' : 'fewer'} than yesterday`}
               color="text-green-700"
+              border="border-green-700"
             />
-
             <Card
               title="Currently Inside"
-              value="12"
-              subtitle="As of 1:28 PM"
-              border="border-blue-700"
+              value={currentlyInside}
+              subtitle={`As of ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
               color="text-blue-700"
+              border="border-blue-700"
             />
-
             <Card
               title="Already Exited"
-              value="22"
-              subtitle="32 total - 12 inside"
-              border="border-yellow-800"
-              color="text-yellow-800"
+              value={alreadyExited}
+              subtitle={`${logs.length} total - ${currentlyInside} inside`}
+              color="text-amber-800"
+              border="border-amber-800"
             />
-
             <Card
               title="Visitor Types"
-              value="Faculty • Alumni • Walk-in"
-              subtitle="3 categories logged"
-              border="border-yellow-500"
+              value={visitorTypesPresent.length > 0 ? visitorTypesPresent.join(" • ") : "No data yet"}
+              subtitle={`${visitorTypesPresent.length} categories logged`}
               color="text-yellow-600"
+              border="border-yellow-500"
             />
           </div>
-          
-          <div className="flex items-center gap-4 mb-4">
-            
-            {/* SEARCH */}
-            <div className="relative w-1/3">
+
+          {/* SEARCH AND FILTERS */}
+          <div className="flex items-center gap-3">
+            <div className="relative">
               <input
                 type="text"
                 placeholder="Search by name or purpose..."
-                className="border rounded-lg px-4 py-2 w-full"
+                className="pl-4 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-
-            {/* FILTER BUTTONS */}
             <div className="flex gap-2">
-              <FilterButton active>All</FilterButton>
-              <FilterButton>Inside</FilterButton>
-              <FilterButton>Exited</FilterButton>
+              {STATUS_TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStatusFilter(tab)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    statusFilter === tab
+                      ? "bg-[#1B651B] text-white"
+                      : "bg-white text-gray-600 border hover:bg-gray-50"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
-
           </div>
 
-          {/* TABLE */}
-          <GuestLogTable data={sampleData}/>
-
+          <GuestLogTable data={filteredData} onMarkExited={handleMarkExited} />
         </div>
       </div>
     </div>
   );
-}
-export default GuestLogs;
+};
 
-const sampleData = [
-  {
-    name: "Kyla Payad",
-    type: "Faculty",
-    purpose: "Book Reference",
-    date: "2026-04-01",
-    timeIn: "12:01",
-    timeOut: null,
-    status: "Inside",
-  },
-  {
-    name: "Juan Dela Cruz",
-    type: "Alumni",
-    purpose: "Research / Thesis",
-    date: "2026-04-01",
-    timeIn: "12:15",
-    timeOut: "12:45",
-    status: "Outside",
-  },
-];
+export default GuestLogs;

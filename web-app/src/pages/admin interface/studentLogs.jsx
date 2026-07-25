@@ -22,41 +22,78 @@ const StudentLogs = () => {
 
   useEffect(() => {
     fetchLogs();
-    // Refresh the logs every 10 seconds to show live entries from the scanner
     const interval = setInterval(fetchLogs, 10000); 
     return () => clearInterval(interval);
   }, []);
 
+  const handleDelete = async (log_id) => {
+    const reason = prompt("Enter the reason for deleting this log entry:");
+    if (reason !== null && reason.trim() !== "") {
+      try {
+        const response = await fetch(`http://localhost:5000/api/logs/delete/${log_id}`, { 
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }) 
+        });
+        if (response.ok) fetchLogs();
+      } catch (error) {
+        console.error("Delete error:", error);
+      }
+    }
+  };
+
   // STATS CALCULATIONS 
   const todayStr = new Date().toDateString();
   const logsToday = logs.filter(l => new Date(l.visit_date).toDateString() === todayStr);
-  
   const totalToday = logsToday.length;
   const currentlyInside = logs.filter(l => l.status === 'inside').length;
   const totalExitsToday = logsToday.filter(l => l.status === 'exited').length;
 
-  // Average Stay Duration Logic
   const exitedLogs = logs.filter(l => l.time_in && l.time_out);
-  const totalStayMs = exitedLogs.reduce((acc, log) => {
-    return acc + (new Date(log.time_out) - new Date(log.time_in));
-  }, 0);
-  
-  const avgStay = exitedLogs.length > 0 
-    ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) 
-    : "0.0";
+  const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
+  const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
 
-  // FILTER ENGINE 
+  const collegeOptions = [
+    "CAFENR",
+    "CAS",
+    "CCJ",
+    "CED",
+    "CEIT",
+    "CEMDS",
+    "CON",
+    "CSPEAR",
+    "CTHM",
+    "CVMBS",
+  ];
+
+  // Some records store the full college name instead of the acronym.
+  // This maps either form to the short acronym for display in the table.
+  const COLLEGE_ACRONYMS = {
+    "college of agriculture, food, environment, and natural resources": "CAFENR",
+    "college of agriculture, forestry, environment and natural resources": "CAFENR",
+    "college of arts and sciences": "CAS",
+    "college of criminal justice": "CCJ",
+    "college of education": "CED",
+    "college of engineering and information technology": "CEIT",
+    "college of economics, management, and development studies": "CEMDS",
+    "college of economics, management and development studies": "CEMDS",
+    "college of nursing": "CON",
+    "college of sports, physical education and recreation": "CSPEAR",
+    "college of tourism and hospitality management": "CTHM",
+    "college of veterinary medicine and biomedical sciences": "CVMBS",
+  };
+
+  const toAcronym = (college) => {
+    if (!college) return "N/A";
+    const key = college.trim().toLowerCase();
+    return COLLEGE_ACRONYMS[key] || college;
+  };
+
+  // FILTER 
   const filteredData = logs.filter(log => {
-    const matchesSearch = 
-      (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.student_number || "").includes(searchTerm);
-      
-    const matchesCollege = collegeFilter === "All Colleges" || log.program === collegeFilter;
-    
-    const matchesStatus = statusFilter === "All Status" || 
-      (statusFilter === "Active" && log.status === "inside") || 
-      (statusFilter === "Inactive" && log.status === "exited");
-
+    const matchesSearch = (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (log.student_number || "").includes(searchTerm);
+    const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;
+    const matchesStatus = statusFilter === "All Status" || (statusFilter === "Active" && log.status === "inside") || (statusFilter === "Inactive" && log.status === "exited");
     return matchesSearch && matchesCollege && matchesStatus;
   });
 
@@ -66,7 +103,6 @@ const StudentLogs = () => {
       <div className="flex flex-1">
         <Sidebar />
         <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
-          
           <div className="flex justify-between items-center text-[#666] text-[16px]">
             <p>All library entry and exit records.</p>
             <p>1st Semester A.Y. 2025-2026</p>
@@ -83,29 +119,16 @@ const StudentLogs = () => {
           {/* SEARCH AND FILTERS */}
           <div className="flex justify-between items-center">
             <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by name or student no..."
-                className="pl-10 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <input type="text" placeholder="Search by name or student no..." className="pl-10 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-
             <div className="flex gap-3">
-              <select 
-                className="border px-4 py-2 rounded-lg bg-white text-gray-600" 
-                value={collegeFilter} 
-                onChange={(e) => setCollegeFilter(e.target.value)}
-              >
+              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
                 <option>All Colleges</option>
-                <option value="BS Information Technology">BSIT</option>
+                {collegeOptions.map((college) => (
+                  <option key={college} value={college}>{college}</option>
+                ))}
               </select>
-              <select 
-                className="border px-4 py-2 rounded-lg bg-white text-gray-600" 
-                value={statusFilter} 
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
+              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option>All Status</option>
                 <option value="Active">Active / Entry</option>
                 <option value="Inactive">Inactive / Exit</option>
@@ -116,11 +139,12 @@ const StudentLogs = () => {
           <StudentLogTable data={filteredData.map(log => ({
             studentNo: log.student_number || "---",
             name: log.full_name || "Unknown",
-            college: log.program || "N/A",
+            college: toAcronym(log.college),
             date: log.visit_date ? new Date(log.visit_date).toLocaleDateString() : "---",
             time: log.time_in ? new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "---",
             type: log.status === 'inside' ? 'Entry' : 'Exit',
             status: log.status === 'inside' ? 'Active' : 'Inactive',
+            action: <button onClick={() => handleDelete(log.log_id)} className="text-red-500 font-bold hover:text-red-700">Delete</button>
           }))} />
         </div>
       </div>

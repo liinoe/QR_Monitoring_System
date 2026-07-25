@@ -1,54 +1,38 @@
 import React, { useState, useEffect } from "react";
-import cvsuLogo from "../assets/cvsu_logo.png"; 
+import cvsuLogo from "../assets/cvsu_logo.png";
 
 const Header = () => {
-  const [currentDate, setCurrentDate] = useState("");
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    const formatDate = () => {
-      const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-      };
-      // Formats to "Weekday, Month Day, Year" (e.g., "Sunday, May 17, 2026")
-      const formatted = new Date().toLocaleDateString('en-US', options);
-      setCurrentDate(formatted);
-    };
-
-    formatDate();
-    
-    // Optional: Updates the date at midnight if the dashboard is left open
-    const midnight = new Date();
-    midnight.setHours(24, 0, 0, 0);
-    const timeToMidnight = midnight.getTime() - Date.now();
-    
-    const timer = setTimeout(() => {
-      formatDate();
-    }, timeToMidnight);
-
-    return () => clearTimeout(timer);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
+  const formatTime = (date) =>
+    date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   return (
-    <div className="w-full h-[120px] bg-[#1B651B] border-b-[5px] border-[#D4A017] relative flex-shrink-0">
-      <img
-        src={cvsuLogo}
-        alt="CvSU Logo"
-        className="w-[94px] h-[82px] absolute left-[29px] top-[17px] object-contain"
-      />
-      <h1 className="absolute left-[150px] top-[25px] text-white text-[30px] font-bold">
-        Library Patron Access and Monitoring System
-      </h1>
-      <p className="absolute left-[151px] top-[70px] text-white text-[15px] font-medium">
-        Ladislao N. Diwa Memorial Library and Museum - Cavite State University - Main Campus
-      </p>
-      
-      {/* Dynamic Live Date */}
-      <p className="absolute right-[60px] top-[40px] text-white text-[20px]">
-        {currentDate}
-      </p>
+    <div className="w-full h-[72px] bg-[#1B5E20] border-b-[3px] border-[#F5C518] flex items-center justify-between px-6 flex-shrink-0 shadow-md">
+      <div className="flex items-center gap-3.5">
+        <img
+          src={cvsuLogo}
+          alt="CvSU Logo"
+          className="w-12 h-12 object-contain flex-shrink-0"
+        />
+        <div>
+          <h1 className="text-[17px] font-bold text-white leading-tight tracking-[0.02em]">
+            Library Patron Access and Monitoring System
+          </h1>
+          <p className="text-[11px] text-white opacity-75 mt-0.5">
+            Ladislao N. Diwa Memorial Library and Museum - Cavite State University - Main Campus
+          </p>
+        </div>
+      </div>
+
+      <div className="text-[26px] font-bold font-mono tracking-wide text-white">
+        {formatTime(currentTime)}
+      </div>
     </div>
   );
 };

@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import ScannerSideBar from "../../components/ScannerSideBar";
+import logo from "../../assets/cvsu_logo.png";
 
 const QRIcon = () => (
   <svg viewBox="0 0 100 100" width="120" height="120" xmlns="http://www.w3.org/2000/svg">
@@ -23,10 +25,71 @@ const Scanner = () => {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [boardData, setBoardData] = useState({});
     const [totalInside, setTotalInside] = useState(0);
+    const [guestsInside, setGuestsInside] = useState(0);
 
     const isLockedRef = useRef(false);
     const lastKeyTimeRef = useRef(Date.now());
-    const beep = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"));
+    const audioCtxRef = useRef(null);
+
+    const getAudioCtx = () => {
+        if (!audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return audioCtxRef.current;
+    };
+
+    const playTone = (freq, duration, type = 'sine', delay = 0, volume = 0.25) => {
+        const ctx = getAudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.value = volume;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const startTime = ctx.currentTime + delay;
+        osc.start(startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.stop(startTime + duration + 0.02);
+    };
+
+    // Rising two-note chime for entry
+    const playEntrySound = () => {
+        playTone(659.25, 0.12, 'sine', 0);
+        playTone(987.77, 0.16, 'sine', 0.12);
+    };
+
+    // Descending two-note tone for exit
+    const playExitSound = () => {
+        playTone(523.25, 0.12, 'sine', 0);
+        playTone(392.00, 0.18, 'sine', 0.12);
+    };
+
+    // Low buzz for denied/error
+    const playErrorSound = () => {
+        playTone(220, 0.3, 'sawtooth', 0, 0.2);
+    };
+
+    const COLLEGE_ACRONYMS = {
+        "college of agriculture, food, environment, and natural resources": "CAFENR",
+        "college of agriculture, forestry, environment and natural resources": "CAFENR",
+        "college of arts and sciences": "CAS",
+        "college of criminal justice": "CCJ",
+        "college of education": "CED",
+        "college of engineering and information technology": "CEIT",
+        "college of economics, management, and development studies": "CEMDS",
+        "college of economics, management and development studies": "CEMDS",
+        "college of nursing": "CON",
+        "college of sports, physical education and recreation": "CSPEAR",
+        "college of tourism and hospitality management": "CTHM",
+        "college of veterinary medicine and biomedical sciences": "CVMBS",
+    };
+
+    const toAcronym = (college) => {
+        if (!college) return null;
+        const key = college.trim().toLowerCase();
+        return COLLEGE_ACRONYMS[key] || college.trim().toUpperCase();
+    };
 
     const fetchBoardData = async () => {
         try {
@@ -35,7 +98,8 @@ const Scanner = () => {
             const counts = {};
             let total = 0;
             data.forEach(item => {
-                counts[item.college] = item.count;
+                const code = toAcronym(item.college);
+                if (code) counts[code] = (counts[code] || 0) + item.count;
                 total += item.count;
             });
             setBoardData(counts);
@@ -45,9 +109,23 @@ const Scanner = () => {
         }
     };
 
+    const fetchGuestsInside = async () => {
+        try {
+            const response = await fetch('http://localhost:5000/api/guests/all');
+            const data = await response.json();
+            setGuestsInside(data.filter(g => g.status === 'inside').length);
+        } catch (err) {
+            console.error("Guest fetch error:", err);
+        }
+    };
+
     useEffect(() => {
         fetchBoardData();
-        const boardInterval = setInterval(fetchBoardData, 5000);
+        fetchGuestsInside();
+        const boardInterval = setInterval(() => {
+            fetchBoardData();
+            fetchGuestsInside();
+        }, 5000);
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => {
             clearInterval(boardInterval);
@@ -70,19 +148,21 @@ const Scanner = () => {
             const data = await response.json();
 
             if (response.ok) {
-                beep.current.play();
+                if (data.action === 'entry') playEntrySound();
+                else playExitSound();
                 setScanResult(data);
                 setStatus("ready");
                 fetchBoardData(); 
             } else {
+                playErrorSound();
                 setStatus("error");
-                // FIX: Displays the server's actual error payload text dynamically
                 setScanResult({ 
                     full_name: "ACCESS DENIED", 
                     message: data.message || "Invalid or deactivated library pass token." 
                 });
             }
         } catch (err) {
+            playErrorSound();
             setStatus("error");
             setScanResult({ full_name: "CONNECTION ERROR", message: "Cannot reach backend network." });
         }
@@ -126,9 +206,6 @@ const Scanner = () => {
     const formatTime = (date) =>
         date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const weekday = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
-    const monthDay = currentTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#f0f4f0', display: 'flex', flexDirection: 'column', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
 
@@ -145,23 +222,17 @@ const Scanner = () => {
                 borderBottom: '3px solid #4CAF50',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{
-                        width: 44, height: 44, backgroundColor: '#fff',
-                        borderRadius: '8px', display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', flexShrink: 0,
-                        border: '2px solid #4CAF50',
-                    }}>
-                        <svg width="28" height="28" viewBox="0 0 28 28">
-                            <polygon points="14,2 26,14 14,26 2,14" fill="#1B5E20"/>
-                            <polygon points="14,6 22,14 14,22 6,14" fill="#4CAF50"/>
-                        </svg>
-                    </div>
+                    <img
+                        src={logo}
+                        alt="CvSU Logo"
+                        style={{ width: 48, height: 48, objectFit: 'contain', flexShrink: 0 }}
+                    />
                     <div>
                         <div style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1.2 }}>
                             Library Patron Access and Monitoring System
                         </div>
                         <div style={{ fontSize: '11px', opacity: 0.75, marginTop: 2 }}>
-                            Entry &amp; Exit Station — Ladislao N. Diwa Memorial Library and Museum
+                            Entry &amp; Exit Station — Ladislao N. Diwa Memorial Library 
                         </div>
                     </div>
                 </div>
@@ -170,65 +241,21 @@ const Scanner = () => {
                 </div>
             </div>
 
-            {/* ── BODY ── */}
-            <div style={{ display: 'flex', flex: 1, padding: '20px', gap: '20px' }}>
+            {/* BODY */}
+            <div style={{ display: 'flex', flex: 1 }}>
 
-                {/* ── LEFT SIDEBAR ── */}
-                <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* LEFT SIDEBAR */}
+                <ScannerSideBar
+                    currentTime={currentTime}
+                    totalInside={totalInside}
+                    guestsInside={guestsInside}
+                    boardData={boardData}
+                    colleges={colleges}
+                />
+
+                {/* MAIN CENTER */}
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: '40px' }}>
                     <div style={{
-                        backgroundColor: '#1B5E20', color: 'white',
-                        borderRadius: '10px', padding: '18px 16px',
-                        textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                    }}>
-                        <div style={{ fontSize: '14px', opacity: 0.85, marginBottom: '4px' }}>{weekday},</div>
-                        <div style={{ fontSize: '19px', fontWeight: 700, lineHeight: 1.3 }}>{monthDay}</div>
-                    </div>
-
-                    <div style={{
-                        backgroundColor: '#fff', borderRadius: '10px',
-                        padding: '18px 16px', textAlign: 'center',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                        border: '1px solid #e2e8e2',
-                    }}>
-                        <div style={{ fontSize: '64px', fontWeight: 800, color: '#1B5E20', lineHeight: 1 }}>
-                            {totalInside}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '6px' }}>
-                            Total Visitors Today
-                        </div>
-                    </div>
-
-                    <div>
-                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', marginLeft: '2px' }}>
-                            Live Visitor Board
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                            {colleges.map((col) => (
-                                <div key={col.id} style={{
-                                    backgroundColor: '#fff',
-                                    borderRadius: '6px',
-                                    padding: '8px 10px',
-                                    borderLeft: `4px solid ${col.color}`,
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
-                                }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#374151' }}>{col.id}</span>
-                                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>{boardData[col.id] ?? 0}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* ── MAIN CENTER ── */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
-                    <div style={{
-                        backgroundColor: '#fff',
-                        borderRadius: '16px',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
-                        padding: '40px 48px',
                         width: '100%',
                         maxWidth: '560px',
                         display: 'flex',

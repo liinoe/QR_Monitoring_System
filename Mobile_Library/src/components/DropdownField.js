@@ -11,17 +11,21 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-export default function DropdownField({ label, value, onChange, options, placeholder }) {
+export default function DropdownField({ label, value, onChange, options, placeholder, disabled }) {
   const [open, setOpen] = useState(false);
 
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity style={styles.field} onPress={() => setOpen(true)}>
+      <TouchableOpacity
+        style={[styles.field, disabled && styles.fieldDisabled]}
+        onPress={() => !disabled && setOpen(true)}
+        activeOpacity={disabled ? 1 : 0.7}
+      >
         <Text style={[styles.value, !value && { color: colors.gray }]} numberOfLines={1}>
           {value || placeholder || 'Select...'}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+        <Ionicons name="chevron-down" size={18} color={disabled ? colors.grayLight : colors.textSecondary} />
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -67,6 +71,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
+  fieldDisabled: { backgroundColor: colors.grayLight, opacity: 0.6 },
   value: { flex: 1, fontSize: 14, color: colors.textPrimary, marginRight: 8 },
 
   backdrop: {

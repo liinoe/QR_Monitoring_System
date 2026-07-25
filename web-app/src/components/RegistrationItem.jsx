@@ -1,4 +1,5 @@
-// Added onApprove and onReject as props
+import React from "react";
+
 const RegistrationItem = ({ name, details, date, status, onApprove, onReject }) => {
   const statusColor = {
     pending: "bg-yellow-100 text-yellow-700",
@@ -21,14 +22,14 @@ const RegistrationItem = ({ name, details, date, status, onApprove, onReject }) 
 
         {(status === "pending") && (
           <>
-            <button 
-              onClick={onApprove} // Triggers the backend approval logic
+            <button
+              onClick={onApprove}
               className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-xs hover:bg-green-300"
             >
               Approve
             </button>
-            <button 
-              onClick={onReject} // Placeholder for your rejection logic
+            <button
+              onClick={onReject}
               className="bg-red-200 text-red-800 px-3 py-1 rounded-full text-xs hover:bg-red-300"
             >
               Reject
@@ -41,10 +42,6 @@ const RegistrationItem = ({ name, details, date, status, onApprove, onReject }) 
             Deactivate
           </button>
         )}
-
-        <button className="text-blue-600 text-xs hover:underline">
-          View →
-        </button>
       </div>
     </div>
   );
