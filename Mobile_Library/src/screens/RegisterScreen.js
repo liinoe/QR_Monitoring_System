@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,20 +11,35 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels } from '../data/options';
+
+const API_URL = 'http://192.168.1.55:5000';
 
 export default function RegisterScreen({ navigation }) {
   const [form, setForm] = useState({
     full_name: '',
     email: '',
     student_number: '',
+    password: '',
+    confirmPassword: '',
     college: '',
     program: '',
     year_level: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [currentPeriod, setCurrentPeriod] = useState('');
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/settings/current-period`)
+      .then((res) => res.json())
+      .then((data) => setCurrentPeriod(data.current_period || ''))
+      .catch(() => {}); 
+  }, []);
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -45,6 +60,14 @@ export default function RegisterScreen({ navigation }) {
       Alert.alert('Invalid Student Number', 'Student number must be exactly 9 digits.');
       return false;
     }
+    if (!form.password || form.password.length < 8) {
+      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+      return false;
+    }
+    if (form.password !== form.confirmPassword) {
+      Alert.alert('Password Mismatch', 'Password and confirm password do not match.');
+      return false;
+    }
     if (!form.college || !form.program || !form.year_level) {
       Alert.alert('Missing info', 'Please complete all academic info fields.');
       return false;
@@ -54,13 +77,17 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     try {
-      const response = await fetch('http://192.168.1.54:5000/api/register', {
+      // confirmPassword is only for client-side validation — strip it
+      // before sending, since the backend has no use for it.
+      const { confirmPassword, ...payload } = form;
+
+      const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
@@ -77,11 +104,12 @@ export default function RegisterScreen({ navigation }) {
                   full_name: '',
                   email: '',
                   student_number: '',
+                  password: '',
+                  confirmPassword: '',
                   college: '',
                   program: '',
                   year_level: '',
                 });
-                // Navigate directly back to the Login Screen instead of Home Dashboard
                 navigation.replace('Login');
               },
             },
@@ -108,6 +136,9 @@ export default function RegisterScreen({ navigation }) {
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
         <Text style={styles.headerTitle}>Student Registration</Text>
         <Text style={styles.headerSub}>Fill in all required fields.</Text>
+        {currentPeriod ? (
+          <Text style={styles.headerPeriod}>Registering for: {currentPeriod}</Text>
+        ) : null}
       </SafeAreaView>
 
       <View style={{ height: 20 }} />
@@ -146,6 +177,23 @@ export default function RegisterScreen({ navigation }) {
                 placeholder="202300001"
                 keyboardType="numeric"
                 maxLength={9}
+              />
+
+              <PasswordField
+                label="Password"
+                value={form.password}
+                onChangeText={(v) => update('password', v)}
+                placeholder="At least 8 characters"
+                visible={showPassword}
+                onToggle={() => setShowPassword(!showPassword)}
+              />
+              <PasswordField
+                label="Confirm Password"
+                value={form.confirmPassword}
+                onChangeText={(v) => update('confirmPassword', v)}
+                placeholder="Re-enter your password"
+                visible={showConfirmPassword}
+                onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
               />
             </View>
           </View>
@@ -220,11 +268,36 @@ function Field({ label, ...rest }) {
   );
 }
 
+function PasswordField({ label, visible, onToggle, ...rest }) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.passwordInputRow}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholderTextColor={colors.gray}
+          secureTextEntry={!visible}
+          autoCapitalize="none"
+          {...rest}
+        />
+        <TouchableOpacity onPress={onToggle} hitSlop={10}>
+          <Ionicons
+            name={visible ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   headerWrap: { backgroundColor: colors.primary, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   headerSub: { color: '#BFD9C2', fontSize: 13, marginTop: 4 },
+  headerPeriod: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 6 },
   scroll: { flex: 1, marginTop: -16 },
   scrollContent: { padding: 16, paddingBottom: 32 },
 
@@ -245,6 +318,24 @@ const styles = StyleSheet.create({
   stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
+
+  passwordInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textPrimary,
+    paddingVertical: 8,
+  },
 
   confirmActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 12, gap: 10 },
   btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, minWidth: 100, alignItems: 'center', justifyContent: 'center' },

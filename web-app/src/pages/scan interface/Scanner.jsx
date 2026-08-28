@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import ScannerSideBar from "../../components/ScannerSideBar";
 import logo from "../../assets/cvsu_logo.png";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 const QRIcon = () => (
   <svg viewBox="0 0 100 100" width="120" height="120" xmlns="http://www.w3.org/2000/svg">
     <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="#1B5E20" strokeWidth="6"/>
@@ -53,19 +55,16 @@ const Scanner = () => {
         osc.stop(startTime + duration + 0.02);
     };
 
-    // Rising two-note chime for entry
     const playEntrySound = () => {
         playTone(659.25, 0.12, 'sine', 0);
         playTone(987.77, 0.16, 'sine', 0.12);
     };
 
-    // Descending two-note tone for exit
     const playExitSound = () => {
         playTone(523.25, 0.12, 'sine', 0);
         playTone(392.00, 0.18, 'sine', 0.12);
     };
 
-    // Low buzz for denied/error
     const playErrorSound = () => {
         playTone(220, 0.3, 'sawtooth', 0, 0.2);
     };
@@ -93,7 +92,7 @@ const Scanner = () => {
 
     const fetchBoardData = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/logs/live-board');
+            const response = await fetch(`${API_URL}/api/logs/live-board`);
             const data = await response.json();
             const counts = {};
             let total = 0;
@@ -111,7 +110,7 @@ const Scanner = () => {
 
     const fetchGuestsInside = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/guests/all');
+            const response = await fetch(`${API_URL}/api/guests/all`);
             const data = await response.json();
             setGuestsInside(data.filter(g => g.status === 'inside').length);
         } catch (err) {
@@ -139,7 +138,7 @@ const Scanner = () => {
         setIsProcessing(true);
 
         try {
-            const response = await fetch('http://localhost:5000/api/logs/scan', {
+            const response = await fetch(`${API_URL}/api/logs/scan`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ qr_code: decodedText }),
@@ -152,13 +151,13 @@ const Scanner = () => {
                 else playExitSound();
                 setScanResult(data);
                 setStatus("ready");
-                fetchBoardData(); 
+                fetchBoardData();
             } else {
                 playErrorSound();
                 setStatus("error");
-                setScanResult({ 
-                    full_name: "ACCESS DENIED", 
-                    message: data.message || "Invalid or deactivated library pass token." 
+                setScanResult({
+                    full_name: "ACCESS DENIED",
+                    message: data.message || "This code is not linked to an approved account."
                 });
             }
         } catch (err) {
@@ -172,14 +171,14 @@ const Scanner = () => {
             setStatus("searching");
             isLockedRef.current = false;
             setIsProcessing(false);
-        }, 5000); 
+        }, 5000);
     }, []);
-    
+
     useEffect(() => {
         let buffer = "";
         const handleKeyDown = (e) => {
             const now = Date.now();
-            if (now - lastKeyTimeRef.current > 300) buffer = ""; 
+            if (now - lastKeyTimeRef.current > 300) buffer = "";
             lastKeyTimeRef.current = now;
             if (e.key === "Enter") {
                 if (buffer.length > 5) handleScanAction(buffer);
@@ -209,7 +208,6 @@ const Scanner = () => {
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#f0f4f0', display: 'flex', flexDirection: 'column', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
 
-            {/* ── HEADER ── */}
             <div style={{
                 backgroundColor: '#1B5E20',
                 color: 'white',
@@ -232,7 +230,7 @@ const Scanner = () => {
                             Library Patron Access and Monitoring System
                         </div>
                         <div style={{ fontSize: '11px', opacity: 0.75, marginTop: 2 }}>
-                            Entry &amp; Exit Station — Ladislao N. Diwa Memorial Library 
+                            Entry &amp; Exit Station — Ladislao N. Diwa Memorial Library
                         </div>
                     </div>
                 </div>
@@ -241,10 +239,8 @@ const Scanner = () => {
                 </div>
             </div>
 
-            {/* BODY */}
             <div style={{ display: 'flex', flex: 1 }}>
 
-                {/* LEFT SIDEBAR */}
                 <ScannerSideBar
                     currentTime={currentTime}
                     totalInside={totalInside}
@@ -253,7 +249,6 @@ const Scanner = () => {
                     colleges={colleges}
                 />
 
-                {/* MAIN CENTER */}
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: '40px' }}>
                     <div style={{
                         width: '100%',
@@ -282,7 +277,6 @@ const Scanner = () => {
 
                         <hr style={{ width: '100%', border: 'none', borderTop: '1px solid #e5e7eb', margin: '24px 0' }} />
 
-                        {/* Last scan result */}
                         <div style={{ width: '100%' }}>
                             <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
                                 Last scan result
@@ -290,8 +284,8 @@ const Scanner = () => {
 
                             <div style={{
                                 border: `2px solid ${
-                                    status === "error" ? '#fca5a5' : // Red for Expired
-                                    !scanResult ? '#e5e7eb' : 
+                                    status === "error" ? '#fca5a5' :
+                                    !scanResult ? '#e5e7eb' :
                                     scanResult.action === 'entry' ? '#bbf7d0' : '#fef08a'
                                 }`,
                                 borderRadius: '14px',
@@ -315,10 +309,10 @@ const Scanner = () => {
 
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: '18px', fontWeight: 800, color: status === "error" ? '#b91c1c' : '#111827' }}>
-                                        {status === "error" ? "QR CODE EXPIRED" : scanResult?.full_name || "Waiting..."}
+                                        {status === "error" ? (scanResult?.full_name || "ACCESS DENIED") : scanResult?.full_name || "Waiting..."}
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                                        {status === "error" ? "Student must refresh their mobile app." : scanResult ? `${scanResult.program} | ${scanResult.student_number}` : "Scan code to verify access"}
+                                        {status === "error" ? (scanResult?.message || "Scan could not be verified.") : scanResult ? `${scanResult.program} | ${scanResult.student_number}` : "Scan code to verify access"}
                                     </div>
                                     {scanResult && status !== "error" && (
                                         <div style={{

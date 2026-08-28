@@ -1,10 +1,11 @@
 import React from "react";
 
-const RegistrationItem = ({ name, details, date, status, onApprove, onReject }) => {
+const RegistrationItem = ({ name, details, date, status, onApprove, onReject, onDeactivate }) => {
   const statusColor = {
     pending: "bg-yellow-100 text-yellow-700",
     approved: "bg-green-100 text-green-700",
     rejected: "bg-red-100 text-red-700",
+    deactivated: "bg-gray-200 text-gray-600",
   };
 
   return (
@@ -38,7 +39,14 @@ const RegistrationItem = ({ name, details, date, status, onApprove, onReject }) 
         )}
 
         {(status === "approved") && (
-          <button className="bg-red-200 text-red-800 px-3 py-1 rounded-full text-xs">
+          <button
+            onClick={() => {
+              if (window.confirm(`Deactivate ${name}? Their QR pass will stop working immediately.`)) {
+                onDeactivate();
+              }
+            }}
+            className="bg-red-200 text-red-800 px-3 py-1 rounded-full text-xs hover:bg-red-300"
+          >
             Deactivate
           </button>
         )}

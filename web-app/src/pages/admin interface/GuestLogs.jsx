@@ -3,6 +3,9 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import GuestLogTable from "../../components/GuestLogTable";
+import { authFetch } from "../../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const STATUS_TABS = ["All", "Inside", "Exited"];
 
@@ -13,9 +16,9 @@ const GuestLogs = () => {
 
   const fetchLogs = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/guests/all');
+      const response = await authFetch(`${API_URL}/api/guests/all`);
       const data = await response.json();
-      setLogs(data);
+      setLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Fetch error:", error);
     }
@@ -29,7 +32,7 @@ const GuestLogs = () => {
 
   const handleMarkExited = async (log_id) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/guests/exit/${log_id}`, { method: 'PATCH' });
+      const response = await authFetch(`${API_URL}/api/guests/exit/${log_id}`, { method: 'PATCH' });
       if (response.ok) fetchLogs();
     } catch (error) {
       console.error("Exit error:", error);
@@ -51,7 +54,7 @@ const GuestLogs = () => {
   const visitorTypesPresent = Array.from(new Set(logs.map(l => l.guest_type).filter(Boolean)))
     .map(t => t.charAt(0).toUpperCase() + t.slice(1));
 
-  // FILTER 
+  // FILTER
   const filteredData = logs.filter(log => {
     const matchesSearch =
       (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -3,6 +3,9 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
+import { authFetch } from "../../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_OPTIONS = ["CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS"];
 const COLLEGE_COLORS = {
@@ -55,9 +58,9 @@ const Analytics = () => {
 
   const fetchLogs = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/logs/all');
+      const response = await authFetch(`${API_URL}/api/logs/all`);
       const data = await response.json();
-      setLogs(data);
+      setLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Fetch error:", error);
     }
@@ -65,9 +68,9 @@ const Analytics = () => {
 
   const fetchGuestLogs = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/guests/all');
+      const response = await authFetch(`${API_URL}/api/guests/all`);
       const data = await response.json();
-      setGuestLogs(data);
+      setGuestLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Guest fetch error:", error);
     }
@@ -83,7 +86,6 @@ const Analytics = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Every month that actually has data, plus the current month, newest first
   const availableMonths = useMemo(() => {
     const set = new Set([monthKey(new Date())]);
     logs.forEach(l => {
@@ -114,7 +116,7 @@ const Analytics = () => {
   // Combined students + guests, used for overall totals/trends/heatmap
   const combinedMonthEntries = useMemo(() => [...monthLogs, ...monthGuestLogs], [monthLogs, monthGuestLogs]);
 
-  // ── KPI: Total visits & avg daily visits (students + guests) ──
+  // KPI: Total visits & avg daily visits (students + guests)
   const totalVisits = combinedMonthEntries.length;
   const [selYear, selMonthNum] = selectedMonth.split('-').map(Number);
   const today = new Date();
@@ -141,7 +143,7 @@ const Analytics = () => {
     ? Math.round(((totalVisits - combinedLastMonthEntries.length) / combinedLastMonthEntries.length) * 100)
     : null;
 
-  // ── KPI: Peak hour (best 2-hour window) & busiest weekdays (students + guests) ──
+  // KPI: Peak hour (best 2-hour window) & busiest weekdays (students + guests) ──
   const { peakLabel, busiestDaysLabel } = useMemo(() => {
     const hourCounts = new Array(24).fill(0);
     const weekdayCounts = new Array(7).fill(0);
@@ -177,7 +179,7 @@ const Analytics = () => {
     return { peakLabel: peak, busiestDaysLabel: busiest, hourCounts, weekdayCounts };
   }, [combinedMonthEntries]);
 
-  // ── KPI: Avg stay duration (students + guests) ──
+  // KPI: Avg stay duration (students + guests) 
   const exitedMonthLogs = combinedMonthEntries.filter(l => l.time_in && l.time_out);
   const totalStayMs = exitedMonthLogs.reduce((acc, l) => acc + (new Date(l.time_out) - new Date(l.time_in)), 0);
   const avgStay = exitedMonthLogs.length > 0 ? (totalStayMs / exitedMonthLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
@@ -186,7 +188,7 @@ const Analytics = () => {
   const lastMonthStayMs = exitedLastMonth.reduce((acc, l) => acc + (new Date(l.time_out) - new Date(l.time_in)), 0);
   const avgStayLastMonth = exitedLastMonth.length > 0 ? (lastMonthStayMs / exitedLastMonth.length / (1000 * 60 * 60)) : null;
 
-  // ── Weekly entry trend (W1..W5 of the selected month, students + guests) ──
+  // Weekly entry trend (W1..W5 of the selected month, students + guests)
   const weeklyTrendData = useMemo(() => {
     const weekCounts = {};
     combinedMonthEntries.forEach(l => {
@@ -202,7 +204,7 @@ const Analytics = () => {
     }));
   }, [combinedMonthEntries, daysInMonth]);
 
-  // ── Peak hours heatmap matrix (weekday x hour, students + guests) ──
+  // Peak hours heatmap matrix (weekday x hour, students + guests) 
   const heatmapMatrix = useMemo(() => {
     const matrix = WEEKDAY_LABELS.map(() => HOURS.map(() => 0));
     combinedMonthEntries.forEach(l => {
@@ -218,7 +220,7 @@ const Analytics = () => {
 
   const heatmapMax = Math.max(1, ...heatmapMatrix.flat());
 
-  // ── Visits by college ──
+  // Visits by college 
   const collegeChartData = useMemo(() => {
     const counts = monthLogs.reduce((acc, l) => {
       const code = toAcronym(l.college);
@@ -228,7 +230,7 @@ const Analytics = () => {
     return COLLEGE_OPTIONS.map(c => ({ name: c, visits: counts[c] || 0 }));
   }, [monthLogs]);
 
-  // ── Top visiting students ──
+  // Top visiting students
   const topStudents = useMemo(() => {
     const byStudent = {};
     monthLogs.forEach(l => {

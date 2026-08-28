@@ -3,6 +3,9 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 import Sidebar from "../../components/Sidebar";
 import Card from "../../components/Card";
 import Header from "../../components/Header";
+import { authFetch } from "../../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGES = ['CAFENR', 'CAS', 'CCJ', 'CED', 'CEIT', 'CEMDS', 'CON', 'CSPEAR', 'CTHM', 'CVMBS'];
 const COLORS = ['#16a34a', '#ca8a04', '#9333ea', '#2563eb', '#ea580c', '#e11d48', '#dc2626', '#7f1d1d', '#f97316', '#db2777'];
@@ -31,7 +34,7 @@ const toAcronym = (college) => {
 const getWeekRange = (date) => {
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - start.getDay()); 
+  start.setDate(start.getDate() - start.getDay());
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
   end.setHours(23, 59, 59, 999);
@@ -45,25 +48,25 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/logs/all');
+      const response = await authFetch(`${API_URL}/api/logs/all`);
       const data = await response.json();
-      setLogs(data);
+      setLogs(Array.isArray(data) ? data : []);
     } catch (error) { console.error("Fetch error:", error); }
   };
 
   const fetchGuestData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/guests/all');
+      const response = await authFetch(`${API_URL}/api/guests/all`);
       const data = await response.json();
-      setGuestLogs(data);
+      setGuestLogs(Array.isArray(data) ? data : []);
     } catch (error) { console.error("Guest fetch error:", error); }
   };
 
   const fetchPendingCount = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/pending');
+      const response = await authFetch(`${API_URL}/api/admin/pending`);
       const data = await response.json();
-      setPendingCount(data.length);
+      setPendingCount(Array.isArray(data) ? data.length : 0);
     } catch (error) { console.error("Pending fetch error:", error); }
   };
 

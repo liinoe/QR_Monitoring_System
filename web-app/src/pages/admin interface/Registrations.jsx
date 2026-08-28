@@ -3,6 +3,9 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import RegistrationItem from "../../components/RegistrationItem";
+import { authFetch } from "../../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_OPTIONS = [
   "CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS",
@@ -29,7 +32,7 @@ const toAcronym = (college) => {
   return COLLEGE_ACRONYMS[key] || college.trim().toUpperCase();
 };
 
-const STATUS_TABS = ["All", "Pending", "Approved", "Rejected"];
+const STATUS_TABS = ["All", "Pending", "Approved", "Rejected", "Deactivated"];
 
 const Registrations = () => {
   const [requests, setRequests] = useState([]);
@@ -37,12 +40,14 @@ const Registrations = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchRegistrations = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/all');
+      const response = await authFetch(`${API_URL}/api/admin/all`);
       const data = await response.json();
-      setRequests(data);
+      setRequests(Array.isArray(data) ? data : []);
       setLoading(false);
     } catch (err) { setLoading(false); }
   };
@@ -51,10 +56,10 @@ const Registrations = () => {
 
   const handleApprove = async (id) => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/approve', {
+      const response = await authFetch(`${API_URL}/api/admin/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id: id, admin_id: 1 })
+        body: JSON.stringify({ request_id: id })
       });
 
       const result = await response.json();
@@ -73,7 +78,7 @@ const Registrations = () => {
 
   const handleReject = async (id) => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/reject', {
+      const response = await authFetch(`${API_URL}/api/admin/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ request_id: id })
@@ -84,7 +89,27 @@ const Registrations = () => {
     } catch (err) { alert("Error rejecting"); }
   };
 
-  // FILTER 
+  const handleDeactivate = async (id, studentNumber) => {
+    try {
+      const response = await authFetch(`${API_URL}/api/admin/deactivate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: id, student_number: studentNumber })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setRequests(prev => prev.map(req =>
+          req.request_id === id ? { ...req, approval_status: 'deactivated' } : req
+        ));
+      } else {
+        alert(`Deactivation Failed: ${result.error || result.message}`);
+      }
+    } catch (err) {
+      alert("Connection Error: Check if server is running");
+    }
+  };
+
+  // FILTER
   const filteredRequests = requests.filter((req) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
@@ -99,6 +124,16 @@ const Registrations = () => {
 
     return matchesSearch && matchesStatus && matchesCollege;
   });
+
+  // Whenever a filter/search changes, jump back to page 1 — staying on
+  // page 4 after narrowing the results would otherwise show an empty page.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, collegeFilter, itemsPerPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedRequests = filteredRequests.slice(startIndex, startIndex + itemsPerPage);
 
   return (
     <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
@@ -159,7 +194,7 @@ const Registrations = () => {
             ) : filteredRequests.length === 0 ? (
               <p className="text-gray-400 text-sm py-8 text-center">No registrations match your filters.</p>
             ) : (
-              filteredRequests.map((req) => (
+              paginatedRequests.map((req) => (
                 <RegistrationItem
                   key={req.request_id}
                   name={req.full_name}
@@ -168,10 +203,50 @@ const Registrations = () => {
                   status={req.approval_status}
                   onApprove={() => handleApprove(req.request_id)}
                   onReject={() => handleReject(req.request_id)}
+                  onDeactivate={() => handleDeactivate(req.request_id, req.student_number)}
                 />
               ))
             )}
           </div>
+
+          {/* PAGINATION FOOTER */}
+          {!loading && filteredRequests.length > 0 && (
+            <div className="flex items-center justify-between pt-2">
+              <select
+                className="border px-3 py-2 rounded-lg bg-white text-gray-600 text-sm"
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              >
+                <option value={5}>5 items</option>
+                <option value={10}>10 items</option>
+                <option value={15}>15 items</option>
+              </select>
+
+              <p className="text-sm text-gray-500">
+                Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredRequests.length)} of {filteredRequests.length} registrations
+              </p>
+
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 flex items-center justify-center bg-[#1B651B] text-white rounded-lg text-sm font-medium">
+                  {currentPage}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 border rounded-lg bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ← Previous
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 border rounded-lg bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

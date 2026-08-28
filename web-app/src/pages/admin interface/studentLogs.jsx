@@ -3,6 +3,9 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import StudentLogTable from "../../components/StudentLogTable";
+import { authFetch } from "../../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const StudentLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -12,9 +15,9 @@ const StudentLogs = () => {
 
   const fetchLogs = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/logs/all');
+      const response = await authFetch(`${API_URL}/api/logs/all`);
       const data = await response.json();
-      setLogs(data);
+      setLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Fetch error:", error);
     }
@@ -22,7 +25,7 @@ const StudentLogs = () => {
 
   useEffect(() => {
     fetchLogs();
-    const interval = setInterval(fetchLogs, 10000); 
+    const interval = setInterval(fetchLogs, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -30,19 +33,26 @@ const StudentLogs = () => {
     const reason = prompt("Enter the reason for deleting this log entry:");
     if (reason !== null && reason.trim() !== "") {
       try {
-        const response = await fetch(`http://localhost:5000/api/logs/delete/${log_id}`, { 
+        // this endpoint requires super_admin — a regular admin will get
+        // a 403 here, which is expected.
+        const response = await authFetch(`${API_URL}/api/logs/delete/${log_id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason }) 
+          body: JSON.stringify({ reason })
         });
-        if (response.ok) fetchLogs();
+        if (response.ok) {
+          fetchLogs();
+        } else {
+          const data = await response.json();
+          alert(data.message || "Failed to delete log.");
+        }
       } catch (error) {
         console.error("Delete error:", error);
       }
     }
   };
 
-  // STATS CALCULATIONS 
+  // STATS CALCULATIONS
   const todayStr = new Date().toDateString();
   const logsToday = logs.filter(l => new Date(l.visit_date).toDateString() === todayStr);
   const totalToday = logsToday.length;
@@ -89,7 +99,7 @@ const StudentLogs = () => {
     return COLLEGE_ACRONYMS[key] || college;
   };
 
-  // FILTER 
+  // FILTER
   const filteredData = logs.filter(log => {
     const matchesSearch = (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (log.student_number || "").includes(searchTerm);
     const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;

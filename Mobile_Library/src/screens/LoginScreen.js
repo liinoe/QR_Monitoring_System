@@ -17,28 +17,37 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
+const API_URL = 'http://192.168.1.55:5000';
+
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your school email');
       return;
     }
+    if (!password) {
+      Alert.alert('Error', 'Please enter your password');
+      return;
+    }
 
     try {
       setLoading(true);
 
-      // Standardized connection endpoint matching the Register and Home setups
-      const response = await fetch('http://192.168.1.54:5000/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
 
-      const data = await response.json();
+      const data = await response.json(); 
+      console.log('LOGIN RESPONSE:', response.status, data);
 
       if (!response.ok) {
         Alert.alert('Login Failed', data.message);
@@ -96,16 +105,40 @@ export default function LoginScreen({ navigation }) {
 
           <Text style={styles.fieldLabel}>E-mail Address</Text>
           <TextInput
-            style={[styles.input, focused && styles.inputFocused]}
+            style={[styles.input, emailFocused && styles.inputFocused]}
             placeholder="name@cvsu.edu.ph"
             placeholderTextColor={colors.gray}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={() => setEmailFocused(true)}
+            onBlur={() => setEmailFocused(false)}
           />
+
+          <View style={{ height: 20 }} />
+
+          <Text style={styles.fieldLabel}>Password</Text>
+          <View style={[styles.passwordRow, passwordFocused && styles.inputFocused]}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor={colors.gray}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              value={password}
+              onChangeText={setPassword}
+              onFocus={() => setPasswordFocused(true)}
+              onBlur={() => setPasswordFocused(false)}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={10}>
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
 
           <View style={{ height: 28 }} />
 
@@ -183,6 +216,22 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   inputFocused: { borderBottomColor: colors.primary },
+
+  passwordRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1.5,
+    borderBottomColor: colors.border,
+    paddingBottom: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textPrimary,
+    paddingVertical: 0,
+  },
 
   button: {
     width: '100%',

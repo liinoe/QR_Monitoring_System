@@ -61,7 +61,7 @@ export default function HomeScreen({ navigation }) {
 
       // Standardized IP endpoints, change depends on your IPv4
       const response = await fetch(
-        `http://192.168.1.54:5000/api/student/profile/${student.student_number}`,
+        `http://192.168.1.55:5000/api/student/profile/${student.student_number}`,
         { signal: controller.signal }
       );
 
@@ -87,7 +87,7 @@ export default function HomeScreen({ navigation }) {
       const student = JSON.parse(storedStudent);
 
       const response = await fetch(
-        `http://192.168.1.54:5000/api/student/analytics/${student.student_number}`
+        `http://192.168.1.55:5000/api/student/analytics/${student.student_number}`
       );
       if (response.ok) {
         const data = await response.json();
