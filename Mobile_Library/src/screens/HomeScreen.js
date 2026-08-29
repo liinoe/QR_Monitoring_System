@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 
-const API_URL = 'http://192.168.1.54:5000';
+const API_URL = 'http://192.168.18.8:5000';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
