@@ -11,13 +11,14 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels } from '../data/options';
 
-const API_URL = 'http://192.168.1.55:5000';
+const API_URL = 'http://192.168.1.54:5000';
 
 export default function RegisterScreen({ navigation }) {
   const [form, setForm] = useState({
@@ -33,12 +34,33 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState('');
+  const [isRenewal, setIsRenewal] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/api/settings/current-period`)
       .then((res) => res.json())
       .then((data) => setCurrentPeriod(data.current_period || ''))
-      .catch(() => {}); 
+      .catch(() => {}); // non-critical — form still works without this label
+  }, []);
+
+  // Pre-fill from the last logged-in student's stored data 
+  useEffect(() => {
+    AsyncStorage.getItem('student')
+      .then((stored) => {
+        if (!stored) return;
+        const student = JSON.parse(stored);
+        setForm((f) => ({
+          ...f,
+          full_name: student.full_name || '',
+          email: student.email || '',
+          student_number: student.student_number || '',
+          college: student.college || '',
+          program: student.program || '',
+          year_level: student.year_level || '',
+        }));
+        setIsRenewal(true);
+      })
+      .catch(() => {}); // no stored student — just a normal fresh registration
   }, []);
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -77,8 +99,6 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     try {
-      // confirmPassword is only for client-side validation — strip it
-      // before sending, since the backend has no use for it.
       const { confirmPassword, ...payload } = form;
 
       const response = await fetch(`${API_URL}/api/register`, {
@@ -94,8 +114,8 @@ export default function RegisterScreen({ navigation }) {
 
       if (response.ok) {
         Alert.alert(
-          'Registration Submitted',
-          'Please wait account verification.',
+          isRenewal ? 'Renewal Submitted' : 'Registration Submitted',
+          result.message || 'Please wait for admin approval.',
           [
             {
               text: 'OK',
@@ -134,8 +154,10 @@ export default function RegisterScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
-        <Text style={styles.headerTitle}>Student Registration</Text>
-        <Text style={styles.headerSub}>Fill in all required fields.</Text>
+        <Text style={styles.headerTitle}>{isRenewal ? 'Renew Registration' : 'Student Registration'}</Text>
+        <Text style={styles.headerSub}>
+          {isRenewal ? 'Confirm your info is still correct.' : 'Fill in all required fields.'}
+        </Text>
         {currentPeriod ? (
           <Text style={styles.headerPeriod}>Registering for: {currentPeriod}</Text>
         ) : null}

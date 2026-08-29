@@ -1,6 +1,6 @@
 import React from "react";
 
-const RegistrationItem = ({ name, details, date, status, onApprove, onReject, onDeactivate }) => {
+const RegistrationItem = ({ name, details, date, status, onApprove, onReject, onDeactivate, onReactivate }) => {
   const statusColor = {
     pending: "bg-yellow-100 text-yellow-700",
     approved: "bg-green-100 text-green-700",
@@ -48,6 +48,19 @@ const RegistrationItem = ({ name, details, date, status, onApprove, onReject, on
             className="bg-red-200 text-red-800 px-3 py-1 rounded-full text-xs hover:bg-red-300"
           >
             Deactivate
+          </button>
+        )}
+
+        {(status === "deactivated") && (
+          <button
+            onClick={() => {
+              if (window.confirm(`Reactivate ${name}? A new QR pass will be issued immediately.`)) {
+                onReactivate();
+              }
+            }}
+            className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-xs hover:bg-green-300"
+          >
+            Reactivate
           </button>
         )}
       </div>

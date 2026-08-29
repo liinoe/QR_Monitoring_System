@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 
+const API_URL = 'http://192.168.1.54:5000';
+
 const CHART_MAX_BAR_HEIGHT = 80;
 
 const formatHoursLabel = (hrs) => {
@@ -33,6 +35,7 @@ export default function HomeScreen({ navigation }) {
   const [studentData, setStudentData] = useState(null);
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
+  const [currentPeriod, setCurrentPeriod] = useState(null);
   const abortControllerRef = React.useRef(null);
 
   const formatDateTime = (d) => {
@@ -59,9 +62,8 @@ export default function HomeScreen({ navigation }) {
       if (!storedStudent) return;
       const student = JSON.parse(storedStudent);
 
-      // Standardized IP endpoints, change depends on your IPv4
       const response = await fetch(
-        `http://192.168.1.55:5000/api/student/profile/${student.student_number}`,
+        `${API_URL}/api/student/profile/${student.student_number}`,
         { signal: controller.signal }
       );
 
@@ -87,7 +89,7 @@ export default function HomeScreen({ navigation }) {
       const student = JSON.parse(storedStudent);
 
       const response = await fetch(
-        `http://192.168.1.55:5000/api/student/analytics/${student.student_number}`
+        `${API_URL}/api/student/analytics/${student.student_number}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -95,6 +97,21 @@ export default function HomeScreen({ navigation }) {
       }
     } catch (error) {
       console.error('Error fetching analytics:', error);
+    }
+  };
+
+  // Checks which academic period is currently active, so a "pending" student
+  // whose registration is from a PAST period can be told to renew, instead
+  // of being shown the generic "awaiting admin approval" message.
+  const fetchCurrentPeriod = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/settings/current-period`);
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentPeriod(data.current_period);
+      }
+    } catch (error) {
+      console.error('Error fetching current period:', error);
     }
   };
 
@@ -114,12 +131,14 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     fetchProfileData(true);
     fetchAnalytics();
+    fetchCurrentPeriod();
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
 
     // Checks backend approval status + analytics updates every 10 seconds automatically
     const refreshInterval = setInterval(() => {
       fetchProfileData(false);
       fetchAnalytics();
+      fetchCurrentPeriod();
     }, 10000);
 
     return () => {
@@ -130,8 +149,22 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   const isApproved = studentData?.status === 'approved';
-  // Display the restriction view if the status is explicitly 'pending' OR if data exists but isn't approved yet
-  const isPending = studentData && !isApproved;
+
+  // A student is due for RENEWAL if their last registration was for a
+  // different (past) period than the one currently active — this happens
+  // right after a super admin starts a new semester, which resets everyone
+  // to 'pending' without deleting their record.
+  const needsRenewal = !!(
+    studentData &&
+    !isApproved &&
+    currentPeriod &&
+    studentData.registered_period &&
+    studentData.registered_period !== currentPeriod
+  );
+
+  // Genuinely pending: submitted for the CURRENT period, just waiting on an
+  // admin decision — distinct from needing to take action via renewal.
+  const isPending = studentData && !isApproved && !needsRenewal;
   const isNotRegistered = fetched && !studentData;
 
   const maxChartHours = analytics
@@ -173,6 +206,30 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.registerBtnText}>Register Now</Text>
               <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* NEEDS RENEWAL — registered_period is stale vs. currently active period */}
+        {needsRenewal && (
+          <View style={[styles.qrCard, styles.lockedCard]}>
+            <View style={styles.restrictedContainer}>
+              <View style={styles.lockIconWrap}>
+                <Ionicons name="refresh-outline" size={28} color="#7F6000" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.restrictedTitle}>Renewal Required</Text>
+                <Text style={styles.pendingSubText}>
+                  Your registration is for a past semester. Renew for {currentPeriod} to regain library access.
+                </Text>
+                <TouchableOpacity
+                  style={styles.renewBtn}
+                  onPress={() => navigation.navigate('Register')}
+                >
+                  <Text style={styles.renewBtnText}>Renew Registration</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         )}
 
@@ -306,7 +363,6 @@ const styles = StyleSheet.create({
   logoutBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 30 },
 
-  // Register Card
   registerCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
   registerIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#E8F5E9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   registerTitle: { fontSize: 17, fontWeight: '700', color: '#1B1B1B', textAlign: 'center', marginBottom: 8 },
@@ -314,7 +370,6 @@ const styles = StyleSheet.create({
   registerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1B5E20', paddingVertical: 13, paddingHorizontal: 28, borderRadius: 14 },
   registerBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
-  // Approved QR Layout Styles
   qrCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
   qrTitle: { color: '#333', fontSize: 16, fontWeight: '700' },
   statusText: { color: '#888', fontSize: 13, marginTop: 4 },
@@ -322,7 +377,6 @@ const styles = StyleSheet.create({
   enlargeText: { color: '#666', fontSize: 12, fontWeight: '500' },
   qrPreview: { padding: 8, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#F0F0F0' },
 
-  // Restricted Pending Stylesheet Override
   lockedCard: { backgroundColor: '#FFFDF0', borderColor: '#FCEFBC', borderWidth: 1 },
   restrictedContainer: { flex: 1, flexDirection: 'row', alignItems: 'flex-start' },
   lockIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFF9C4', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
@@ -331,15 +385,15 @@ const styles = StyleSheet.create({
   pendingBadge: { backgroundColor: '#FCEFBC', alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, marginTop: 12 },
   badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4A017', marginRight: 6 },
   pendingBadgeText: { color: '#7F6000', fontWeight: '700', fontSize: 13 },
+  renewBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B45309', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, marginTop: 14, alignSelf: 'flex-start' },
+  renewBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
-  // KPI cards (Live Occupancy / Total Visits)
   kpiRow: { flexDirection: 'row', gap: 12 },
   kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
   kpiLabel: { fontSize: 12, color: '#888', fontWeight: '600' },
   kpiValue: { fontSize: 28, color: '#1B5E20', fontWeight: '800', marginTop: 6 },
   kpiSub: { fontSize: 10, color: '#aaa', marginTop: 4 },
 
-  // Library Activity chart card
   chartCard: { backgroundColor: '#fff', borderRadius: 20, padding: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
   chartTitle: { fontSize: 15, fontWeight: '700', color: '#1B1B1B', marginBottom: 16 },
   chartLoadingText: { fontSize: 12, color: '#aaa', textAlign: 'center', paddingVertical: 30 },

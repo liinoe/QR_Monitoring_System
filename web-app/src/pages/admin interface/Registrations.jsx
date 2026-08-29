@@ -109,6 +109,26 @@ const Registrations = () => {
     }
   };
 
+  const handleReactivate = async (id, studentNumber) => {
+    try {
+      const response = await authFetch(`${API_URL}/api/admin/reactivate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: id, student_number: studentNumber })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setRequests(prev => prev.map(req =>
+          req.request_id === id ? { ...req, approval_status: 'approved' } : req
+        ));
+      } else {
+        alert(`Reactivation Failed: ${result.error || result.message}`);
+      }
+    } catch (err) {
+      alert("Connection Error: Check if server is running");
+    }
+  };
+
   // FILTER
   const filteredRequests = requests.filter((req) => {
     const term = searchTerm.toLowerCase();
@@ -125,8 +145,6 @@ const Registrations = () => {
     return matchesSearch && matchesStatus && matchesCollege;
   });
 
-  // Whenever a filter/search changes, jump back to page 1 — staying on
-  // page 4 after narrowing the results would otherwise show an empty page.
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, collegeFilter, itemsPerPage]);
@@ -204,6 +222,7 @@ const Registrations = () => {
                   onApprove={() => handleApprove(req.request_id)}
                   onReject={() => handleReject(req.request_id)}
                   onDeactivate={() => handleDeactivate(req.request_id, req.student_number)}
+                  onReactivate={() => handleReactivate(req.request_id, req.student_number)}
                 />
               ))
             )}

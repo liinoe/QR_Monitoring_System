@@ -19,7 +19,8 @@ async function getCurrentPeriod() {
     return rows.length > 0 ? rows[0].setting_value : null;
 }
 
-// shows students which semester they're registering/renewing for.
+// Register screen shows this so students know which
+// semester they're registering/renewing for.
 app.get('/api/settings/current-period', async (req, res) => {
     try {
         const period = await getCurrentPeriod();
@@ -39,13 +40,34 @@ app.post('/api/register', async (req, res) => {
     }
     try {
         const currentPeriod = await getCurrentPeriod();
-        const [existing] = await db.query('SELECT * FROM students WHERE email = ? OR student_number = ?', [email, student_number]);
+
+        // Check email and student_number SEPARATELY rather than one OR query.
+        // A single OR match can't tell "same person renewing" apart from
+        // "someone else already owns this student number" — which would
+        // otherwise let a mismatched submission silently overwrite another
+        // student's record instead of being rejected.
+        const [byNumber] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        const [byEmail] = await db.query('SELECT * FROM students WHERE email = ?', [email]);
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        if (existing.length > 0) {
-            const existingStudent = existing[0];
+        // Student number belongs to a different email 
+        if (byNumber.length > 0 && byNumber[0].email !== email) {
+            return res.status(400).json({
+                message: "This student number is already registered under a different account."
+            });
+        }
 
-            // Already registered for the CURRENT period — block, a duplicate attempt
+        // Email belongs to a different student number 
+        if (byEmail.length > 0 && byEmail[0].student_number !== student_number) {
+            return res.status(400).json({
+                message: "This email is already associated with a different student number."
+            });
+        }
+
+        const existingStudent = byNumber[0] || byEmail[0] || null;
+
+        if (existingStudent) {
+            // Already registered for the CURRENT period — block, this is a duplicate attempt
             if (existingStudent.registered_period === currentPeriod) {
                 return res.status(400).json({
                     message: `You're already registered for ${currentPeriod}. Renewal opens next semester.`
@@ -94,12 +116,12 @@ app.post('/api/register', async (req, res) => {
 
 // ADMIN DASHBOARD ROUTE
 app.get('/api/admin/pending', verifyToken, async (req, res) => {
-    try {
-        const [rows] = await db.query('SELECT * FROM registration_requests WHERE approval_status = "pending" ORDER BY created_at DESC');
-            res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+     try {
+          const [rows] = await db.query('SELECT * FROM registration_requests WHERE approval_status = "pending" ORDER BY created_at DESC');
+          res.json(rows);
+     } catch (err) {
+          res.status(500).json({ error: err.message });
+     }
 });
 
 // Returns every registration request regardless of status, for the admin
@@ -123,8 +145,8 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
 
         const student = request[0];
 
-        // Permanent QR pass, generated once, so available offline. 
-        // Security now relies on the guard visually checking the name/ID shown in scanner interface. 
+        // Permanent QR pass, generated once. Security now
+        // relies on the guard visually checking the name/ID shown alongside.
         const qrToken = crypto.randomUUID();
 
         await db.query(
@@ -184,7 +206,35 @@ app.post('/api/admin/deactivate', verifyToken, async (req, res) => {
     }
 });
 
-// SCANNING
+// Restores a deactivated student's access — mirrors Approve: fresh QR,
+// status flips back to approved. This is the only recovery path for
+// short-term deactivations (lost phone recovered, mistake corrected,
+// suspension lifted) since a deactivated student's registered_period is
+// left untouched, which otherwise blocks them from self-service renewing
+// until the next full semester reset.
+app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
+    const { student_number, request_id } = req.body;
+    if (!student_number || !request_id) {
+        return res.status(400).json({ message: "student_number and request_id are required." });
+    }
+    try {
+        const qrToken = crypto.randomUUID();
+        await db.query(
+            'UPDATE students SET status = "approved", qr_code = ? WHERE student_number = ?',
+            [qrToken, student_number]
+        );
+        await db.query(
+            'UPDATE registration_requests SET approval_status = "approved" WHERE request_id = ?',
+            [request_id]
+        );
+        res.json({ success: true, message: "Account reactivated. New QR pass issued." });
+    } catch (err) {
+        console.error("Reactivate error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// SCANNING — kiosk-facing, intentionally not behind admin auth
 app.post('/api/logs/scan', async (req, res) => {
     const { qr_code } = req.body;
     try {
@@ -239,8 +289,7 @@ app.post('/api/login', async (req, res) => {
 
     // Students registered before the password field existed will have
     // password = NULL. Block login with a clear message rather than
-    // crashing bcrypt.compare on a null hash. 
-    // might delete this if we delete all the data or start testing all over again.
+    // crashing bcrypt.compare on a null hash.
     if (!student.password) {
       return res.status(403).json({ message: 'This account needs a password set up. Please contact the library or re-register.' });
     }
@@ -259,7 +308,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Tells the frontend whether to show the Bootstrap (no admin yet created) screen or the normal Login screen
+// Tells the frontend whether to show the Bootstrap screen or the normal Login screen
 app.get('/api/admin/check-setup', async (req, res) => {
     try {
         const [rows] = await db.query('SELECT COUNT(*) as count FROM admins');
@@ -358,6 +407,7 @@ app.post('/api/admin/create', verifyToken, requireSuperAdmin, async (req, res) =
 });
 
 // List all staff accounts, for the "Manage Staff Accounts" table.
+// Renamed from /api/admin/all to avoid colliding with the registration-requests route above.
 app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
         const [rows] = await db.query('SELECT admin_id, name, email, role, created_at FROM admins ORDER BY created_at DESC');
@@ -368,7 +418,7 @@ app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => 
 });
 
 // Reads the current period + how many students would be affected, so the
-// Settings page can show an accurate confirmation before an important action.
+// Settings page can show an accurate confirmation before the destructive action.
 app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
         const currentPeriod = await getCurrentPeriod();
@@ -383,7 +433,7 @@ app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req
 
 // Starts a new academic period. Every currently-approved student is flipped
 // back to "pending" and their QR pass is revoked — matching the library's
-// real per-semester re-validation process.
+// real per-semester re-validation process described in the capstone paper.
 // Students keep their full history; they just need a quick re-approval.
 app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async (req, res) => {
     const { new_period } = req.body;
@@ -410,7 +460,6 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
         res.status(500).json({ error: err.message });
     }
 });
-
 app.get('/api/student/profile/:student_number', async (req, res) => {
   const { student_number } = req.params;
 
@@ -465,7 +514,7 @@ app.post('/api/logs/archive', verifyToken, requireSuperAdmin, async (req, res) =
     }
 });
 
-// GUEST ENTRY LOGGING 
+// GUEST ENTRY LOGGING — kiosk-facing, intentionally not behind admin auth
 app.post('/api/guests/log', async (req, res) => {
     const { guest_type, first_name, last_name, affiliation, purpose, other_purpose } = req.body;
 
