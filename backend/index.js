@@ -407,7 +407,6 @@ app.post('/api/admin/create', verifyToken, requireSuperAdmin, async (req, res) =
 });
 
 // List all staff accounts, for the "Manage Staff Accounts" table.
-// Renamed from /api/admin/all to avoid colliding with the registration-requests route above.
 app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
         const [rows] = await db.query('SELECT admin_id, name, email, role, created_at FROM admins ORDER BY created_at DESC');
@@ -418,7 +417,6 @@ app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => 
 });
 
 // Reads the current period + how many students would be affected, so the
-// Settings page can show an accurate confirmation before the destructive action.
 app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
         const currentPeriod = await getCurrentPeriod();
@@ -500,21 +498,7 @@ app.delete('/api/logs/delete/:log_id', verifyToken, requireSuperAdmin, async (re
     }
 });
 
-app.post('/api/logs/archive', verifyToken, requireSuperAdmin, async (req, res) => {
-    try {
-        // Copy old logs to archive (logs older than 3 months)
-        await db.query(`INSERT INTO archived_logs SELECT * FROM student_logs WHERE visit_date < DATE_SUB(NOW(), INTERVAL 3 MONTH)`);
-
-        // Delete the archived logs from the active table to maintain speed
-        await db.query(`DELETE FROM student_logs WHERE visit_date < DATE_SUB(NOW(), INTERVAL 3 MONTH)`);
-
-        res.json({ success: true, message: "Logs archived successfully." });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GUEST ENTRY LOGGING — kiosk-facing, intentionally not behind admin auth
+// GUEST ENTRY LOGGING 
 app.post('/api/guests/log', async (req, res) => {
     const { guest_type, first_name, last_name, affiliation, purpose, other_purpose } = req.body;
 

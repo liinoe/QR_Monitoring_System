@@ -26,10 +26,10 @@ function App() {
         <Route path="/registrations" element={<ProtectedRoute><Registrations /></ProtectedRoute>} />
         <Route path="/student-logs" element={<ProtectedRoute><StudentLogs /></ProtectedRoute>} />
         <Route path="/guest-logs" element={<ProtectedRoute><GuestLogs /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
-        {/* Super admin only */}
+        {/* Super admin only  */}
         <Route path="/analytics" element={<SuperAdminRoute><Analytics /></SuperAdminRoute>} />
+        <Route path="/settings" element={<SuperAdminRoute><Settings /></SuperAdminRoute>} />
       </Routes>
     </Router>
   );

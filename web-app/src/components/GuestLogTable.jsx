@@ -14,7 +14,7 @@ const formatTypeLabel = (type) => {
 };
 
 const GuestLogTable = ({ data = [], onMarkExited }) => {
-  const [rowsPerPage, setRowsPerPage] = useState(7);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(data.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -101,7 +101,6 @@ const GuestLogTable = ({ data = [], onMarkExited }) => {
             value={rowsPerPage}
             onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
           >
-            <option value={7}>7 items</option>
             <option value={10}>10 items</option>
             <option value={20}>20 items</option>
           </select>

@@ -13,9 +13,10 @@ const Sidebar = () => {
     { name: "Student Logs", path: "/student-logs" },
     { name: "Guest Logs", path: "/guest-logs" },
     { name: "Registrations", path: "/registrations" },
-    // Analytics only shown to super admins
+    // Analytics and Settings only shown to super admins — regular admins
+    // have no super-admin-only content left to see on Settings.
     ...(superAdmin ? [{ name: "Analytics", path: "/analytics" }] : []),
-    { name: "Settings", path: "/settings" },
+    ...(superAdmin ? [{ name: "Settings", path: "/settings" }] : []),
   ];
 
   const handleLogout = () => {
