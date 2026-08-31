@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  ScrollView,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-const API_URL = 'http://192.168.1.54:5000';
+const API_URL = 'http://192.168.18.8:5000';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -68,7 +69,8 @@ export default function LoginScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
         {/* PHOTO HEADER */}
@@ -79,7 +81,12 @@ export default function LoginScreen({ navigation }) {
         </View>
 
         {/* CARD */}
-        <View style={styles.card}>
+        <ScrollView 
+          style={styles.card}
+          contentContainerStyle={styles.cardContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.logoBadge}>
             <Ionicons name="library-outline" size={26} color={colors.primary} />
           </View>
@@ -154,7 +161,7 @@ export default function LoginScreen({ navigation }) {
               <Text style={styles.buttonText}>LOGIN</Text>
             )}
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -177,7 +184,13 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     paddingHorizontal: 28,
     paddingTop: 40,
+  },
+  cardContent:{
+    paddingHorizontal: 28,
+    paddingTop: 40,
+    paddingBottom: 40,
     alignItems: 'center',
+    flexGrow: 1,
   },
   logoBadge: {
     width: 60,
