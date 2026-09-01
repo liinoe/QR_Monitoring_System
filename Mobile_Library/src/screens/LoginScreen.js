@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-const API_URL = 'http://192.168.18.8:5000';
+const API_URL = 'http://10.10.205.229:5000';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -87,10 +87,6 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.logoBadge}>
-            <Ionicons name="library-outline" size={26} color={colors.primary} />
-          </View>
-
           <Text style={styles.title}>eDiwa</Text>
           <Text style={styles.subtitle}>Library App</Text>
 
@@ -163,11 +159,19 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <View pointerEvents="none" style={styles.logoBadgeWrapper}>
+        <View style={styles.logoBadge}>
+          <Ionicons name="library-outline" size={35} color={colors.primary} />
+        </View>
+      </View>
     </View>
   );
 }
 
-const HERO_HEIGHT = 280;
+const HERO_HEIGHT = 250;
+const CARD_OVERLAP = 36; 
+const BADGE_SIZE = 80;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
@@ -179,7 +183,7 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: '#fff',
-    marginTop: -36,
+    marginTop: -CARD_OVERLAP,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     paddingHorizontal: 28,
@@ -192,15 +196,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexGrow: 1,
   },
+
+  logoBadgeWrapper: {
+    position: 'absolute',
+    top: HERO_HEIGHT - CARD_OVERLAP - BADGE_SIZE / 2,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
   logoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'absolute',
-    top: -30,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

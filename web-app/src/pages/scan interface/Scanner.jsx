@@ -29,9 +29,12 @@ const Scanner = () => {
     const [totalInside, setTotalInside] = useState(0);
     const [guestsInside, setGuestsInside] = useState(0);
 
-    const isLockedRef = useRef(false);
     const lastKeyTimeRef = useRef(Date.now());
     const audioCtxRef = useRef(null);
+    // Guards against a scanner "bounce" (one physical scan firing twice in
+    // quick succession) from being read as two real taps and flipping
+    // entry/exit back and forth for the same student.
+    const lastScanRef = useRef({ code: null, time: 0 });
 
     const getAudioCtx = () => {
         if (!audioCtxRef.current) {
@@ -132,9 +135,10 @@ const Scanner = () => {
         };
     }, []);
 
-    const handleScanAction = useCallback(async (decodedText) => {
-        if (isLockedRef.current) return;
-        isLockedRef.current = true;
+    // Fires the scan request and updates the display the moment the
+    // response comes back — no artificial delay, no hold time. The next
+    // scan simply overwrites whatever's currently shown, instantly.
+    const processScan = useCallback(async (decodedText) => {
         setIsProcessing(true);
 
         try {
@@ -166,13 +170,19 @@ const Scanner = () => {
             setScanResult({ full_name: "CONNECTION ERROR", message: "Cannot reach backend network." });
         }
 
-        setTimeout(() => {
-            setScanResult(null);
-            setStatus("searching");
-            isLockedRef.current = false;
-            setIsProcessing(false);
-        }, 5000);
+        setIsProcessing(false);
     }, []);
+
+    // Entry point every scan goes through. Only guard left is the bounce
+    // filter — everything else fires immediately, no locking.
+    const handleScanAction = useCallback((decodedText) => {
+        const now = Date.now();
+        const isBounce = decodedText === lastScanRef.current.code && (now - lastScanRef.current.time) < 800;
+        if (isBounce) return; // same code re-fired within 800ms — a duplicate read, not a new scan
+        lastScanRef.current = { code: decodedText, time: now };
+
+        processScan(decodedText);
+    }, [processScan]);
 
     useEffect(() => {
         let buffer = "";

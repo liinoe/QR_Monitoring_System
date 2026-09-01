@@ -18,7 +18,7 @@ import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels } from '../data/options';
 
-const API_URL = 'http://192.168.18.8:5000';
+const API_URL = 'http://10.10.205.229:5000';
 
 export default function RegisterScreen({ navigation }) {
   const [form, setForm] = useState({
