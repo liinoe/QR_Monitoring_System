@@ -12,8 +12,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
-const API_URL = 'http://10.10.205.229:5000';
+const API_URL = 'http://192.168.1.55:5000';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -32,6 +33,7 @@ const formatStayRange = (hrs) => {
 export default function HomeScreen({ navigation }) {
   const [now, setNow] = useState(new Date());
   const [qrOpen, setQrOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [studentData, setStudentData] = useState(null);
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
@@ -88,7 +90,7 @@ export default function HomeScreen({ navigation }) {
       if (!storedStudent) return;
       const student = JSON.parse(storedStudent);
 
-      const response = await fetch(
+        const response = await fetch(
         `${API_URL}/api/student/analytics/${student.student_number}`
       );
       if (response.ok) {
@@ -100,9 +102,6 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Checks which academic period is currently active, so a "pending" student
-  // whose registration is from a PAST period can be told to renew, instead
-  // of being shown the generic "awaiting admin approval" message.
   const fetchCurrentPeriod = async () => {
     try {
       const response = await fetch(`${API_URL}/api/settings/current-period`);
@@ -150,10 +149,6 @@ export default function HomeScreen({ navigation }) {
 
   const isApproved = studentData?.status === 'approved';
 
-  // A student is due for RENEWAL if their last registration was for a
-  // different (past) period than the one currently active — this happens
-  // right after a super admin starts a new semester, which resets everyone
-  // to 'pending' without deleting their record.
   const needsRenewal = !!(
     studentData &&
     !isApproved &&
@@ -180,7 +175,11 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.name}>{studentData?.full_name || 'Student'}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+          <TouchableOpacity onPress={() => setChangePasswordOpen(true)} style={styles.iconBtn}>
+            <Ionicons name="key-outline" size={22} color="#1B5E20" />
+          </TouchableOpacity>
+          <View style={{ width: 10 }} />
+          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn}>
             <Ionicons name="log-out-outline" size={26} color="#1B5E20" />
           </TouchableOpacity>
         </View>
@@ -223,7 +222,7 @@ export default function HomeScreen({ navigation }) {
                 </Text>
                 <TouchableOpacity
                   style={styles.renewBtn}
-                  onPress={() => navigation.navigate('Register')}
+                  onPress={() => navigation.navigate('Register', { mode: 'renewal' })}
                 >
                   <Text style={styles.renewBtnText}>Renew Registration</Text>
                   <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
@@ -349,6 +348,12 @@ export default function HomeScreen({ navigation }) {
       {isApproved && (
         <QRModal visible={qrOpen} onClose={() => setQrOpen(false)} value={studentData?.qr_code} />
       )}
+
+      <ChangePasswordModal
+        visible={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+        studentNumber={studentData?.student_number}
+      />
     </View>
   );
 }
@@ -360,7 +365,7 @@ const styles = StyleSheet.create({
   greeting: { color: '#E8F5E9', fontSize: 13 },
   name: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 2 },
   dateText: { color: '#A5D6A7', fontSize: 12, marginTop: 4 },
-  logoutBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 30 },
 
   registerCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },

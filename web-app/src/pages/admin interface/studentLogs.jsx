@@ -74,10 +74,10 @@ const StudentLogs = () => {
     "CSPEAR",
     "CTHM",
     "CVMBS",
+    "COM",
+    "CAPS"
   ];
 
-  // Some records store the full college name instead of the acronym.
-  // This maps either form to the short acronym for display in the table.
   const COLLEGE_ACRONYMS = {
     "college of agriculture, food, environment, and natural resources": "CAFENR",
     "college of agriculture, forestry, environment and natural resources": "CAFENR",
@@ -91,6 +91,8 @@ const StudentLogs = () => {
     "college of sports, physical education and recreation": "CSPEAR",
     "college of tourism and hospitality management": "CTHM",
     "college of veterinary medicine and biomedical sciences": "CVMBS",
+    "college of medicine": "COM",
+    "college of advanced and professional studies": "CAPS"
   };
 
   const toAcronym = (college) => {

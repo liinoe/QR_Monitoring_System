@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-const API_URL = 'http://10.10.205.229:5000';
+const API_URL = 'http://192.168.1.55:5000';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -136,7 +136,7 @@ export default function LoginScreen({ navigation }) {
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={10}>
               <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                 size={20}
                 color={colors.textSecondary}
               />
@@ -160,18 +160,19 @@ export default function LoginScreen({ navigation }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Logo badge */}
       <View pointerEvents="none" style={styles.logoBadgeWrapper}>
         <View style={styles.logoBadge}>
-          <Ionicons name="library-outline" size={35} color={colors.primary} />
+          <Ionicons name="library-outline" size={26} color={colors.primary} />
         </View>
       </View>
     </View>
   );
 }
 
-const HERO_HEIGHT = 250;
+const HERO_HEIGHT = 280;
 const CARD_OVERLAP = 36; 
-const BADGE_SIZE = 80;
+const BADGE_SIZE = 60;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },

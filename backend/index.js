@@ -13,11 +13,21 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Reads the single active academic period value, e.g. "1st Semester A.Y. 2025-2026"
+// Reads the single active academic period value.
 async function getCurrentPeriod() {
     const [rows] = await db.query("SELECT setting_value FROM settings WHERE setting_key = 'current_period'");
     return rows.length > 0 ? rows[0].setting_value : null;
 }
+
+// Builds the display full_name from parts. full_name stays a real, stored
+// column so every existing query/UI that reads it (web dashboard, scanner,
+// logs, analytics) keeps working untouched.
+function buildFullName(first_name, middle_name, surname) {
+    const middle = middle_name && middle_name.trim() ? `${middle_name.trim()} ` : '';
+    return `${first_name.trim()} ${middle}${surname.trim()}`.replace(/\s+/g, ' ').trim();
+}
+
+const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
 
 // Register screen shows this so students know which
 // semester they're registering/renewing for.
@@ -30,34 +40,37 @@ app.get('/api/settings/current-period', async (req, res) => {
     }
 });
 
+// FRESH REGISTRATION ONLY
 app.post('/api/register', async (req, res) => {
-    const { full_name, email, student_number, college, program, year_level, password } = req.body;
-    if (!full_name || !email || !student_number || !college || !program || !year_level || !password) {
+    const {
+        surname, first_name, middle_name,
+        email, phone_number, address, sex,
+        student_number, password,
+        college, program, year_level
+    } = req.body;
+
+    if (!surname || !first_name || !email || !phone_number || !address || !sex ||
+        !student_number || !password || !college || !program || !year_level) {
         return res.status(400).json({ message: "Please fill in all required fields." });
     }
     if (password.length < 8) {
         return res.status(400).json({ message: "Password must be at least 8 characters." });
     }
+    if (!VALID_SEX_VALUES.includes(sex)) {
+        return res.status(400).json({ message: "Invalid value for sex." });
+    }
+
     try {
         const currentPeriod = await getCurrentPeriod();
 
-        // Check email and student_number SEPARATELY rather than one OR query.
-        // A single OR match can't tell "same person renewing" apart from
-        // "someone else already owns this student number" — which would
-        // otherwise let a mismatched submission silently overwrite another
-        // student's record instead of being rejected.
         const [byNumber] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
         const [byEmail] = await db.query('SELECT * FROM students WHERE email = ?', [email]);
-        const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Student number belongs to a different email 
         if (byNumber.length > 0 && byNumber[0].email !== email) {
             return res.status(400).json({
                 message: "This student number is already registered under a different account."
             });
         }
-
-        // Email belongs to a different student number 
         if (byEmail.length > 0 && byEmail[0].student_number !== student_number) {
             return res.status(400).json({
                 message: "This email is already associated with a different student number."
@@ -65,52 +78,130 @@ app.post('/api/register', async (req, res) => {
         }
 
         const existingStudent = byNumber[0] || byEmail[0] || null;
-
         if (existingStudent) {
-            // Already registered for the CURRENT period — block, this is a duplicate attempt
-            if (existingStudent.registered_period === currentPeriod) {
-                return res.status(400).json({
-                    message: `You're already registered for ${currentPeriod}. Renewal opens next semester.`
-                });
-            }
-
-            // Registered for a PAST period — treat this as a renewal: update their
-            // existing record (college/program/year may have changed) and send
-            // them back to pending for a quick re-approval, instead of creating
-            // a duplicate student row.
-            await db.query(
-                `UPDATE students SET
-                    full_name = ?, college = ?, program = ?, year_level = ?,
-                    password = ?, status = "pending", qr_code = NULL, registered_period = ?
-                 WHERE student_number = ?`,
-                [full_name, college, program, year_level, hashedPassword, currentPeriod, existingStudent.student_number]
-            );
-
-            await db.query(
-                'INSERT INTO registration_requests (full_name, email, student_number, college, program, year_level, period, approval_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, "pending", NOW())',
-                [full_name, email, student_number, college, program, year_level, currentPeriod]
-            );
-
-            return res.status(201).json({ message: "Renewal submitted! Please wait for admin approval." });
+            // Renewal has its own endpoint now — a fresh registration attempt
+            // against an existing account is always a duplicate, never a
+            // renewal shortcut.
+            return res.status(400).json({
+                message: "This account already exists. Please log in, or use Renew Registration from your Home screen."
+            });
         }
 
-        // new student — normal registration
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const full_name = buildFullName(first_name, middle_name, surname);
+
         await db.query(
-            'INSERT INTO registration_requests (full_name, email, student_number, college, program, year_level, period, approval_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, "pending", NOW())',
-            [full_name, email, student_number, college, program, year_level, currentPeriod]
+            `INSERT INTO registration_requests (
+                full_name, surname, first_name, middle_name,
+                email, phone_number, address, sex,
+                student_number, college, program, year_level, period,
+                approval_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+            [full_name, surname, first_name, middle_name || null,
+             email, phone_number, address, sex,
+             student_number, college, program, year_level, currentPeriod]
         );
 
         await db.query(
             `INSERT INTO students (
-                full_name, email, password, student_number, college, program, year_level, qr_code, status, registered_period
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, "pending", ?)`,
-            [full_name, email, hashedPassword, student_number, college, program, year_level, currentPeriod]
+                full_name, surname, first_name, middle_name,
+                email, phone_number, address, sex, password,
+                student_number, college, program, year_level,
+                qr_code, status, registered_period
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, "pending", ?)`,
+            [full_name, surname, first_name, middle_name || null,
+             email, phone_number, address, sex, hashedPassword,
+             student_number, college, program, year_level, currentPeriod]
         );
 
         res.status(201).json({ message: "Registration submitted successfully!" });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Database transaction error during entry configuration." });
+    }
+});
+
+// RENEWAL — academic info only
+app.post('/api/renew', async (req, res) => {
+    const { student_number, college, program, year_level } = req.body;
+    if (!student_number || !college || !program || !year_level) {
+        return res.status(400).json({ message: "Please complete all academic info fields." });
+    }
+
+    try {
+        const [existing] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        if (existing.length === 0) {
+            return res.status(404).json({ message: "No account found for this student number." });
+        }
+        const student = existing[0];
+        const currentPeriod = await getCurrentPeriod();
+
+        if (student.registered_period === currentPeriod) {
+            return res.status(400).json({
+                message: `You're already registered for ${currentPeriod}. Renewal opens next semester.`
+            });
+        }
+
+        await db.query(
+            `UPDATE students SET
+                college = ?, program = ?, year_level = ?,
+                status = "pending", qr_code = NULL, registered_period = ?
+             WHERE student_number = ?`,
+            [college, program, year_level, currentPeriod, student_number]
+        );
+
+        await db.query(
+            `INSERT INTO registration_requests (
+                full_name, surname, first_name, middle_name,
+                email, phone_number, address, sex,
+                student_number, college, program, year_level, period,
+                approval_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+            [student.full_name, student.surname, student.first_name, student.middle_name,
+             student.email, student.phone_number, student.address, student.sex,
+             student_number, college, program, year_level, currentPeriod]
+        );
+
+        res.status(201).json({ message: "Renewal submitted! Please wait for admin approval." });
+    } catch (err) {
+        console.error("Renewal error:", err.message);
+        res.status(500).json({ error: "Database transaction error during renewal." });
+    }
+});
+
+// CHANGE PASSWORD — requires the current password, standard security practice.
+app.post('/api/student/change-password', async (req, res) => {
+    const { student_number, current_password, new_password } = req.body;
+    if (!student_number || !current_password || !new_password) {
+        return res.status(400).json({ message: "All fields are required." });
+    }
+    if (new_password.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters." });
+    }
+
+    try {
+        const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        if (students.length === 0) {
+            return res.status(404).json({ message: "Student not found." });
+        }
+        const student = students[0];
+
+        if (!student.password) {
+            return res.status(403).json({ message: "This account has no password set up yet." });
+        }
+
+        const match = await bcrypt.compare(current_password, student.password);
+        if (!match) {
+            return res.status(401).json({ message: "Current password is incorrect." });
+        }
+
+        const newHashed = await bcrypt.hash(new_password, 10);
+        await db.query('UPDATE students SET password = ? WHERE student_number = ?', [newHashed, student_number]);
+
+        res.json({ success: true, message: "Password changed successfully." });
+    } catch (err) {
+        console.error("Change password error:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -145,8 +236,6 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
 
         const student = request[0];
 
-        // Permanent QR pass, generated once. Security now
-        // relies on the guard visually checking the name/ID shown alongside.
         const qrToken = crypto.randomUUID();
 
         await db.query(
@@ -180,11 +269,7 @@ app.post('/api/admin/reject', verifyToken, async (req, res) => {
         }
 });
 
-// Revokes a previously-approved student's access without deleting their
-// record — their QR pass stops working immediately, but their registration
-// history is preserved (unlike reject, which deletes the student row).
-// Distinct from "rejected" so a deactivated approved student isn't confused
-// with a request that was never approved in the first place.
+
 app.post('/api/admin/deactivate', verifyToken, async (req, res) => {
     const { student_number, request_id } = req.body;
     if (!student_number || !request_id) {
@@ -206,12 +291,6 @@ app.post('/api/admin/deactivate', verifyToken, async (req, res) => {
     }
 });
 
-// Restores a deactivated student's access — mirrors Approve: fresh QR,
-// status flips back to approved. This is the only recovery path for
-// short-term deactivations (lost phone recovered, mistake corrected,
-// suspension lifted) since a deactivated student's registered_period is
-// left untouched, which otherwise blocks them from self-service renewing
-// until the next full semester reset.
 app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
     const { student_number, request_id } = req.body;
     if (!student_number || !request_id) {
@@ -429,10 +508,6 @@ app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req
     }
 });
 
-// Starts a new academic period. Every currently-approved student is flipped
-// back to "pending" and their QR pass is revoked — matching the library's
-// real per-semester re-validation process described in the capstone paper.
-// Students keep their full history; they just need a quick re-approval.
 app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async (req, res) => {
     const { new_period } = req.body;
     if (!new_period || !new_period.trim()) {
@@ -459,20 +534,20 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
     }
 });
 app.get('/api/student/profile/:student_number', async (req, res) => {
-  const { student_number } = req.params;
+    const { student_number } = req.params;
 
-  try {
-    const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
-    if (!students || students.length === 0) {
-      return res.status(404).json({ message: 'Student profile not found.' });
+    try {
+        const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        if (!students || students.length === 0) {
+        return res.status(404).json({ message: 'Student profile not found.' });
+        }
+        const { password: _omit, ...safeStudent } = students[0];
+        return res.status(200).json(safeStudent);
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Server error' });
     }
-    const { password: _omit, ...safeStudent } = students[0];
-    return res.status(200).json(safeStudent);
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Server error' });
-  }
 });
 
 app.get('/api/logs/live-board', async (req, res) => {
@@ -498,7 +573,7 @@ app.delete('/api/logs/delete/:log_id', verifyToken, requireSuperAdmin, async (re
     }
 });
 
-// GUEST ENTRY LOGGING 
+// GUEST ENTRY LOGGING
 app.post('/api/guests/log', async (req, res) => {
     const { guest_type, first_name, last_name, affiliation, purpose, other_purpose } = req.body;
 
@@ -575,9 +650,6 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
         const totalVisits = myLogs.length;
         const currentOccupancy = studentsInside + guestsInside;
 
-        // Weekly activity (Mon-Sat), averaged hours per weekday across this
-        // student's whole history, plus visit counts to find their most
-        // frequent day.
         const dayHourTotals = new Array(6).fill(0);
         const dayHourCounts = new Array(6).fill(0);
         const dayVisitCounts = new Array(6).fill(0);
@@ -588,9 +660,9 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
         myLogs.forEach(log => {
             if (!log.visit_date) return;
             const d = new Date(log.visit_date);
-            const jsDay = d.getDay(); // 0=Sun..6=Sat
-            if (jsDay === 0) return;  // library closed Sundays, matches wireframe (Mon-Sat only)
-            const idx = jsDay - 1;    // Mon=0 .. Sat=5
+            const jsDay = d.getDay();
+            if (jsDay === 0) return;
+            const idx = jsDay - 1;
             dayVisitCounts[idx] += 1;
 
             if (log.time_in && log.time_out) {

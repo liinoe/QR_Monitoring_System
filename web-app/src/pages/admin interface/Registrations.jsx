@@ -8,7 +8,7 @@ import { authFetch } from "../../auth";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_OPTIONS = [
-  "CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS",
+  "CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS", 'COM', 'CAPS',
 ];
 
 const COLLEGE_ACRONYMS = {
@@ -24,6 +24,8 @@ const COLLEGE_ACRONYMS = {
   "college of sports, physical education and recreation": "CSPEAR",
   "college of tourism and hospitality management": "CTHM",
   "college of veterinary medicine and biomedical sciences": "CVMBS",
+  "college of medicine": "COM",
+  "college of advanced and professional studies": "CAPS"
 };
 
 const toAcronym = (college) => {
