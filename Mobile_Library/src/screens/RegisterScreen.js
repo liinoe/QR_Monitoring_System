@@ -19,7 +19,7 @@ import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels, sexOptions } from '../data/options';
 
-const API_URL = 'http://192.168.1.55:5000';
+const API_URL = 'http://192.168.18.8:5000';
 
 const sexLabelToValue = {
   'Male': 'male',

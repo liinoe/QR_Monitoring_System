@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-const API_URL = 'http://192.168.1.55:5000';
+const API_URL = 'http://192.168.18.8:5000';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');

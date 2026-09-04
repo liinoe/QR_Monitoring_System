@@ -7,11 +7,19 @@ import { authFetch } from "../../auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+const DATE_OPTIONS = ["All Time", "Today", "This Week", "This Month"];
+
 const StudentLogs = () => {
   const [logs, setLogs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
   const [statusFilter, setStatusFilter] = useState("All Status");
+  const [dateFilter, setDateFilter] = useState("All Time");
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    return `${now.getFullYear()}-${mm}`; // "YYYY-MM"
+  });
 
   const fetchLogs = async () => {
     try {
@@ -52,17 +60,6 @@ const StudentLogs = () => {
     }
   };
 
-  // STATS CALCULATIONS
-  const todayStr = new Date().toDateString();
-  const logsToday = logs.filter(l => new Date(l.visit_date).toDateString() === todayStr);
-  const totalToday = logsToday.length;
-  const currentlyInside = logs.filter(l => l.status === 'inside').length;
-  const totalExitsToday = logsToday.filter(l => l.status === 'exited').length;
-
-  const exitedLogs = logs.filter(l => l.time_in && l.time_out);
-  const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
-  const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
-
   const collegeOptions = [
     "CAFENR",
     "CAS",
@@ -101,13 +98,78 @@ const StudentLogs = () => {
     return COLLEGE_ACRONYMS[key] || college;
   };
 
+  // DATE RANGE HELPER
+  const isWithinDateFilter = (log) => {
+    if (dateFilter === "All Time") return true;
+    if (!log.visit_date) return false;
+
+    const logDate = new Date(log.visit_date);
+    const now = new Date();
+
+    if (dateFilter === "Today") {
+      return logDate.toDateString() === now.toDateString();
+    }
+
+    if (dateFilter === "This Week") {
+      // Start of week (Sunday) at 00:00:00
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      // End of week (Saturday) at 23:59:59
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      return logDate >= startOfWeek && logDate <= endOfWeek;
+    }
+
+    if (dateFilter === "This Month") {
+      const [selYear, selMonth] = selectedMonth.split("-").map(Number);
+      return (
+        logDate.getMonth() === selMonth - 1 &&
+        logDate.getFullYear() === selYear
+      );
+    }
+
+    return true;
+  };
+
   // FILTER
   const filteredData = logs.filter(log => {
     const matchesSearch = (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (log.student_number || "").includes(searchTerm);
     const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;
     const matchesStatus = statusFilter === "All Status" || (statusFilter === "Active" && log.status === "inside") || (statusFilter === "Inactive" && log.status === "exited");
-    return matchesSearch && matchesCollege && matchesStatus;
+    const matchesDate = isWithinDateFilter(log);
+    return matchesSearch && matchesCollege && matchesStatus && matchesDate;
   });
+
+  // STATS CALCULATIONS — all derived from filteredData so cards react to college, status, search, and date filters
+  const totalFiltered = filteredData.length;
+  const currentlyInside = filteredData.filter(l => l.status === 'inside').length;
+  const totalExits = filteredData.filter(l => l.status === 'exited').length;
+
+  const exitedLogs = filteredData.filter(l => l.time_in && l.time_out);
+  const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
+  const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
+
+  // Labels/subtitles for the first two cards, matching the active date filter
+  const dateSuffix = {
+    "All Time": "",
+    "Today": " today",
+    "This Week": " this week",
+    "This Month": " this month",
+  }[dateFilter];
+
+  const periodSubtitle = {
+    "All Time": "All-time total",
+    "Today": "Updated today",
+    "This Week": "Sunday – Saturday, this week",
+    "This Month": (() => {
+      const [selYear, selMonth] = selectedMonth.split("-").map(Number);
+      return new Date(selYear, selMonth - 1, 1).toLocaleString([], { month: 'long', year: 'numeric' });
+    })(),
+  }[dateFilter];
 
   return (
     <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
@@ -122,9 +184,9 @@ const StudentLogs = () => {
 
           {/* DYNAMIC CARDS */}
           <div className="grid grid-cols-4 gap-[20px]">
-            <Card title="Total logs today" value={totalToday} subtitle="Updated today" color="text-green-700" border="border-green-700" />
+            <Card title={`Total logs${dateSuffix}`} value={totalFiltered} subtitle={periodSubtitle} color="text-green-700" border="border-green-700" />
             <Card title="Currently Inside" value={currentlyInside} subtitle="Live status" color="text-blue-700" border="border-blue-700" />
-            <Card title="Total exits today" value={totalExitsToday} subtitle="Updated today" color="text-orange-700" border="border-orange-700" />
+            <Card title={`Total exits${dateSuffix}`} value={totalExits} subtitle={periodSubtitle} color="text-orange-700" border="border-orange-700" />
             <Card title="Avg. Stay Duration" value={`${avgStay} hr`} subtitle="Based on exits" color="text-emerald-700" border="border-emerald-700" />
           </div>
 
@@ -145,6 +207,23 @@ const StudentLogs = () => {
                 <option value="Active">Active / Entry</option>
                 <option value="Inactive">Inactive / Exit</option>
               </select>
+              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                {DATE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              {dateFilter === "This Month" && (
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  max={(() => {
+                    const now = new Date();
+                    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                  })()}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="border px-4 py-2 rounded-lg bg-white text-gray-600"
+                />
+              )}
             </div>
           </div>
 
