@@ -42,7 +42,7 @@ const VISITOR_TYPES = [
   { id: "student", label: "Student", icon: StudentIcon },
 ];
 
-const PURPOSES = ["Book Reference", "Research / Thesis", "Museum Visit", "General Reading"];
+const PURPOSES = ["Book Reference", "Research / Thesis", "Museum Visit", "General Reading", "Other"];
 
 const GuestEntry = () => {
   const navigate = useNavigate();
@@ -230,16 +230,19 @@ const GuestEntry = () => {
                     </label>
                   ))}
                 </div>
-                <div className="mt-3">
-                  <label className="text-xs text-gray-500 mb-1 block">Other purpose (optional)</label>
-                  <input
-                    type="text"
-                    value={otherPurpose}
-                    onChange={(e) => setOtherPurpose(e.target.value)}
-                    placeholder="Type here..."
-                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
-                  />
-                </div>
+                {purpose === "Other" && (
+                  <div className="mt-3">
+                    <label className="text-xs text-gray-500 mb-1 block">Please specify</label>
+                    <input
+                      type="text"
+                      value={otherPurpose}
+                      onChange={(e) => setOtherPurpose(e.target.value)}
+                      placeholder="Type here..."
+                      required
+                      className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Submit */}
