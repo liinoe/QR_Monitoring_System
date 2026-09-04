@@ -10,6 +10,7 @@ import Guest from "./pages/guest interface/Guest";
 import Login from "./pages/admin interface/Login";
 import Bootstrap from "./pages/admin interface/Bootstrap";
 import { ProtectedRoute, SuperAdminRoute } from "./components/ProtectedRoute";
+import GuestLanding from "./pages/guest interface/Guest_landing";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/bootstrap" element={<Bootstrap />} />
         <Route path="/scanner" element={<Scanner />} />
         <Route path="/guest" element={<Guest />} />
+        <Route path="/guest-landing" element={<GuestLanding />} />  
 
         {/* Any logged-in admin/staff */}
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

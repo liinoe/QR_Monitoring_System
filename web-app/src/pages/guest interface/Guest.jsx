@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import logo from "../../assets/cvsu_logo.png";
 
 const FacultyIcon = ({ active }) => (
@@ -45,6 +46,7 @@ const VISITOR_TYPES = [
 const PURPOSES = ["Book Reference", "Research / Thesis", "Museum Visit", "General Reading"];
 
 const GuestEntry = () => {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [guestType, setGuestType] = useState("faculty");
   const [firstName, setFirstName] = useState("");
@@ -96,6 +98,7 @@ const GuestEntry = () => {
       if (response.ok) {
         setFeedback({ type: "success", message: "Visit logged successfully! Welcome to the library." });
         resetForm();
+        setTimeout(() => navigate("/guest-landing"), 1500);
       } else {
         const result = await response.json();
         setFeedback({ type: "error", message: result.message || result.error || "Something went wrong. Please try again." });
