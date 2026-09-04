@@ -28,11 +28,10 @@ const WalkinIcon = ({ active }) => (
   </svg>
 );
 
-const OtherIcon = ({ active }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? '#1B5E20' : '#9ca3af'}>
-    <circle cx="6" cy="12" r="1.6" />
-    <circle cx="12" cy="12" r="1.6" />
-    <circle cx="18" cy="12" r="1.6" />
+const StudentIcon = ({ active }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B5E20' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21v-1c0-3.3 3.6-6 8-6s8 2.7 8 6v1" />
   </svg>
 );
 
@@ -40,7 +39,7 @@ const VISITOR_TYPES = [
   { id: "faculty", label: "Faculty", icon: FacultyIcon },
   { id: "alumni", label: "Alumni", icon: AlumniIcon },
   { id: "walkin", label: "Walk-in", icon: WalkinIcon },
-  { id: "other", label: "Other", icon: OtherIcon },
+  { id: "student", label: "Student", icon: StudentIcon },
 ];
 
 const PURPOSES = ["Book Reference", "Research / Thesis", "Museum Visit", "General Reading"];
