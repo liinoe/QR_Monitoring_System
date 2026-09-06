@@ -14,7 +14,7 @@ import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 
-const API_URL = 'http://192.168.18.8:5000';
+const API_URL = 'http://192.168.1.53:5000';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -54,6 +54,20 @@ export default function HomeScreen({ navigation }) {
     return 'Good Evening!';
   };
 
+  const getDisplayName = (student) => {
+    if (!student) return 'Student';
+
+    if (student.first_name && student.surname) {
+      return `${student.first_name} ${student.surname.charAt(0).toUpperCase()}.`;
+    }
+
+    const full = (student.full_name || '').trim();
+    if (!full) return 'Student';
+    const parts = full.split(/\s+/);
+    if (parts.length === 1) return parts[0];
+    return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
+  };
+
   const fetchProfileData = async (isInitial = false) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
@@ -83,14 +97,13 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Live personal + library-wide analytics for the dashboard cards/chart.
   const fetchAnalytics = async () => {
     try {
       const storedStudent = await AsyncStorage.getItem('student');
       if (!storedStudent) return;
       const student = JSON.parse(storedStudent);
 
-        const response = await fetch(
+      const response = await fetch(
         `${API_URL}/api/student/analytics/${student.student_number}`
       );
       if (response.ok) {
@@ -133,7 +146,6 @@ export default function HomeScreen({ navigation }) {
     fetchCurrentPeriod();
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
 
-    // Checks backend approval status + analytics updates every 10 seconds automatically
     const refreshInterval = setInterval(() => {
       fetchProfileData(false);
       fetchAnalytics();
@@ -148,18 +160,22 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   const isApproved = studentData?.status === 'approved';
+  const isRejected = studentData?.status === 'rejected';
+  const isDeactivated = studentData?.status === 'deactivated';
 
+  // A student is due for RENEWAL if their last registration was for a
+  // different (past) period than the one currently active. Only applies
+  // to 'pending' status — rejected/deactivated have their own distinct
+  // states below, not a renewal prompt.
   const needsRenewal = !!(
     studentData &&
-    !isApproved &&
+    studentData.status === 'pending' &&
     currentPeriod &&
     studentData.registered_period &&
     studentData.registered_period !== currentPeriod
   );
 
-  // Genuinely pending: submitted for the CURRENT period, just waiting on an
-  // admin decision — distinct from needing to take action via renewal.
-  const isPending = studentData && !isApproved && !needsRenewal;
+  const isPending = studentData && studentData.status === 'pending' && !needsRenewal;
   const isNotRegistered = fetched && !studentData;
 
   const maxChartHours = analytics
@@ -172,7 +188,7 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.headerInner}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
-            <Text style={styles.name}>{studentData?.full_name || 'Student'}</Text>
+            <Text style={styles.name}>{getDisplayName(studentData)}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
           <TouchableOpacity onPress={() => setChangePasswordOpen(true)} style={styles.iconBtn}>
@@ -208,7 +224,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* NEEDS RENEWAL — registered_period is stale vs. currently active period */}
+        {/* NEEDS RENEWAL */}
         {needsRenewal && (
           <View style={[styles.qrCard, styles.lockedCard]}>
             <View style={styles.restrictedContainer}>
@@ -232,7 +248,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* PENDING APPROVAL - MATCHING IMAGE DESIGN EXACTLY */}
+        {/* PENDING APPROVAL */}
         {isPending && (
           <View style={[styles.qrCard, styles.lockedCard]}>
             <View style={styles.restrictedContainer}>
@@ -251,10 +267,57 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* APPROVED — DASHBOARD ANALYTICS + QR (QR UNTOUCHED) */}
+        {/* REJECTED — shows the admin's reason, and a self-service path to
+            resubmit, since rejection just means "not this attempt", not
+            "never allowed" (that's what Deactivate is for). */}
+        {isRejected && (
+          <View style={[styles.qrCard, styles.rejectedCard]}>
+            <View style={styles.restrictedContainer}>
+              <View style={styles.rejectedIconWrap}>
+                <Ionicons name="close-circle-outline" size={28} color="#B91C1C" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rejectedTitle}>Registration Rejected</Text>
+                <Text style={styles.rejectedSubText}>
+                  {studentData?.status_reason || "Your registration was not approved."}
+                </Text>
+                <TouchableOpacity
+                  style={styles.resubmitBtn}
+                  onPress={() => navigation.navigate('Register')}
+                >
+                  <Text style={styles.resubmitBtnText}>Register Again</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* DEACTIVATED — admin-only recovery path (Reactivate), so the next
+            step here is "contact the library", not a self-service button. */}
+        {isDeactivated && (
+          <View style={[styles.qrCard, styles.rejectedCard]}>
+            <View style={styles.restrictedContainer}>
+              <View style={styles.rejectedIconWrap}>
+                <Ionicons name="ban-outline" size={28} color="#B91C1C" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rejectedTitle}>Account Deactivated</Text>
+                <Text style={styles.rejectedSubText}>
+                  {studentData?.status_reason || "Your account access has been deactivated."}
+                </Text>
+                <View style={styles.contactBadge}>
+                  <Ionicons name="information-circle-outline" size={14} color="#7F1D1D" />
+                  <Text style={styles.contactBadgeText}>Please visit the library front desk to resolve this</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* APPROVED — DASHBOARD ANALYTICS + QR */}
         {isApproved && (
           <>
-            {/* LIVE OCCUPANCY + TOTAL VISITS */}
             <View style={styles.kpiRow}>
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiLabel}>Live Occupancy</Text>
@@ -270,7 +333,6 @@ export default function HomeScreen({ navigation }) {
 
             <View style={{ height: 16 }} />
 
-            {/* QR CARD — unchanged */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => setQrOpen(true)}
@@ -291,7 +353,6 @@ export default function HomeScreen({ navigation }) {
 
             <View style={{ height: 16 }} />
 
-            {/* LIBRARY ACTIVITY CHART + FOOTER STATS */}
             <View style={styles.chartCard}>
               <Text style={styles.chartTitle}>Library Activity</Text>
 
@@ -392,6 +453,15 @@ const styles = StyleSheet.create({
   pendingBadgeText: { color: '#7F6000', fontWeight: '700', fontSize: 13 },
   renewBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B45309', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, marginTop: 14, alignSelf: 'flex-start' },
   renewBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+  rejectedCard: { backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1 },
+  rejectedIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  rejectedTitle: { color: '#B91C1C', fontSize: 18, fontWeight: 'bold' },
+  rejectedSubText: { fontSize: 14, color: '#7F1D1D', marginTop: 4, lineHeight: 20 },
+  resubmitBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B91C1C', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, marginTop: 14, alignSelf: 'flex-start' },
+  resubmitBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  contactBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEE2E2', alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, marginTop: 12, gap: 6, maxWidth: '100%' },
+  contactBadgeText: { color: '#7F1D1D', fontWeight: '600', fontSize: 12, flexShrink: 1 },
 
   kpiRow: { flexDirection: 'row', gap: 12 },
   kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },

@@ -16,6 +16,7 @@ const Settings = () => {
   const [semesterStatus, setSemesterStatus] = useState(null);
   const [showSemesterForm, setShowSemesterForm] = useState(false);
   const [newPeriod, setNewPeriod] = useState("");
+  const [isCustom, setIsCustom] = useState(false);
   const [startingNewSemester, setStartingNewSemester] = useState(false);
 
   const loadSemesterStatus = async () => {
@@ -43,9 +44,20 @@ const Settings = () => {
     loadSemesterStatus();
   }, []);
 
+  const handleSemesterSelectChange = (e) => {
+    const value = e.target.value;
+    if (value === "__custom__") {
+      setIsCustom(true);
+      setNewPeriod("");
+    } else {
+      setIsCustom(false);
+      setNewPeriod(value);
+    }
+  };
+
   const handleStartNewSemester = async () => {
     if (!newPeriod.trim()) {
-      alert("Please enter a name for the new academic period.");
+      alert("Please select or enter a name for the new academic period.");
       return;
     }
     const affected = semesterStatus?.approved_student_count ?? 0;
@@ -59,7 +71,7 @@ const Settings = () => {
       const res = await authFetch(`${API_URL}/api/admin/start-new-semester`, {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ new_period: newPeriod.trim() }),
+        body: JSON.stringify({ new_period: newPeriod.trim(), is_custom: isCustom }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -68,6 +80,7 @@ const Settings = () => {
       }
       alert(data.message);
       setNewPeriod("");
+      setIsCustom(false);
       setShowSemesterForm(false);
       loadSemesterStatus();
     } catch (err) {
@@ -147,13 +160,36 @@ const Settings = () => {
                   <p className="text-sm text-amber-800 font-medium">
                     ⚠ This will reset {semesterStatus?.approved_student_count ?? 0} approved student(s) to Pending and revoke their QR passes.
                   </p>
-                  <input
-                    type="text"
-                    placeholder="e.g. 2nd Semester A.Y. 2025-2026"
-                    value={newPeriod}
-                    onChange={(e) => setNewPeriod(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  />
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Next academic period</label>
+                    <select
+                      value={isCustom ? "__custom__" : newPeriod}
+                      onChange={handleSemesterSelectChange}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="" disabled>
+                        {semesterStatus?.next_period_options?.length
+                          ? "Select next period"
+                          : "No suggestions available — use Custom"}
+                      </option>
+                      {(semesterStatus?.next_period_options || []).map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                      <option value="__custom__">Custom...</option>
+                    </select>
+                  </div>
+
+                  {isCustom && (
+                    <input
+                      type="text"
+                      placeholder="e.g. 2nd Semester A.Y. 2025-2026"
+                      value={newPeriod}
+                      onChange={(e) => setNewPeriod(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                  )}
+
                   <div className="flex gap-2">
                     <button
                       onClick={handleStartNewSemester}
@@ -163,7 +199,7 @@ const Settings = () => {
                       {startingNewSemester ? "Starting..." : "Confirm & Start"}
                     </button>
                     <button
-                      onClick={() => { setShowSemesterForm(false); setNewPeriod(""); }}
+                      onClick={() => { setShowSemesterForm(false); setNewPeriod(""); setIsCustom(false); }}
                       className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors"
                     >
                       Cancel

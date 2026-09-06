@@ -31,9 +31,6 @@ const Scanner = () => {
 
     const lastKeyTimeRef = useRef(Date.now());
     const audioCtxRef = useRef(null);
-    // Guards against a scanner "bounce" (one physical scan firing twice in
-    // quick succession) from being read as two real taps and flipping
-    // entry/exit back and forth for the same student.
     const lastScanRef = useRef({ code: null, time: 0 });
 
     const getAudioCtx = () => {
@@ -135,9 +132,6 @@ const Scanner = () => {
         };
     }, []);
 
-    // Fires the scan request and updates the display the moment the
-    // response comes back — no artificial delay, no hold time. The next
-    // scan simply overwrites whatever's currently shown, instantly.
     const processScan = useCallback(async (decodedText) => {
         setIsProcessing(true);
 
@@ -173,12 +167,10 @@ const Scanner = () => {
         setIsProcessing(false);
     }, []);
 
-    // Entry point every scan goes through. Only guard left is the bounce
-    // filter — everything else fires immediately, no locking.
     const handleScanAction = useCallback((decodedText) => {
         const now = Date.now();
         const isBounce = decodedText === lastScanRef.current.code && (now - lastScanRef.current.time) < 800;
-        if (isBounce) return; // same code re-fired within 800ms — a duplicate read, not a new scan
+        if (isBounce) return;
         lastScanRef.current = { code: decodedText, time: now };
 
         processScan(decodedText);
@@ -198,6 +190,18 @@ const Scanner = () => {
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [handleScanAction]);
+
+    // 3-second auto-clear timer for scan notifications
+    useEffect(() => {
+        let timeout;
+        if (scanResult) {
+            timeout = setTimeout(() => {
+                setScanResult(null);
+                setStatus("searching");
+            }, 3000);
+        }
+        return () => clearTimeout(timeout);
+    }, [scanResult]);
 
     const colleges = [
         { id: 'CAFENR', color: '#16a34a' },
@@ -319,10 +323,24 @@ const Scanner = () => {
 
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: '18px', fontWeight: 800, color: status === "error" ? '#b91c1c' : '#111827' }}>
-                                        {status === "error" ? (scanResult?.full_name || "ACCESS DENIED") : scanResult?.full_name || "Waiting..."}
+                                        {status === "error" 
+                                            ? (scanResult?.full_name || "ACCESS DENIED") 
+                                            : !scanResult 
+                                                ? "Waiting..." 
+                                                : (scanResult.full_name || scanResult.student_number)}
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                                        {status === "error" ? (scanResult?.message || "Scan could not be verified.") : scanResult ? `${scanResult.program} | ${scanResult.student_number}` : "Scan code to verify access"}
+                                        {status === "error" ? (
+                                            scanResult?.message || "Scan could not be verified."
+                                        ) : scanResult ? (
+                                            scanResult.full_name ? (
+                                                <span>{scanResult.program} | <strong>{scanResult.student_number}</strong></span>
+                                            ) : (
+                                                <span>{scanResult.program}</span>
+                                            )
+                                        ) : (
+                                            "Scan code to verify access"
+                                        )}
                                     </div>
                                     {scanResult && status !== "error" && (
                                         <div style={{

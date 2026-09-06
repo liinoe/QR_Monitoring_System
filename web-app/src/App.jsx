@@ -9,6 +9,7 @@ import Settings from "./pages/admin interface/Settings";
 import Guest from "./pages/guest interface/Guest";
 import Login from "./pages/admin interface/Login";
 import Bootstrap from "./pages/admin interface/Bootstrap";
+import ManageStudents from "./pages/admin interface/ManageStudents";
 import { ProtectedRoute, SuperAdminRoute } from "./components/ProtectedRoute";
 import GuestLanding from "./pages/guest interface/Guest_landing";
 
@@ -28,6 +29,7 @@ function App() {
         <Route path="/registrations" element={<ProtectedRoute><Registrations /></ProtectedRoute>} />
         <Route path="/student-logs" element={<ProtectedRoute><StudentLogs /></ProtectedRoute>} />
         <Route path="/guest-logs" element={<ProtectedRoute><GuestLogs /></ProtectedRoute>} />
+        <Route path="/manage-students" element={<ProtectedRoute><ManageStudents /></ProtectedRoute>} />
 
         {/* Super admin only  */}
         <Route path="/analytics" element={<SuperAdminRoute><Analytics /></SuperAdminRoute>} />

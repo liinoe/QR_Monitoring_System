@@ -19,7 +19,7 @@ import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels, sexOptions } from '../data/options';
 
-const API_URL = 'http://192.168.18.8:5000';
+const API_URL = 'http://192.168.1.53:5000';
 
 const sexLabelToValue = {
   'Male': 'male',
@@ -53,7 +53,7 @@ export default function RegisterScreen({ navigation, route }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
-  const [renewalStudent, setRenewalStudent] = useState(null); // display-only, for the renewal confirmation modal
+  const [renewalStudent, setRenewalStudent] = useState(null); 
 
   useEffect(() => {
     fetch(`${API_URL}/api/settings/current-period`)
@@ -62,9 +62,6 @@ export default function RegisterScreen({ navigation, route }) {
       .catch(() => {});
   }, []);
 
-  // RENEWAL: load just enough stored info to identify the account and show
-  // it for confirmation — never into the (hidden, non-existent-in-this-mode)
-  // personal info fields, since those aren't rendered at all in renewal mode.
   useEffect(() => {
     if (!isRenewal) return;
     AsyncStorage.getItem('student')

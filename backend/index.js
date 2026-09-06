@@ -29,6 +29,45 @@ function buildFullName(first_name, middle_name, surname) {
 
 const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
 
+// Fields an admin is allowed to edit on an existing student account via
+// PUT /api/admin/students/:student_number. student_number and email are
+// deliberately excluded — they're identity/login keys tied to QR history
+// and auth. status/qr_code are excluded too — those stay in the dedicated
+// approve/reject/deactivate/reactivate flow.
+const STUDENT_EDITABLE_FIELDS = [
+    'surname', 'first_name', 'middle_name',
+    'phone_number', 'address', 'sex',
+    'college', 'program', 'year_level'
+];
+
+// Parses "1st Semester A.Y. 2025-2026" / "2nd Semester A.Y. 2025-2026" /
+// "Summer A.Y. 2025-2026" style strings and derives the logical next
+// period(s) so the "Start New Semester" dropdown can offer real choices
+// instead of free text. Returns [] if the current value doesn't match the
+// expected pattern (e.g. old/manually-typed data) — the frontend falls
+// back to a manual "Custom" entry in that case.
+function computeNextPeriods(current) {
+    if (!current) return [];
+    const m = current.match(/^(1st|2nd|Summer)\s+Semester?\s*A\.Y\.\s+(\d{4})-(\d{4})$/i);
+    if (!m) return [];
+    const [, termRaw, startYear, endYear] = m;
+    const sy = parseInt(startYear, 10);
+    const ey = parseInt(endYear, 10);
+    const term = termRaw.toLowerCase();
+
+    if (term === '1st') {
+        return [`2nd Semester A.Y. ${sy}-${ey}`];
+    }
+    if (term === '2nd') {
+        return [
+            `Summer A.Y. ${sy}-${ey}`,
+            `1st Semester A.Y. ${sy + 1}-${ey + 1}`,
+        ];
+    }
+    // summer
+    return [`1st Semester A.Y. ${sy + 1}-${ey + 1}`];
+}
+
 // Register screen shows this so students know which
 // semester they're registering/renewing for.
 app.get('/api/settings/current-period', async (req, res) => {
@@ -40,7 +79,9 @@ app.get('/api/settings/current-period', async (req, res) => {
     }
 });
 
-// FRESH REGISTRATION ONLY
+// FRESH REGISTRATION. Also handles the one legitimate case of an existing
+// student resubmitting: a previously REJECTED account. Renewal (approved
+// students whose semester lapsed) has its own separate endpoint (/api/renew).
 app.post('/api/register', async (req, res) => {
     const {
         surname, first_name, middle_name,
@@ -78,18 +119,53 @@ app.post('/api/register', async (req, res) => {
         }
 
         const existingStudent = byNumber[0] || byEmail[0] || null;
-        if (existingStudent) {
-            // Renewal has its own endpoint now — a fresh registration attempt
-            // against an existing account is always a duplicate, never a
-            // renewal shortcut.
-            return res.status(400).json({
-                message: "This account already exists. Please log in, or use Renew Registration from your Home screen."
-            });
-        }
-
         const hashedPassword = await bcrypt.hash(password, 10);
         const full_name = buildFullName(first_name, middle_name, surname);
 
+        if (existingStudent) {
+            // A previously REJECTED student is allowed to resubmit — they
+            // were never approved in the first place, so this is a genuine
+            // fresh attempt, not a duplicate. Full info is re-collected in
+            // case whatever caused the rejection needs correcting.
+            if (existingStudent.status === 'rejected') {
+                await db.query(
+                    `UPDATE students SET
+                        full_name = ?, surname = ?, first_name = ?, middle_name = ?,
+                        email = ?, phone_number = ?, address = ?, sex = ?, password = ?,
+                        college = ?, program = ?, year_level = ?,
+                        status = "pending", status_reason = NULL, qr_code = NULL, registered_period = ?
+                     WHERE student_number = ?`,
+                    [full_name, surname, first_name, middle_name || null,
+                     email, phone_number, address, sex, hashedPassword,
+                     college, program, year_level, currentPeriod, existingStudent.student_number]
+                );
+
+                await db.query(
+                    `INSERT INTO registration_requests (
+                        full_name, surname, first_name, middle_name,
+                        email, phone_number, address, sex,
+                        student_number, college, program, year_level, period,
+                        approval_status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                    [full_name, surname, first_name, middle_name || null,
+                     email, phone_number, address, sex,
+                     student_number, college, program, year_level, currentPeriod]
+                );
+
+                return res.status(201).json({ message: "Registration resubmitted! Please wait for admin approval." });
+            }
+
+            // Approved, pending, or deactivated — never a fresh-registration
+            // target. Approved/pending direct to login/renewal; deactivated
+            // is intentionally admin-only to resolve (see Deactivate route).
+            return res.status(400).json({
+                message: existingStudent.status === 'deactivated'
+                    ? "This account has been deactivated. Please contact the library to resolve this."
+                    : "This account already exists. Please log in, or use Renew Registration from your Home screen."
+            });
+        }
+
+        // Brand new student
         await db.query(
             `INSERT INTO registration_requests (
                 full_name, surname, first_name, middle_name,
@@ -121,7 +197,8 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// RENEWAL — academic info only
+// RENEWAL — academic info only. Deliberately cannot touch name, email,
+// phone, address, sex, or password: those simply aren't in this payload.
 app.post('/api/renew', async (req, res) => {
     const { student_number, college, program, year_level } = req.body;
     if (!student_number || !college || !program || !year_level) {
@@ -145,7 +222,7 @@ app.post('/api/renew', async (req, res) => {
         await db.query(
             `UPDATE students SET
                 college = ?, program = ?, year_level = ?,
-                status = "pending", qr_code = NULL, registered_period = ?
+                status = "pending", status_reason = NULL, qr_code = NULL, registered_period = ?
              WHERE student_number = ?`,
             [college, program, year_level, currentPeriod, student_number]
         );
@@ -239,7 +316,7 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
         const qrToken = crypto.randomUUID();
 
         await db.query(
-            `UPDATE students SET status = "approved", qr_code = ? WHERE student_number = ?`,
+            `UPDATE students SET status = "approved", status_reason = NULL, qr_code = ? WHERE student_number = ?`,
             [qrToken, student.student_number]
         );
 
@@ -255,34 +332,56 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
     }
 });
 
+// REJECT — no longer deletes the student row. The account stays, marked
+// "rejected" with a reason, so the mobile app can show the student WHY,
+// and offer them a way to resubmit (see /api/register above). Deleting on
+// reject made it structurally impossible to ever notify anyone of anything.
 app.post('/api/admin/reject', verifyToken, async (req, res) => {
-        const { request_id } = req.body;
-        try {
-            const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
-            if (request.length > 0) {
-                await db.query('DELETE FROM students WHERE student_number = ?', [request[0].student_number]);
-            }
-            await db.query('UPDATE registration_requests SET approval_status = "rejected" WHERE request_id = ?', [request_id]);
-            res.json({ message: "Registration rejected." });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
+    const { request_id, reason } = req.body;
+    if (!reason || !reason.trim()) {
+        return res.status(400).json({ message: "A reason is required to reject a registration." });
+    }
+    try {
+        const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
+        if (request.length === 0) return res.status(404).json({ message: "Request not found." });
+
+        const student_number = request[0].student_number;
+
+        await db.query(
+            'UPDATE students SET status = "rejected", status_reason = ?, qr_code = NULL WHERE student_number = ?',
+            [reason.trim(), student_number]
+        );
+        await db.query(
+            'UPDATE registration_requests SET approval_status = "rejected", reason = ? WHERE request_id = ?',
+            [reason.trim(), request_id]
+        );
+
+        res.json({ success: true, message: "Registration rejected." });
+    } catch (err) {
+        console.error("Reject error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
-
+// Revokes a previously-approved student's access without deleting their
+// record. Distinct from "rejected" so a deactivated approved student isn't
+// confused with a request that was never approved.
 app.post('/api/admin/deactivate', verifyToken, async (req, res) => {
-    const { student_number, request_id } = req.body;
+    const { student_number, request_id, reason } = req.body;
     if (!student_number || !request_id) {
         return res.status(400).json({ message: "student_number and request_id are required." });
     }
+    if (!reason || !reason.trim()) {
+        return res.status(400).json({ message: "A reason is required to deactivate an account." });
+    }
     try {
         await db.query(
-            'UPDATE students SET status = "deactivated", qr_code = NULL WHERE student_number = ?',
-            [student_number]
+            'UPDATE students SET status = "deactivated", status_reason = ?, qr_code = NULL WHERE student_number = ?',
+            [reason.trim(), student_number]
         );
         await db.query(
-            'UPDATE registration_requests SET approval_status = "deactivated" WHERE request_id = ?',
-            [request_id]
+            'UPDATE registration_requests SET approval_status = "deactivated", reason = ? WHERE request_id = ?',
+            [reason.trim(), request_id]
         );
         res.json({ success: true, message: "Account deactivated. QR access revoked." });
     } catch (err) {
@@ -299,7 +398,7 @@ app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
     try {
         const qrToken = crypto.randomUUID();
         await db.query(
-            'UPDATE students SET status = "approved", qr_code = ? WHERE student_number = ?',
+            'UPDATE students SET status = "approved", status_reason = NULL, qr_code = ? WHERE student_number = ?',
             [qrToken, student_number]
         );
         await db.query(
@@ -313,7 +412,11 @@ app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
     }
 });
 
-// SCANNING — kiosk-facing, intentionally not behind admin auth
+// SCANNING — kiosk-facing, intentionally not behind admin auth.
+// Deliberately does NOT return full_name: this response is displayed on a
+// publicly-viewable kiosk screen, so only student_number + program go
+// back to the client. Anyone reading the full DB row still sees the name,
+// but it never leaves the server for this endpoint.
 app.post('/api/logs/scan', async (req, res) => {
     const { qr_code } = req.body;
     try {
@@ -328,10 +431,10 @@ app.post('/api/logs/scan', async (req, res) => {
 
         if (activeLogs.length > 0) {
             await db.query('UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE log_id = ?', [activeLogs[0].log_id]);
-            res.json({ success: true, action: 'exit', full_name: student.full_name, program: student.program, student_number: student.student_number });
+            res.json({ success: true, action: 'exit', student_number: student.student_number, program: student.program });
         } else {
             await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
-            res.json({ success: true, action: 'entry', full_name: student.full_name, program: student.program, student_number: student.student_number });
+            res.json({ success: true, action: 'entry', student_number: student.student_number, program: student.program });
         }
     } catch (err) {
         console.error("SQL ERROR during scan:", err.message);
@@ -366,9 +469,6 @@ app.post('/api/login', async (req, res) => {
 
     const student = students[0];
 
-    // Students registered before the password field existed will have
-    // password = NULL. Block login with a clear message rather than
-    // crashing bcrypt.compare on a null hash.
     if (!student.password) {
       return res.status(403).json({ message: 'This account needs a password set up. Please contact the library or re-register.' });
     }
@@ -378,7 +478,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ message: 'Incorrect password.' });
     }
 
-    // Never send the password hash back to the client
     const { password: _omit, ...safeStudent } = student;
     return res.status(200).json({ message: 'Login successful', student: safeStudent });
   } catch (error) {
@@ -495,28 +594,113 @@ app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => 
     }
 });
 
-// Reads the current period + how many students would be affected, so the
+// List all students for the Students management page (edit college/program/etc.)
+app.get('/api/admin/students', verifyToken, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            `SELECT user_id, full_name, surname, first_name, middle_name, email,
+                    phone_number, address, sex, student_number, college, program,
+                    year_level, status, status_reason, registered_period, created_at
+             FROM students ORDER BY full_name ASC`
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Edit an existing student's info — college/program shifts, corrections, etc.
+// Does NOT touch status or qr_code; that stays in the approve/deactivate flow.
+// Every successful edit is recorded in student_edit_logs for accountability.
+app.put('/api/admin/students/:student_number', verifyToken, async (req, res) => {
+    const { student_number } = req.params;
+    const updates = {};
+    for (const field of STUDENT_EDITABLE_FIELDS) {
+        if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No editable fields provided." });
+    }
+    if (updates.sex && !VALID_SEX_VALUES.includes(updates.sex)) {
+        return res.status(400).json({ message: "Invalid value for sex." });
+    }
+
+    try {
+        const [existingRows] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        if (existingRows.length === 0) {
+            return res.status(404).json({ message: "Student not found." });
+        }
+        const existing = existingRows[0];
+
+        // Keep full_name in sync if any name part changed.
+        const surname = updates.surname ?? existing.surname;
+        const first_name = updates.first_name ?? existing.first_name;
+        const middle_name = updates.middle_name ?? existing.middle_name;
+        const nameChanged = ['surname', 'first_name', 'middle_name'].some(f => f in updates);
+        if (nameChanged) {
+            updates.full_name = buildFullName(first_name, middle_name, surname);
+        }
+
+        const setClauses = Object.keys(updates).map(f => `${f} = ?`).join(', ');
+        const values = Object.values(updates);
+
+        await db.query(
+            `UPDATE students SET ${setClauses} WHERE student_number = ?`,
+            [...values, student_number]
+        );
+
+        await db.query(
+            `INSERT INTO student_edit_logs (student_number, admin_id, changes) VALUES (?, ?, ?)`,
+            [student_number, req.admin.admin_id, JSON.stringify(updates)]
+        );
+
+        res.json({ success: true, message: "Student information updated." });
+    } catch (err) {
+        console.error("Update student error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reads the current period + how many students would be affected, plus the
+// computed valid "next period" options for the Start New Semester dropdown.
 app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
         const currentPeriod = await getCurrentPeriod();
         const [[{ approvedCount }]] = await db.query(
             'SELECT COUNT(*) AS approvedCount FROM students WHERE status = "approved"'
         );
-        res.json({ current_period: currentPeriod, approved_student_count: approvedCount });
+        res.json({
+            current_period: currentPeriod,
+            approved_student_count: approvedCount,
+            next_period_options: computeNextPeriods(currentPeriod),
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
 app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async (req, res) => {
-    const { new_period } = req.body;
+    const { new_period, is_custom } = req.body;
     if (!new_period || !new_period.trim()) {
-        return res.status(400).json({ message: "Please provide a name for the new academic period." });
+        return res.status(400).json({ message: "Please select or enter a name for the new academic period." });
     }
+    const trimmed = new_period.trim();
+
     try {
+        const currentPeriod = await getCurrentPeriod();
+        const validOptions = computeNextPeriods(currentPeriod);
+
+        // Only enforce the computed options when we could actually parse the
+        // current period and the admin didn't explicitly pick "Custom".
+        if (!is_custom && validOptions.length > 0 && !validOptions.includes(trimmed)) {
+            return res.status(400).json({
+                message: "That doesn't match an expected next period. Use 'Custom' if this is intentional."
+            });
+        }
+
         await db.query(
             "UPDATE settings SET setting_value = ? WHERE setting_key = 'current_period'",
-            [new_period.trim()]
+            [trimmed]
         );
 
         const [result] = await db.query(
@@ -525,7 +709,7 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
 
         res.json({
             success: true,
-            message: `New semester started: ${new_period.trim()}. ${result.affectedRows} student(s) will need to renew.`,
+            message: `New semester started: ${trimmed}. ${result.affectedRows} student(s) will need to renew.`,
             affected_count: result.affectedRows,
         });
     } catch (err) {
@@ -639,7 +823,6 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
             [user_id]
         );
 
-        // Live occupancy = everyone currently inside the library, students + guests
         const [[{ studentsInside }]] = await db.query(
             `SELECT COUNT(*) AS studentsInside FROM student_logs WHERE status = "inside"`
         );

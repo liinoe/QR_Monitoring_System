@@ -1,40 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import RegistrationItem from "../../components/RegistrationItem";
+import ReasonModal from "../../components/ReasonModal";
+import StudentDetailsModal from "../../components/StudentDetailsModal";
 import { authFetch } from "../../auth";
+import { collegeAcronyms, toCollegeAcronym } from "../../data/options";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-const COLLEGE_OPTIONS = [
-  "CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS", 'COM', 'CAPS',
-];
-
-const COLLEGE_ACRONYMS = {
-  "college of agriculture, food, environment, and natural resources": "CAFENR",
-  "college of agriculture, forestry, environment and natural resources": "CAFENR",
-  "college of arts and sciences": "CAS",
-  "college of criminal justice": "CCJ",
-  "college of education": "CED",
-  "college of engineering and information technology": "CEIT",
-  "college of economics, management, and development studies": "CEMDS",
-  "college of economics, management and development studies": "CEMDS",
-  "college of nursing": "CON",
-  "college of sports, physical education and recreation": "CSPEAR",
-  "college of tourism and hospitality management": "CTHM",
-  "college of veterinary medicine and biomedical sciences": "CVMBS",
-  "college of medicine": "COM",
-  "college of advanced and professional studies": "CAPS"
-};
-
-const toAcronym = (college) => {
-  if (!college) return null;
-  const key = college.trim().toLowerCase();
-  return COLLEGE_ACRONYMS[key] || college.trim().toUpperCase();
-};
+// Filter dropdown options are derived from the same collegeAcronyms map
+// used for display — one source of truth, so the filter can never fall
+// out of sync with what's actually rendered in the table.
+const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 
 const STATUS_TABS = ["All", "Pending", "Approved", "Rejected", "Deactivated"];
+
+const REJECT_REASONS = [
+  "Invalid or unreadable student ID/documents",
+  "Information does not match university records",
+  "Duplicate registration",
+  "Incomplete personal information",
+  "Other (specify below)",
+];
+
+const DEACTIVATE_REASONS = [
+  "Lost or compromised QR pass",
+  "Graduated / no longer enrolled",
+  "Transferred to another program/college",
+  "Disciplinary action",
+  "Other (specify below)",
+];
 
 const Registrations = () => {
   const [requests, setRequests] = useState([]);
@@ -44,6 +41,11 @@ const Registrations = () => {
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Holds which item is currently being rejected/deactivated, so the
+  // ReasonModal knows what it's acting on. null = modal closed.
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'reject'|'deactivate', request_id, student_number }
+  const [selectedRequest, setSelectedRequest] = useState(null); // full row for the details modal, null = closed
 
   const fetchRegistrations = async () => {
     try {
@@ -56,6 +58,23 @@ const Registrations = () => {
 
   useEffect(() => { fetchRegistrations(); }, []);
 
+  // registration_requests is an append-only history — every resubmission
+  // or renewal adds a NEW row rather than editing the old one, on purpose
+  // (so a rejection reason isn't lost once the student tries again). This
+  // map finds, per student_number, which single row is their most recent
+  // submission — that's the only row whose status reflects "what's true
+  // right now" and the only one action buttons should apply to.
+  const latestRequestByStudent = useMemo(() => {
+    const map = {};
+    for (const req of requests) {
+      const current = map[req.student_number];
+      if (!current || new Date(req.created_at) > new Date(current.created_at)) {
+        map[req.student_number] = req;
+      }
+    }
+    return map;
+  }, [requests]);
+
   const handleApprove = async (id) => {
     try {
       const response = await authFetch(`${API_URL}/api/admin/approve`, {
@@ -63,48 +82,13 @@ const Registrations = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ request_id: id })
       });
-
       const result = await response.json();
-
       if (response.ok) {
         setRequests(prev => prev.map(req =>
           req.request_id === id ? { ...req, approval_status: 'approved' } : req
         ));
       } else {
         alert(`Approval Failed: ${result.error || result.message}`);
-      }
-    } catch (err) {
-      alert("Connection Error: Check if server is running");
-    }
-  };
-
-  const handleReject = async (id) => {
-    try {
-      const response = await authFetch(`${API_URL}/api/admin/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id: id })
-      });
-      if (response.ok) setRequests(prev => prev.map(req =>
-        req.request_id === id ? { ...req, approval_status: 'rejected' } : req
-      ));
-    } catch (err) { alert("Error rejecting"); }
-  };
-
-  const handleDeactivate = async (id, studentNumber) => {
-    try {
-      const response = await authFetch(`${API_URL}/api/admin/deactivate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id: id, student_number: studentNumber })
-      });
-      const result = await response.json();
-      if (response.ok) {
-        setRequests(prev => prev.map(req =>
-          req.request_id === id ? { ...req, approval_status: 'deactivated' } : req
-        ));
-      } else {
-        alert(`Deactivation Failed: ${result.error || result.message}`);
       }
     } catch (err) {
       alert("Connection Error: Check if server is running");
@@ -131,6 +115,43 @@ const Registrations = () => {
     }
   };
 
+  // Reject and Deactivate no longer act immediately — they open the reason
+  // modal, and the actual API call happens in handleConfirmReason below.
+  const openReject = (id) => setPendingAction({ type: 'reject', request_id: id });
+  const openDeactivate = (id, studentNumber) => setPendingAction({ type: 'deactivate', request_id: id, student_number: studentNumber });
+
+  const handleConfirmReason = async (reason) => {
+    if (!pendingAction) return;
+    const { type, request_id, student_number } = pendingAction;
+
+    try {
+      const url = type === 'reject' ? `${API_URL}/api/admin/reject` : `${API_URL}/api/admin/deactivate`;
+      const body = type === 'reject'
+        ? { request_id, reason }
+        : { request_id, student_number, reason };
+
+      const response = await authFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+
+      if (response.ok) {
+        setRequests(prev => prev.map(req =>
+          req.request_id === request_id
+            ? { ...req, approval_status: type === 'reject' ? 'rejected' : 'deactivated' }
+            : req
+        ));
+        setPendingAction(null);
+      } else {
+        alert(`${type === 'reject' ? 'Rejection' : 'Deactivation'} Failed: ${result.error || result.message}`);
+      }
+    } catch (err) {
+      alert("Connection Error: Check if server is running");
+    }
+  };
+
   // FILTER
   const filteredRequests = requests.filter((req) => {
     const term = searchTerm.toLowerCase();
@@ -142,7 +163,7 @@ const Registrations = () => {
       statusFilter === "All" || req.approval_status === statusFilter.toLowerCase();
 
     const matchesCollege =
-      collegeFilter === "All Colleges" || toAcronym(req.college) === collegeFilter;
+      collegeFilter === "All Colleges" || toCollegeAcronym(req.college) === collegeFilter;
 
     return matchesSearch && matchesStatus && matchesCollege;
   });
@@ -160,7 +181,7 @@ const Registrations = () => {
       <Header />
       <div className="flex flex-1">
         <Sidebar />
-        <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
+        <div className="flex-1 px-[50px] pt-[40px] space-y-[20px] pb-[40px]">
           <p className="text-[#666]">Approve, reject, or review pending student registrations.</p>
 
           <div className="grid grid-cols-4 gap-[20px]">
@@ -202,32 +223,56 @@ const Registrations = () => {
               onChange={(e) => setCollegeFilter(e.target.value)}
             >
               <option>All Colleges</option>
-              {COLLEGE_OPTIONS.map((college) => (
+              {COLLEGE_FILTER_OPTIONS.map((college) => (
                 <option key={college} value={college}>{college}</option>
               ))}
             </select>
           </div>
 
-          <div className="space-y-[15px]">
-            {loading ? (
-              <p>Loading...</p>
-            ) : filteredRequests.length === 0 ? (
-              <p className="text-gray-400 text-sm py-8 text-center">No registrations match your filters.</p>
-            ) : (
-              paginatedRequests.map((req) => (
-                <RegistrationItem
-                  key={req.request_id}
-                  name={req.full_name}
-                  details={`${req.student_number} - ${req.program} - ${req.year_level}`}
-                  date={`Submitted: ${new Date(req.created_at).toLocaleString()}`}
-                  status={req.approval_status}
-                  onApprove={() => handleApprove(req.request_id)}
-                  onReject={() => handleReject(req.request_id)}
-                  onDeactivate={() => handleDeactivate(req.request_id, req.student_number)}
-                  onReactivate={() => handleReactivate(req.request_id, req.student_number)}
-                />
-              ))
-            )}
+          {/* TABLE */}
+          <div className="bg-white rounded-[10px] border overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
+                <tr>
+                  <th className="p-4 text-left font-semibold">Student No.</th>
+                  <th className="p-4 text-left font-semibold">Name</th>
+                  <th className="p-4 text-left font-semibold">College</th>
+                  <th className="p-4 text-left font-semibold">Program</th>
+                  <th className="p-4 text-left font-semibold">Status</th>
+                  <th className="p-4 text-left font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Loading...</td></tr>
+                ) : filteredRequests.length === 0 ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">No registrations match your filters.</td></tr>
+                ) : (
+                  paginatedRequests.map((req) => {
+                    const latest = latestRequestByStudent[req.student_number];
+                    const isLatest = latest?.request_id === req.request_id;
+                    return (
+                      <RegistrationItem
+                        key={req.request_id}
+                        studentNumber={req.student_number}
+                        name={req.full_name}
+                        email={req.email}
+                        college={toCollegeAcronym(req.college)}
+                        program={req.program}
+                        status={req.approval_status}
+                        isLatest={isLatest}
+                        currentStatus={latest?.approval_status}
+                        onRowClick={() => setSelectedRequest(req)}
+                        onApprove={() => handleApprove(req.request_id)}
+                        onReject={() => openReject(req.request_id)}
+                        onDeactivate={() => openDeactivate(req.request_id, req.student_number)}
+                        onReactivate={() => handleReactivate(req.request_id, req.student_number)}
+                      />
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* PAGINATION FOOTER */}
@@ -270,6 +315,22 @@ const Registrations = () => {
           )}
         </div>
       </div>
+
+      <StudentDetailsModal
+        visible={!!selectedRequest}
+        request={selectedRequest}
+        onClose={() => setSelectedRequest(null)}
+      />
+
+      <ReasonModal
+        visible={!!pendingAction}
+        title={pendingAction?.type === 'reject' ? 'Reject Registration' : 'Deactivate Account'}
+        actionLabel={pendingAction?.type === 'reject' ? 'Confirm Reject' : 'Confirm Deactivate'}
+        actionColor={pendingAction?.type === 'reject' ? 'bg-[#DC2626] hover:bg-[#B91C1C]' : 'bg-[#D97706] hover:bg-[#B45309]'}
+        presetReasons={pendingAction?.type === 'reject' ? REJECT_REASONS : DEACTIVATE_REASONS}
+        onConfirm={handleConfirmReason}
+        onCancel={() => setPendingAction(null)}
+      />
     </div>
   );
 };

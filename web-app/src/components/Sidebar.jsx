@@ -13,8 +13,7 @@ const Sidebar = () => {
     { name: "Student Logs", path: "/student-logs" },
     { name: "Guest Logs", path: "/guest-logs" },
     { name: "Registrations", path: "/registrations" },
-    // Analytics and Settings only shown to super admins — regular admins
-    // have no super-admin-only content left to see on Settings.
+    { name: "Manage Students", path: "/manage-students" },
     ...(superAdmin ? [{ name: "Analytics", path: "/analytics" }] : []),
     ...(superAdmin ? [{ name: "Settings", path: "/settings" }] : []),
   ];

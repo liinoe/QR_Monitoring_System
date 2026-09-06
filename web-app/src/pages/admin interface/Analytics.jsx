@@ -15,7 +15,6 @@ const COLLEGE_COLORS = {
 
 const COLLEGE_ACRONYMS = {
   "college of agriculture, food, environment, and natural resources": "CAFENR",
-  "college of agriculture, forestry, environment and natural resources": "CAFENR",
   "college of arts and sciences": "CAS",
   "college of criminal justice": "CCJ",
   "college of education": "CED",
