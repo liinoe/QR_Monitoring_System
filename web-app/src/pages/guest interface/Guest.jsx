@@ -72,8 +72,8 @@ const GuestEntry = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) {
-      setFeedback({ type: "error", message: "Please enter your first and last name." });
+    if (!firstName.trim() || !lastName.trim() || !affiliation.trim()) {
+      setFeedback({ type: "error", message: "Please fill in all required fields." });
       return;
     }
 
@@ -131,17 +131,24 @@ const GuestEntry = () => {
       <div className="flex-1 flex justify-center py-10 px-4">
         <div className="w-full max-w-[680px] space-y-5">
 
-          {/* Welcome card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-1">Welcome Guest!</h2>
-            <p className="text-sm text-gray-500">
-              Please fill in the form below to log your visit to the Ladislao N. Diwa Memorial Library.
-            </p>
-          </div>
+          {/* Welcome Toast */}
+          {feedback && feedback.type === "success" && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-green-200 shadow-lg rounded-xl px-6 py-4 flex items-center gap-3 animate-[fadeIn_0.3s_ease-out]">
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Welcome, {feedback.name}!</p>
+                <p className="text-xs text-gray-500">{feedback.message}</p>
+              </div>
+            </div>
+          )}
 
-          {/* Feedback banner */}
-          {feedback && (
-            <div className={`rounded-xl p-4 text-sm font-medium ${feedback.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          {/* Error banner (kept as-is for non-success feedback) */}
+          {feedback && feedback.type === "error" && (
+            <div className="rounded-xl p-4 text-sm font-medium bg-red-50 text-red-700 border border-red-200">
               {feedback.message}
             </div>
           )}
@@ -208,6 +215,7 @@ const GuestEntry = () => {
                     value={affiliation}
                     onChange={(e) => setAffiliation(e.target.value)}
                     placeholder="e.g. CvSU - CEIT Dept."
+                    required
                     className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
                   />
                 </div>
