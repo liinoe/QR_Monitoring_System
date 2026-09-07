@@ -27,6 +27,10 @@ export default function ForgotPasswordScreen({ navigation }) {
           setErrorText('Please enter your email address.');
           return;
      }
+     if (!/^[^\s@]+@cvsu\.edu\.ph$/i.test(email.trim())) {
+          setErrorText('Please enter a correctly formatted @cvsu.edu.ph email address.');
+          return;
+     }
 
      setLoading(true);
      try {
