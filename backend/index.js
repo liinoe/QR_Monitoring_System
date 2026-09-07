@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const db = require('./db');
 require('dotenv').config();
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const { verifyToken, requireSuperAdmin } = require('./middleware/auth');
 
 const app = express();
@@ -12,6 +14,30 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// Serves /public/reset-password.html and any other static assets. This is
+// what the "one-time link" in the reset email actually opens — a plain
+// HTML page.
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Email transport for the forgot-password flow. Needs real SMTP
+// credentials in .env — EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS,
+// EMAIL_FROM (optional, defaults to EMAIL_USER). For Gmail specifically,
+// EMAIL_USER's normal password will NOT work — Gmail requires an "App
+// Password" (2-Step Verification must be on) generated from the Google
+// Account security settings.
+
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT,
+  secure: false, 
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+const RESET_BASE_URL = process.env.RESET_BASE_URL || `http://localhost:${PORT}`;
 
 // Reads the single active academic period value.
 async function getCurrentPeriod() {
@@ -25,6 +51,17 @@ async function getCurrentPeriod() {
 function buildFullName(first_name, middle_name, surname) {
     const middle = middle_name && middle_name.trim() ? `${middle_name.trim()} ` : '';
     return `${first_name.trim()} ${middle}${surname.trim()}`.replace(/\s+/g, ' ').trim();
+}
+
+// Generates a one-time reset token. The raw token is what goes in the
+// email link and is the only thing that can ever redeem the reset — only
+// its SHA-256 hash is stored, the same principle as never storing
+// plaintext passwords. 30-minute expiry is standard for this kind of flow.
+function generateResetToken() {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    return { token, tokenHash, expiresAt };
 }
 
 const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
@@ -246,7 +283,10 @@ app.post('/api/renew', async (req, res) => {
     }
 });
 
-// CHANGE PASSWORD — requires the current password, standard security practice.
+// CHANGE PASSWORD — requires the current password, standard security
+// practice. Distinct from the forgot-password flow below: this is for a
+// student who remembers their password and wants to change it; the
+// forgot-password flow is for someone who's actually locked out.
 app.post('/api/student/change-password', async (req, res) => {
     const { student_number, current_password, new_password } = req.body;
     if (!student_number || !current_password || !new_password) {
@@ -279,6 +319,107 @@ app.post('/api/student/change-password', async (req, res) => {
     } catch (err) {
         console.error("Change password error:", err.message);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// FORGOT PASSWORD — step 1: request a reset link. Always responds with
+// the same generic message whether or not the email is registered, so
+// this endpoint can't be used to check which emails are real accounts.
+app.post('/api/student/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+        return res.status(400).json({ message: "Please enter your email address." });
+    }
+
+    const genericResponse = {
+        success: true,
+        message: "If that email is registered, a password reset link has been sent."
+    };
+
+    try {
+        const [students] = await db.query(
+            'SELECT student_number FROM students WHERE email = ?',
+            [email.trim().toLowerCase()]
+        );
+
+        if (students.length === 0) {
+            return res.json(genericResponse);
+        }
+
+        const student_number = students[0].student_number;
+
+        // Invalidate any earlier unused link for this student first, so
+        // only the most recently requested email can ever work — avoids a
+        // confusing situation where two old emails are both still "live".
+        await db.query(
+            'DELETE FROM password_reset_tokens WHERE student_number = ? AND used_at IS NULL',
+            [student_number]
+        );
+
+        const { token, tokenHash, expiresAt } = generateResetToken();
+        await db.query(
+            'INSERT INTO password_reset_tokens (student_number, token_hash, expires_at) VALUES (?, ?, ?)',
+            [student_number, tokenHash, expiresAt]
+        );
+
+        const resetLink = `${RESET_BASE_URL}/reset-password.html?token=${token}`;
+
+        await transporter.sendMail({
+            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+            to: email.trim().toLowerCase(),
+            subject: 'Reset your eDiwa Library password',
+            html: `
+                <p>We received a request to reset your eDiwa Library password.</p>
+                <p><a href="${resetLink}">Click here to reset your password</a></p>
+                <p>This link is valid for 30 minutes and can only be used once.
+                If you didn't request this, you can safely ignore this email.</p>
+            `,
+        });
+
+        res.json(genericResponse);
+    } catch (err) {
+        console.error("Forgot password error:", err.message);
+        // Still return the generic message even on internal failure — a
+        // distinct error response here would itself leak whether the
+        // email exists, defeating the point of the generic message above.
+        res.json(genericResponse);
+    }
+});
+
+// FORGOT PASSWORD — step 2: the reset-password.html page (opened from the
+// email link) posts here with the raw token + new password. Token must be
+// unused and unexpired; it's marked used immediately after a successful
+// reset so the same link can never work twice.
+app.post('/api/student/reset-password', async (req, res) => {
+    const { token, new_password } = req.body;
+    if (!token || !new_password) {
+        return res.status(400).json({ message: "Missing token or new password." });
+    }
+    if (new_password.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters." });
+    }
+
+    try {
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const [rows] = await db.query(
+            'SELECT * FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()',
+            [tokenHash]
+        );
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: "This reset link is invalid or has expired. Please request a new one." });
+        }
+
+        const resetRequest = rows[0];
+        const hashedPassword = await bcrypt.hash(new_password, 10);
+
+        await db.query('UPDATE students SET password = ? WHERE student_number = ?', [hashedPassword, resetRequest.student_number]);
+        await db.query('UPDATE password_reset_tokens SET used_at = NOW() WHERE token_id = ?', [resetRequest.token_id]);
+
+        res.json({ success: true, message: "Password reset successfully. You can now log in with your new password." });
+    } catch (err) {
+        console.error("Reset password error:", err.message);
+        res.status(500).json({ message: "Something went wrong. Please try again." });
     }
 });
 
@@ -805,6 +946,17 @@ app.patch('/api/guests/exit/:guest_log_id', verifyToken, async (req, res) => {
     try {
         await db.query('UPDATE guest_logs SET time_out = NOW(), status = "exited" WHERE guest_log_id = ?', [guest_log_id]);
         res.json({ success: true, message: "Guest marked as exited." });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/guests/live-count', async (req, res) => {
+    try {
+        const [[{ count }]] = await db.query(
+            'SELECT COUNT(*) as count FROM guest_logs WHERE status = "inside"'
+        );
+        res.json({ count });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

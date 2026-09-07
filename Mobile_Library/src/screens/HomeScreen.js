@@ -13,8 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
-
-const API_URL = 'http://192.168.1.53:5000';
+import { API_URL } from '../config';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -28,6 +27,24 @@ const formatStayRange = (hrs) => {
   if (!hrs || hrs <= 0) return '--';
   const lower = Math.floor(hrs);
   return `${lower} - ${lower + 1} Hrs`;
+};
+
+// "Kyla P." style greeting name — first name plus the surname's initial.
+// Prefers the structured first_name/surname fields (reliable), and only
+// falls back to splitting full_name for older records that predate those
+// columns — same fallback pattern used elsewhere for legacy student rows.
+const getDisplayName = (student) => {
+  if (!student) return 'Student';
+
+  if (student.first_name && student.surname) {
+    return `${student.first_name} ${student.surname.charAt(0).toUpperCase()}.`;
+  }
+
+  const full = (student.full_name || '').trim();
+  if (!full) return 'Student';
+  const parts = full.split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 };
 
 export default function HomeScreen({ navigation }) {
@@ -52,20 +69,6 @@ export default function HomeScreen({ navigation }) {
     if (hour < 12) return 'Good Morning!';
     if (hour < 18) return 'Good Afternoon!';
     return 'Good Evening!';
-  };
-
-  const getDisplayName = (student) => {
-    if (!student) return 'Student';
-
-    if (student.first_name && student.surname) {
-      return `${student.first_name} ${student.surname.charAt(0).toUpperCase()}.`;
-    }
-
-    const full = (student.full_name || '').trim();
-    if (!full) return 'Student';
-    const parts = full.split(/\s+/);
-    if (parts.length === 1) return parts[0];
-    return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
   };
 
   const fetchProfileData = async (isInitial = false) => {

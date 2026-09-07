@@ -17,8 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-
-const API_URL = 'http://192.168.1.53:5000';
+import { API_URL } from '../config';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -143,7 +142,15 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={{ height: 28 }} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ForgotPassword')}
+            style={styles.forgotLink}
+            hitSlop={8}
+          >
+            <Text style={styles.forgotLinkText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 20 }} />
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -257,6 +264,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingVertical: 0,
   },
+
+  forgotLink: { alignSelf: 'flex-end', marginTop: 10 },
+  forgotLinkText: { fontSize: 12.5, fontWeight: '600', color: colors.primary },
 
   button: {
     width: '100%',

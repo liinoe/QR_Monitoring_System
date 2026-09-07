@@ -71,7 +71,6 @@ const Scanner = () => {
 
     const COLLEGE_ACRONYMS = {
         "college of agriculture, food, environment, and natural resources": "CAFENR",
-        "college of agriculture, forestry, environment and natural resources": "CAFENR",
         "college of arts and sciences": "CAS",
         "college of criminal justice": "CCJ",
         "college of education": "CED",
@@ -82,6 +81,8 @@ const Scanner = () => {
         "college of sports, physical education and recreation": "CSPEAR",
         "college of tourism and hospitality management": "CTHM",
         "college of veterinary medicine and biomedical sciences": "CVMBS",
+        'college of medicine': 'COM',
+        'college of advanced and professional studies': 'CAPS',
     };
 
     const toAcronym = (college) => {
@@ -110,9 +111,9 @@ const Scanner = () => {
 
     const fetchGuestsInside = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/guests/all`);
+            const response = await fetch(`${API_URL}/api/guests/live-count`);
             const data = await response.json();
-            setGuestsInside(data.filter(g => g.status === 'inside').length);
+            setGuestsInside(data.count);
         } catch (err) {
             console.error("Guest fetch error:", err);
         }
@@ -214,6 +215,8 @@ const Scanner = () => {
         { id: 'CTHM',   color: '#f97316' },
         { id: 'CED',    color: '#2563eb' },
         { id: 'CVMBS',  color: '#ec4899' },
+        { id: 'COM',    color: '#' },
+        { id: 'CAPS',  color: '#' },
     ];
 
     const formatTime = (date) =>
