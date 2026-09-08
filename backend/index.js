@@ -85,17 +85,17 @@ const STUDENT_EDITABLE_FIELDS = [
 // back to a manual "Custom" entry in that case.
 function computeNextPeriods(current) {
     if (!current) return [];
-    const m = current.match(/^(1st|2nd|Summer)\s+Semester?\s*A\.Y\.\s+(\d{4})-(\d{4})$/i);
+    const m = current.match(/^(1st Semester|2nd Semester|Summer)\s+A\.Y\.\s+(\d{4})-(\d{4})$/i);
     if (!m) return [];
     const [, termRaw, startYear, endYear] = m;
     const sy = parseInt(startYear, 10);
     const ey = parseInt(endYear, 10);
     const term = termRaw.toLowerCase();
 
-    if (term === '1st') {
+    if (term === '1st semester') {
         return [`2nd Semester A.Y. ${sy}-${ey}`];
     }
-    if (term === '2nd') {
+    if (term === '2nd semester') {
         return [
             `Summer A.Y. ${sy}-${ey}`,
             `1st Semester A.Y. ${sy + 1}-${ey + 1}`,
