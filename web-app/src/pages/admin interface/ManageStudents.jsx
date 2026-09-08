@@ -7,7 +7,7 @@ import { colleges, programsByCollege, yearLevels } from "../../data/options";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_ACRONYMS = {
-  "college of agriculture, food, environment, and natural resources": "CAFENR",
+  "college of agriculture, food, environment and natural resources": "CAFENR",
   "college of arts and sciences": "CAS",
   "college of criminal justice": "CCJ",
   "college of education": "CED",

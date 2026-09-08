@@ -680,8 +680,18 @@ app.post('/api/admin/login', async (req, res) => {
             return res.status(401).json({ message: "Incorrect password." });
         }
 
+        // A fresh session_id on every login is what enforces single-session:
+        // this overwrites whatever session_id was active before, so any
+        // other device still holding the old token will fail the
+        // verifyToken check on its very next request.
+        const session_id = crypto.randomUUID();
+        await db.query(
+            'UPDATE admins SET current_session_id = ?, session_created_at = NOW() WHERE admin_id = ?',
+            [session_id, admin.admin_id]
+        );
+
         const token = jwt.sign(
-            { admin_id: admin.admin_id, role: admin.role, name: admin.name },
+            { admin_id: admin.admin_id, role: admin.role, name: admin.name, session_id },
             process.env.JWT_SECRET,
             { expiresIn: '8h' }
         );
