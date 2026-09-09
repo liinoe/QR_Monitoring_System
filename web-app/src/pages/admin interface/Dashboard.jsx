@@ -135,8 +135,14 @@ const Dashboard = () => {
     return days.map((day, i) => ({ name: day, count: counts[i] }));
   };
 
+  // COLLEGE PIE CHART - filters logs strictly to the current week (Sun-Sat range)
   const getCollegeData = () => {
+    const { start, end } = getWeekRange(new Date());
     const counts = logs.reduce((acc, log) => {
+      if (!log.visit_date) return acc;
+      const d = new Date(log.visit_date);
+      if (isNaN(d) || d < start || d > end) return acc;
+
       const code = toAcronym(log.college);
       if (code) acc[code] = (acc[code] || 0) + 1;
       return acc;
@@ -147,17 +153,17 @@ const Dashboard = () => {
   const collegeData = getCollegeData();
   const totalCollegeVisitors = collegeData.reduce((sum, c) => sum + c.value, 0);
 
-  // Merge students + guests into one recent-activity feed, most recent first
+  // Merge entry/exit logs + guests into one recent-activity feed (excluding registration requests), most recent first
   const recentActivity = [
     ...logs.map(l => ({
-      name: l.full_name || "Unknown",
+      identifier: l.student_number || "Unknown",
       detail: l.program || "Student",
       status: l.status,
       time_in: l.time_in,
       isGuest: false,
     })),
     ...guestLogs.map(g => ({
-      name: g.full_name || "Unknown",
+      identifier: g.full_name || "Unknown",
       detail: g.guest_type ? `Guest - ${g.guest_type.charAt(0).toUpperCase() + g.guest_type.slice(1)}` : "Guest",
       status: g.status,
       time_in: g.time_in,
@@ -243,10 +249,10 @@ const Dashboard = () => {
             </div>
 
             <div className="bg-white rounded-[10px] p-[20px] h-[300px]">
-              <p className="text-sm text-gray-500 mb-4">Visitors by College <span className="text-gray-400 font-normal">(students only)</span></p>
+              <p className="text-sm text-gray-500 mb-4">Visitors by College <span className="text-gray-400 font-normal">( this week )</span></p>
               {totalCollegeVisitors === 0 ? (
                 <div className="h-[80%] flex items-center justify-center text-sm text-gray-400">
-                  No college data yet
+                  No college data this week
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="80%">
@@ -273,7 +279,7 @@ const Dashboard = () => {
           <div className="mt-[20px] bg-white rounded-[10px] p-[20px] w-full shadow-sm">
             <p className="text-[#333] font-semibold mb-[20px]">Recent Activity</p>
             <div className="grid grid-cols-4 gap-4 text-xs font-semibold text-gray-400 uppercase mb-3 px-2">
-              <span>Name</span>
+              <span>Student No.</span>
               <span>Program</span>
               <span>Status</span>
               <span>Time</span>
@@ -286,7 +292,7 @@ const Dashboard = () => {
               recentActivity.map((item, i) => (
                 <div key={i} className="grid grid-cols-4 gap-4 items-center p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-100 last:border-0">
                   <p className="text-gray-800 font-medium flex items-center gap-2">
-                    {item.name}
+                    {item.identifier}
                     {item.isGuest && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">GUEST</span>
                     )}

@@ -18,7 +18,7 @@ const StudentLogs = () => {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
-    return `${now.getFullYear()}-${mm}`; // "YYYY-MM"
+    return `${now.getFullYear()}-${mm}`; 
   });
 
   const fetchLogs = async () => {
@@ -37,42 +37,31 @@ const StudentLogs = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleDelete = async (log_id) => {
-    const reason = prompt("Enter the reason for deleting this log entry:");
-    if (reason !== null && reason.trim() !== "") {
+  // BULK FORCE EXIT FUNCTION
+  const handleForceExitAll = async () => {
+    const confirm = window.confirm(`Are you sure you want to force exit all ${currentlyInside} currently active student(s)? This is usually done at library closing time.`);
+    if (confirm) {
       try {
-        // this endpoint requires super_admin — a regular admin will get
-        // a 403 here, which is expected.
-        const response = await authFetch(`${API_URL}/api/logs/delete/${log_id}`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason })
+        const response = await authFetch(`${API_URL}/api/logs/force-exit-all`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' }
         });
+        const data = await response.json();
         if (response.ok) {
-          fetchLogs();
+          alert(data.message);
+          fetchLogs(); // Refresh the table to show the new exits
         } else {
-          const data = await response.json();
-          alert(data.message || "Failed to delete log.");
+          alert(data.message || "Failed to force exit logs.");
         }
       } catch (error) {
-        console.error("Delete error:", error);
+        console.error("Force exit error:", error);
       }
     }
   };
 
   const collegeOptions = [
-    "CAFENR",
-    "CAS",
-    "CCJ",
-    "CED",
-    "CEIT",
-    "CEMDS",
-    "CON",
-    "CSPEAR",
-    "CTHM",
-    "CVMBS",
-    "COM",
-    "CAPS"
+    "CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", 
+    "CON", "CSPEAR", "CTHM", "CVMBS", "COM", "CAPS"
   ];
 
   const COLLEGE_ACRONYMS = {
@@ -98,7 +87,6 @@ const StudentLogs = () => {
     return COLLEGE_ACRONYMS[key] || college;
   };
 
-  // DATE RANGE HELPER
   const isWithinDateFilter = (log) => {
     if (dateFilter === "All Time") return true;
     if (!log.visit_date) return false;
@@ -111,12 +99,10 @@ const StudentLogs = () => {
     }
 
     if (dateFilter === "This Week") {
-      // Start of week (Sunday) at 00:00:00
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - now.getDay());
       startOfWeek.setHours(0, 0, 0, 0);
 
-      // End of week (Saturday) at 23:59:59
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 6);
       endOfWeek.setHours(23, 59, 59, 999);
@@ -135,16 +121,16 @@ const StudentLogs = () => {
     return true;
   };
 
-  // FILTER
   const filteredData = logs.filter(log => {
     const matchesSearch = (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (log.student_number || "").includes(searchTerm);
     const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;
-    const matchesStatus = statusFilter === "All Status" || (statusFilter === "Active" && log.status === "inside") || (statusFilter === "Inactive" && log.status === "exited");
+    const matchesStatus = statusFilter === "All Status" || 
+                          (statusFilter === "Active" && log.status === "inside") || 
+                          (statusFilter === "Inactive" && log.status === "exited");
     const matchesDate = isWithinDateFilter(log);
     return matchesSearch && matchesCollege && matchesStatus && matchesDate;
   });
 
-  // STATS CALCULATIONS — all derived from filteredData so cards react to college, status, search, and date filters
   const totalFiltered = filteredData.length;
   const currentlyInside = filteredData.filter(l => l.status === 'inside').length;
   const totalExits = filteredData.filter(l => l.status === 'exited').length;
@@ -153,7 +139,6 @@ const StudentLogs = () => {
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
 
-  // Labels/subtitles for the first two cards, matching the active date filter
   const dateSuffix = {
     "All Time": "",
     "Today": " today",
@@ -177,12 +162,23 @@ const StudentLogs = () => {
       <div className="flex flex-1">
         <Sidebar />
         <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
-          <div className="flex justify-between items-center text-[#666] text-[16px]">
-            <p>All library entry and exit records.</p>
-            <p>1st Semester A.Y. 2025-2026</p>
+          
+          {/* HEADER SECTION WITH BULK ACTION BUTTON */}
+          <div className="flex justify-between items-start text-[#666] text-[16px]">
+            <div>
+              <p>Students library entry and exit records.</p>
+              <p>1st Semester A.Y. 2025-2026</p>
+            </div>
+            {currentlyInside > 0 && (
+              <button 
+                onClick={handleForceExitAll} 
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
+              >
+                Force Exit All Active ({currentlyInside})
+              </button>
+            )}
           </div>
 
-          {/* DYNAMIC CARDS */}
           <div className="grid grid-cols-4 gap-[20px]">
             <Card title={`Total logs${dateSuffix}`} value={totalFiltered} subtitle={periodSubtitle} color="text-green-700" border="border-green-700" />
             <Card title="Currently Inside" value={currentlyInside} subtitle="Live status" color="text-blue-700" border="border-blue-700" />
@@ -190,7 +186,6 @@ const StudentLogs = () => {
             <Card title="Avg. Stay Duration" value={`${avgStay} hr`} subtitle="Based on exits" color="text-emerald-700" border="border-emerald-700" />
           </div>
 
-          {/* SEARCH AND FILTERS */}
           <div className="flex justify-between items-center">
             <div className="relative">
               <input type="text" placeholder="Search by name or student no..." className="pl-10 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -204,8 +199,8 @@ const StudentLogs = () => {
               </select>
               <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option>All Status</option>
-                <option value="Active">Active / Entry</option>
-                <option value="Inactive">Inactive / Exit</option>
+                <option value="Active">Active / Inside</option>
+                <option value="Inactive">Inactive / Exited</option>
               </select>
               <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
                 {DATE_OPTIONS.map((option) => (
@@ -229,13 +224,11 @@ const StudentLogs = () => {
 
           <StudentLogTable data={filteredData.map(log => ({
             studentNo: log.student_number || "---",
-            name: log.full_name || "Unknown",
             college: toAcronym(log.college),
             date: log.visit_date ? new Date(log.visit_date).toLocaleDateString() : "---",
-            time: log.time_in ? new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "---",
-            type: log.status === 'inside' ? 'Entry' : 'Exit',
-            status: log.status === 'inside' ? 'Active' : 'Inactive',
-            action: <button onClick={() => handleDelete(log.log_id)} className="text-red-500 font-bold hover:text-red-700">Delete</button>
+            timeIn: log.time_in ? new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "---",
+            timeOut: log.time_out ? new Date(log.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "---",
+            status: log.status === 'inside' ? 'Active' : 'Inactive'
           }))} />
         </div>
       </div>

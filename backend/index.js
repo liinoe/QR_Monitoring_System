@@ -250,12 +250,7 @@ app.post('/api/renew', async (req, res) => {
         const student = existing[0];
         const currentPeriod = await getCurrentPeriod();
 
-        if (student.registered_period === currentPeriod) {
-            return res.status(400).json({
-                message: `You're already registered for ${currentPeriod}. Renewal opens next semester.`
-            });
-        }
-
+        // Update student record
         await db.query(
             `UPDATE students SET
                 college = ?, program = ?, year_level = ?,
@@ -264,16 +259,12 @@ app.post('/api/renew', async (req, res) => {
             [college, program, year_level, currentPeriod, student_number]
         );
 
+        // Update the active pending registration request for this period with the submitted academic info
         await db.query(
-            `INSERT INTO registration_requests (
-                full_name, surname, first_name, middle_name,
-                email, phone_number, address, sex,
-                student_number, college, program, year_level, period,
-                approval_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
-            [student.full_name, student.surname, student.first_name, student.middle_name,
-             student.email, student.phone_number, student.address, student.sex,
-             student_number, college, program, year_level, currentPeriod]
+            `UPDATE registration_requests 
+             SET college = ?, program = ?, year_level = ?, created_at = NOW()
+             WHERE student_number = ? AND period = ? AND approval_status = "pending"`,
+            [college, program, year_level, student_number, currentPeriod]
         );
 
         res.status(201).json({ message: "Renewal submitted! Please wait for admin approval." });
@@ -596,6 +587,22 @@ app.get('/api/logs/all', verifyToken, async (req, res) => {
     }
 });
 
+// FORCE EXIT ALL ACTIVE LOGS (Bulk action for closing time)
+app.patch('/api/logs/force-exit-all', verifyToken, async (req, res) => {
+    try {
+        const [result] = await db.query(
+            'UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE status = "inside"'
+        );
+        res.json({ 
+            success: true, 
+            message: `Successfully forced exit for ${result.affectedRows} student(s).` 
+        });
+    } catch (err) {
+        console.error("Force exit all error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // STUDENT LOGIN — mobile app, separate from admin login
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
@@ -841,8 +848,6 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
         const currentPeriod = await getCurrentPeriod();
         const validOptions = computeNextPeriods(currentPeriod);
 
-        // Only enforce the computed options when we could actually parse the
-        // current period and the admin didn't explicitly pick "Custom".
         if (!is_custom && validOptions.length > 0 && !validOptions.includes(trimmed)) {
             return res.status(400).json({
                 message: "That doesn't match an expected next period. Use 'Custom' if this is intentional."
@@ -854,13 +859,36 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
             [trimmed]
         );
 
+        // Fetch approved students before updating status
+        const [approvedStudents] = await db.query(
+            'SELECT * FROM students WHERE status = "approved"'
+        );
+
+        // Flip status to pending and clear QR
         const [result] = await db.query(
             'UPDATE students SET status = "pending", qr_code = NULL WHERE status = "approved"'
         );
 
+        // Insert a pending renewal request row for the new period (academic info starts blank until mobile submission)
+        for (const student of approvedStudents) {
+            await db.query(
+                `INSERT INTO registration_requests (
+                    full_name, surname, first_name, middle_name,
+                    email, phone_number, address, sex,
+                    student_number, college, program, year_level, period,
+                    approval_status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, "pending", NOW())`,
+                [
+                    student.full_name, student.surname, student.first_name, student.middle_name,
+                    student.email, student.phone_number, student.address, student.sex,
+                    student.student_number, trimmed
+                ]
+            );
+        }
+
         res.json({
             success: true,
-            message: `New semester started: ${trimmed}. ${result.affectedRows} student(s) will need to renew.`,
+            message: `New semester started: ${trimmed}. ${result.affectedRows} student(s) set to pending renewal.`,
             affected_count: result.affectedRows,
         });
     } catch (err) {
@@ -868,6 +896,7 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
         res.status(500).json({ error: err.message });
     }
 });
+
 app.get('/api/student/profile/:student_number', async (req, res) => {
     const { student_number } = req.params;
 
@@ -897,12 +926,14 @@ app.get('/api/logs/live-board', async (req, res) => {
     }
 });
 
-// DELETE log entry
-app.delete('/api/logs/delete/:log_id', verifyToken, requireSuperAdmin, async (req, res) => {
+// VOID log entry (Soft Delete)
+app.patch('/api/logs/void/:log_id', verifyToken, requireSuperAdmin, async (req, res) => {
     const { log_id } = req.params;
+    const { reason } = req.body;
     try {
-        await db.query('DELETE FROM student_logs WHERE log_id = ?', [log_id]);
-        res.json({ success: true, message: "Log deleted successfully." });
+        // You could also create a 'void_reason' column in student_logs to store the reason provided from the frontend
+        await db.query('UPDATE student_logs SET status = "voided" WHERE log_id = ?', [log_id]);
+        res.json({ success: true, message: "Log voided successfully." });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -981,7 +1012,7 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
         const user_id = students[0].user_id;
 
         const [myLogs] = await db.query(
-            'SELECT time_in, time_out, visit_date FROM student_logs WHERE user_id = ?',
+            'SELECT time_in, time_out, visit_date FROM student_logs WHERE user_id = ? AND status != "voided"',
             [user_id]
         );
 

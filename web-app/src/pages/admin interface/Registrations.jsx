@@ -10,9 +10,6 @@ import { collegeAcronyms, toCollegeAcronym } from "../../data/options";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// Filter dropdown options are derived from the same collegeAcronyms map
-// used for display — one source of truth, so the filter can never fall
-// out of sync with what's actually rendered in the table.
 const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 
 const STATUS_TABS = ["All", "Pending", "Approved", "Rejected", "Deactivated"];
@@ -36,16 +33,14 @@ const DEACTIVATE_REASONS = [
 const Registrations = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPeriod, setCurrentPeriod] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-
-  // Holds which item is currently being rejected/deactivated, so the
-  // ReasonModal knows what it's acting on. null = modal closed.
-  const [pendingAction, setPendingAction] = useState(null); // { type: 'reject'|'deactivate', request_id, student_number }
-  const [selectedRequest, setSelectedRequest] = useState(null); // full row for the details modal, null = closed
+  const [pendingAction, setPendingAction] = useState(null); 
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   const fetchRegistrations = async () => {
     try {
@@ -56,14 +51,23 @@ const Registrations = () => {
     } catch (err) { setLoading(false); }
   };
 
-  useEffect(() => { fetchRegistrations(); }, []);
+  const fetchCurrentPeriod = async () => {
+    try {
+      const response = await authFetch(`${API_URL}/api/settings/current-period`);
+      const data = await response.json();
+      if (data.current_period) {
+        setCurrentPeriod(data.current_period);
+      }
+    } catch (err) {
+      console.error("Failed to fetch current period");
+    }
+  };
 
-  // registration_requests is an append-only history — every resubmission
-  // or renewal adds a NEW row rather than editing the old one, on purpose
-  // (so a rejection reason isn't lost once the student tries again). This
-  // map finds, per student_number, which single row is their most recent
-  // submission — that's the only row whose status reflects "what's true
-  // right now" and the only one action buttons should apply to.
+  useEffect(() => { 
+    fetchRegistrations(); 
+    fetchCurrentPeriod();
+  }, []);
+
   const latestRequestByStudent = useMemo(() => {
     const map = {};
     for (const req of requests) {
@@ -115,8 +119,6 @@ const Registrations = () => {
     }
   };
 
-  // Reject and Deactivate no longer act immediately — they open the reason
-  // modal, and the actual API call happens in handleConfirmReason below.
   const openReject = (id) => setPendingAction({ type: 'reject', request_id: id });
   const openDeactivate = (id, studentNumber) => setPendingAction({ type: 'deactivate', request_id: id, student_number: studentNumber });
 
@@ -152,15 +154,18 @@ const Registrations = () => {
     }
   };
 
-  // FILTER
   const filteredRequests = requests.filter((req) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       (req.full_name || "").toLowerCase().includes(term) ||
       (req.student_number || "").includes(searchTerm);
 
+    const studentRequests = requests.filter(r => r.student_number === req.student_number);
+    const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
+    const effectiveStatus = (req.approval_status === "pending" && isRenewal) ? "pending renewal" : req.approval_status;
+
     const matchesStatus =
-      statusFilter === "All" || req.approval_status === statusFilter.toLowerCase();
+      statusFilter === "All" || effectiveStatus === statusFilter.toLowerCase();
 
     const matchesCollege =
       collegeFilter === "All Colleges" || toCollegeAcronym(req.college) === collegeFilter;
@@ -191,7 +196,6 @@ const Registrations = () => {
             <Card title="Total Requests" value={requests.length} color="text-[#225276]" border="border-[#225276]" />
           </div>
 
-          {/* SEARCH AND FILTERS */}
           <div className="flex justify-between items-center flex-wrap gap-3">
             <input
               type="text"
@@ -229,7 +233,6 @@ const Registrations = () => {
             </select>
           </div>
 
-          {/* TABLE */}
           <div className="responsive-table-container bg-white rounded-[10px] border overflow-hidden shadow-sm">
             <table className="responsive-table w-full text-sm">
               <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
@@ -244,24 +247,44 @@ const Registrations = () => {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Loading...</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-gray-400">Loading...</td></tr>
                 ) : filteredRequests.length === 0 ? (
-                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">No registrations match your filters.</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-gray-400">No registrations match your filters.</td></tr>
                 ) : (
                   paginatedRequests.map((req) => {
                     const latest = latestRequestByStudent[req.student_number];
                     const isLatest = latest?.request_id === req.request_id;
+                    
+                    const studentRequests = requests.filter(r => r.student_number === req.student_number);
+                    const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
+
+                    let displayStatus = req.approval_status;
+                    if (req.approval_status === "pending") {
+                      if (req.period === currentPeriod) {
+                        displayStatus = isRenewal ? "pending renewal" : "pending";
+                      } else {
+                        displayStatus = "expired / unapproved"; // Or "pending (past term)"
+                      }
+                    }
+
+                    const displayName = req.first_name && req.surname
+                      ? (req.middle_name 
+                          ? `${req.first_name} ${req.middle_name.charAt(0).toUpperCase()}. ${req.surname}` 
+                          : `${req.first_name} ${req.surname}`)
+                      : req.full_name;
+
                     return (
                       <RegistrationItem
                         key={req.request_id}
                         studentNumber={req.student_number}
-                        name={req.full_name}
+                        name={displayName}
                         email={req.email}
                         college={toCollegeAcronym(req.college)}
                         program={req.program}
-                        status={req.approval_status}
+                        period={req.period}
+                        status={displayStatus}
                         isLatest={isLatest}
-                        currentStatus={latest?.approval_status}
+                        currentStatus={latest?.approval_status === 'pending' && isRenewal ? 'pending renewal' : latest?.approval_status}
                         onRowClick={() => setSelectedRequest(req)}
                         onApprove={() => handleApprove(req.request_id)}
                         onReject={() => openReject(req.request_id)}
@@ -275,7 +298,6 @@ const Registrations = () => {
             </table>
           </div>
 
-          {/* PAGINATION FOOTER */}
           {!loading && filteredRequests.length > 0 && (
             <div className="flex items-center justify-between pt-2">
               <select
@@ -319,6 +341,8 @@ const Registrations = () => {
       <StudentDetailsModal
         visible={!!selectedRequest}
         request={selectedRequest}
+        currentPeriod={currentPeriod}
+        allRequests={requests}
         onClose={() => setSelectedRequest(null)}
       />
 

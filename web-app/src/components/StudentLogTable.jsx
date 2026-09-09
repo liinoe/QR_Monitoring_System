@@ -17,13 +17,11 @@ const StudentLogTable = ({ data = [] }) => {
           <tr>
             <th className="p-4 text-left font-semibold">No.</th>
             <th className="p-4 text-left font-semibold">Student No.</th>
-            <th className="p-4 text-left font-semibold">Name</th>
             <th className="p-4 text-left font-semibold">College</th>
             <th className="p-4 text-left font-semibold">Date</th>
-            <th className="p-4 text-left font-semibold">Time</th>
-            <th className="p-4 text-left font-semibold">Type</th>
+            <th className="p-4 text-left font-semibold">Time In</th>
+            <th className="p-4 text-left font-semibold">Time Out</th>
             <th className="p-4 text-left font-semibold">Status</th>
-            <th className="p-4 text-left font-semibold">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -31,22 +29,16 @@ const StudentLogTable = ({ data = [] }) => {
             <tr key={index} className="border-b hover:bg-gray-50 transition-colors">
               <td className="p-4 text-gray-600">{startIndex + index + 1}</td>
               <td className="p-4 text-gray-700 font-medium">{item.studentNo}</td>
-              <td className="p-4 text-gray-700">{item.name}</td>
               <td className="p-4 text-gray-600">{item.college}</td>
               <td className="p-4 text-gray-600">{item.date}</td>
-              <td className="p-4 text-gray-600">{item.time}</td>
-              <td className="p-4">
-                <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${item.type === 'Entry' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEF9C3] text-[#713F12]'}`}>
-                  {item.type}
-                </span>
-              </td>
+              <td className="p-4 text-gray-600">{item.timeIn}</td>
+              <td className="p-4 text-gray-600">{item.timeOut}</td>
               <td className="p-4">
                 <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 w-fit ${item.status === 'Active' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEE2E2] text-[#991B1B]'}`}>
                   <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'Active' ? 'bg-[#166534]' : 'bg-[#991B1B]'}`} />
                   {item.status}
                 </span>
               </td>
-              <td className="p-4">{item.action}</td>
             </tr>
           ))}
         </tbody>

@@ -8,6 +8,8 @@ const SEX_LABELS = {
 
 const STATUS_COLORS = {
      pending: "bg-yellow-100 text-yellow-700",
+     "pending renewal": "bg-orange-100 text-orange-700",
+     "expired / unapproved": "bg-gray-200 text-gray-600",
      approved: "bg-green-100 text-green-700",
      rejected: "bg-red-100 text-red-700",
      deactivated: "bg-gray-200 text-gray-600",
@@ -26,10 +28,7 @@ const DetailRow = ({ label, value }) => (
      </div>
 );
 
-// Renders everything the student submitted through the mobile app's
-// registration form, exactly as it came in — so an admin has full context
-// (not just name/college/program) before deciding to approve or reject.
-const StudentDetailsModal = ({ visible, request, onClose }) => {
+const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = [], onClose }) => {
      if (!visible || !request) return null;
 
      const {
@@ -39,6 +38,19 @@ const StudentDetailsModal = ({ visible, request, onClose }) => {
      approval_status, reason, created_at, approved_at,
      } = request;
 
+     // Compute the same display status used in the table
+     const studentRequests = allRequests.filter(r => r.student_number === student_number);
+     const isRenewal = studentRequests.length > 1 && period === currentPeriod;
+
+     let displayStatus = approval_status;
+     if (approval_status === "pending") {
+       if (period === currentPeriod) {
+         displayStatus = isRenewal ? "pending renewal" : "pending";
+       } else {
+         displayStatus = "expired / unapproved";
+       }
+     }
+
      return (
      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[14px] w-full max-w-[600px] max-h-[85vh] overflow-y-auto">
@@ -47,8 +59,8 @@ const StudentDetailsModal = ({ visible, request, onClose }) => {
                <h2 className="text-lg font-bold text-gray-800">{full_name}</h2>
                <p className="text-xs text-gray-400 mt-0.5">Student No. {student_number}</p>
                </div>
-               <span className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 ${STATUS_COLORS[approval_status] || "bg-gray-100"}`}>
-               {approval_status?.toUpperCase()}
+               <span className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 ${STATUS_COLORS[displayStatus] || "bg-gray-100"}`}>
+               {displayStatus?.toUpperCase()}
                </span>
           </div>
 
@@ -74,7 +86,6 @@ const StudentDetailsModal = ({ visible, request, onClose }) => {
                <DetailRow label="College" value={college} />
                <DetailRow label="Program" value={program} />
                <DetailRow label="Year Level" value={year_level} />
-               <DetailRow label="Academic Period" value={period} />
                </div>
                </div>
 

@@ -31,28 +31,6 @@ const toAcronym = (college) => {
 const COLLEGE_FILTER_OPTIONS = Object.values(COLLEGE_ACRONYMS)
   .filter((v, i, arr) => arr.indexOf(v) === i);
 
-// Status badge styling — covers common status values; falls back to gray for anything unrecognized.
-const STATUS_STYLES = {
-
-  approved: "bg-green-100 text-green-800 border border-green-300",
-  rejected: "bg-red-100 text-red-800 border border-red-300",
-  active: "bg-green-100 text-green-800 border border-green-300",
-  inactive: "bg-gray-100 text-gray-600 border border-gray-300",
-};
-
-const StatusBadge = ({ status }) => {
-  const key = (status || "").trim().toLowerCase();
-  const style = STATUS_STYLES[key] || "bg-gray-100 text-gray-600 border border-gray-300";
-  const label = status
-    ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
-    : "Unknown";
-  return (
-    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${style}`}>
-      {label}
-    </span>
-  );
-};
-
 const emptyForm = {
   student_number: "", surname: "", first_name: "", middle_name: "",
   phone_number: "", address: "", sex: "male",
@@ -116,9 +94,6 @@ const ManageStudents = () => {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // Same behavior as RegisterScreen.jsx's updateCollege(): changing the
-  // college clears whatever program was selected, since the old program
-  // may not exist under the new college.
   const handleCollegeChange = (e) => {
     setForm((f) => ({ ...f, college: e.target.value, program: "" }));
   };
@@ -196,32 +171,28 @@ const ManageStudents = () => {
             <table className="responsive-table w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-500 border-b bg-[#FAFAFA]">
-                  <th className="py-3 px-4">Name</th>
                   <th className="py-3 px-4">Student No.</th>
+                  <th className="py-3 px-4">Name</th>
                   <th className="py-3 px-4">College</th>
                   <th className="py-3 px-4">Program</th>
                   <th className="py-3 px-4">Year</th>
-                  <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="py-8 text-center text-gray-400">Loading...</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="py-8 text-center text-gray-400">No students match your filters.</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-gray-400">No students match your filters.</td></tr>
                 ) : (
                   filtered.map((s) => (
                     <tr key={s.student_number} className="border-b last:border-0">
+                      <td className="py-3 px-4 font-medium text-gray-900">{s.student_number}</td>
                       <td className="py-3 px-4">{s.full_name}</td>
-                      <td className="py-3 px-4">{s.student_number}</td>
                       <td className="py-3 px-4">{toAcronym(s.college) || s.college}</td>
                       <td className="py-3 px-4">{s.program}</td>
                       <td className="py-3 px-4">{s.year_level}</td>
-                      <td className="py-3 px-4">
-                        <StatusBadge status={s.status} />
-                      </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 text-right">
                         <button
                           onClick={() => openEdit(s)}
                           className="inline-flex items-center gap-1 bg-[#1B651B] text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-[#165516] active:scale-[0.98] transition"

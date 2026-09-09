@@ -25,7 +25,7 @@ const Header = () => {
             Library Patron Access and Monitoring System
           </h1>
           <p className="text-[11px] text-white opacity-75 mt-0.5">
-            Ladislao N. Diwa Memorial Library and Museum - Cavite State University - Main Campus
+            Ladislao N. Diwa Memorial Library - Cavite State University - Main Campus
           </p>
         </div>
       </div>
