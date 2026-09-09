@@ -5,6 +5,8 @@ import { colors } from '../theme/colors';
 import { PasswordLengthCheck, PasswordMatchCheck } from '../screens/RegisterScreen';
 import { API_URL } from '../config';
 
+import { API_URL } from '../config';
+
 export default function ChangePasswordModal({ visible, onClose, studentNumber }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
