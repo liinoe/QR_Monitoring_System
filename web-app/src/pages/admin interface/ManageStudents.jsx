@@ -29,7 +29,29 @@ const toAcronym = (college) => {
 };
 
 const COLLEGE_FILTER_OPTIONS = Object.values(COLLEGE_ACRONYMS)
-  .filter((v, i, arr) => arr.indexOf(v) === i); 
+  .filter((v, i, arr) => arr.indexOf(v) === i);
+
+// Status badge styling — covers common status values; falls back to gray for anything unrecognized.
+const STATUS_STYLES = {
+
+  approved: "bg-green-100 text-green-800 border border-green-300",
+  rejected: "bg-red-100 text-red-800 border border-red-300",
+  active: "bg-green-100 text-green-800 border border-green-300",
+  inactive: "bg-gray-100 text-gray-600 border border-gray-300",
+};
+
+const StatusBadge = ({ status }) => {
+  const key = (status || "").trim().toLowerCase();
+  const style = STATUS_STYLES[key] || "bg-gray-100 text-gray-600 border border-gray-300";
+  const label = status
+    ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+    : "Unknown";
+  return (
+    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${style}`}>
+      {label}
+    </span>
+  );
+};
 
 const emptyForm = {
   student_number: "", surname: "", first_name: "", middle_name: "",
@@ -42,7 +64,7 @@ const ManageStudents = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
-  const [editing, setEditing] = useState(null); 
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -196,12 +218,17 @@ const ManageStudents = () => {
                       <td className="py-3 px-4">{toAcronym(s.college) || s.college}</td>
                       <td className="py-3 px-4">{s.program}</td>
                       <td className="py-3 px-4">{s.year_level}</td>
-                      <td className="py-3 px-4 capitalize">{s.status}</td>
+                      <td className="py-3 px-4">
+                        <StatusBadge status={s.status} />
+                      </td>
                       <td className="py-3 px-4">
                         <button
                           onClick={() => openEdit(s)}
-                          className="text-[#1B651B] font-medium hover:underline"
+                          className="inline-flex items-center gap-1 bg-[#1B651B] text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-[#165516] active:scale-[0.98] transition"
                         >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                          </svg>
                           Edit
                         </button>
                       </td>
@@ -225,56 +252,84 @@ const ManageStudents = () => {
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-3">
+            <form onSubmit={handleSave} className="space-y-4">
               <div className="grid grid-cols-3 gap-3 student-edit-name-fields">
-                <input name="surname" placeholder="Surname" value={form.surname} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required />
-                <input name="first_name" placeholder="First Name" value={form.first_name} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required />
-                <input name="middle_name" placeholder="Middle Name" value={form.middle_name} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="surname" className="text-xs font-medium text-gray-600">Surname</label>
+                  <input id="surname" name="surname" placeholder="Surname" value={form.surname} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="first_name" className="text-xs font-medium text-gray-600">First Name</label>
+                  <input id="first_name" name="first_name" placeholder="First Name" value={form.first_name} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="middle_name" className="text-xs font-medium text-gray-600">Middle Name</label>
+                  <input id="middle_name" name="middle_name" placeholder="Middle Name" value={form.middle_name} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <input name="phone_number" placeholder="Phone Number" value={form.phone_number} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                <select name="sex" value={form.sex} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="phone_number" className="text-xs font-medium text-gray-600">Phone Number</label>
+                  <input id="phone_number" name="phone_number" placeholder="Phone Number" value={form.phone_number} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="sex" className="text-xs font-medium text-gray-600">Sex</label>
+                  <select id="sex" name="sex" value={form.sex} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
+                </div>
               </div>
 
-              <input name="address" placeholder="Address" value={form.address} onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <div className="flex flex-col gap-1">
+                <label htmlFor="address" className="text-xs font-medium text-gray-600">Address</label>
+                <input id="address" name="address" placeholder="Address" value={form.address} onChange={handleChange}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
 
               <div className="grid grid-cols-3 gap-3 student-edit-academic-fields">
-                <select name="college" value={form.college} onChange={handleCollegeChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required>
-                  <option value="" disabled>Select college</option>
-                  {colleges.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="college" className="text-xs font-medium text-gray-600">College</label>
+                  <select id="college" name="college" value={form.college} onChange={handleCollegeChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required>
+                    <option value="" disabled>Select college</option>
+                    {colleges.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
 
-                <select
-                  name="program"
-                  value={form.program}
-                  onChange={handleChange}
-                  disabled={!form.college}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                  required
-                >
-                  <option value="" disabled>
-                    {form.college ? "Select program" : "Select a college first"}
-                  </option>
-                  {availablePrograms.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="program" className="text-xs font-medium text-gray-600">Program</label>
+                  <select
+                    id="program"
+                    name="program"
+                    value={form.program}
+                    onChange={handleChange}
+                    disabled={!form.college}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                    required
+                  >
+                    <option value="" disabled>
+                      {form.college ? "Select program" : "Select a college first"}
+                    </option>
+                    {availablePrograms.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
 
-                <select name="year_level" value={form.year_level} onChange={handleChange}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required>
-                  <option value="" disabled>Year Level</option>
-                  {yearLevels.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="year_level" className="text-xs font-medium text-gray-600">Year Level</label>
+                  <select id="year_level" name="year_level" value={form.year_level} onChange={handleChange}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required>
+                    <option value="" disabled>Select year level</option>
+                    {yearLevels.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
