@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getAdmin, isSuperAdmin, logout } from "../auth";
 
@@ -7,6 +7,7 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const admin = getAdmin();
   const superAdmin = isSuperAdmin();
+  const [isOpen, setIsOpen] = useState(false);
 
   const menu = [
     { name: "Dashboard", path: "/" },
@@ -24,8 +25,19 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="app-sidebar w-[300px] bg-white flex-shrink-0 flex flex-col justify-between">
-      <div>
+    <aside className={`app-sidebar w-[300px] bg-white flex-shrink-0 flex flex-col justify-between ${isOpen ? "is-open" : ""}`}>
+      <button
+        type="button"
+        className="app-menu-button"
+        aria-expanded={isOpen}
+        aria-controls="admin-navigation"
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <span className="app-menu-icon" aria-hidden="true"><span /><span /><span /></span>
+        <span>Menu</span>
+      </button>
+
+      <div id="admin-navigation" className="app-navigation">
         {menu.map((item, i) => {
           const isActive = location.pathname === item.path;
 
@@ -33,10 +45,11 @@ const Sidebar = () => {
             <Link
               key={i}
               to={item.path}
+              onClick={() => setIsOpen(false)}
               className={`w-full h-[50px] flex items-center pl-[39px] mt-[20px] text-[23px] border-l-[5px] transition-colors duration-150
                 ${
                   isActive
-                    ? "bg-[#F3FAF3] border-[#1B651B] text-[#1B651B] font-medium"
+                    ? "is-active bg-[#F3FAF3] border-[#1B651B] text-[#1B651B] font-medium"
                     : "border-transparent text-[#666] hover:bg-[#F3FAF3] hover:border-[#1B651B] hover:text-[#1B651B]"
                 }`}
             >
@@ -58,7 +71,7 @@ const Sidebar = () => {
           </button>
         </div>
       )}
-    </div>
+    </aside>
   );
 };
 

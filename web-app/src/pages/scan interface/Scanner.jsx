@@ -223,9 +223,9 @@ const Scanner = () => {
         date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#f0f4f0', display: 'flex', flexDirection: 'column', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
+        <div className="scanner-page" style={{ minHeight: '100vh', backgroundColor: '#f0f4f0', display: 'flex', flexDirection: 'column', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
 
-            <div style={{
+            <div className="scanner-header" style={{
                 backgroundColor: '#1B5E20',
                 color: 'white',
                 padding: '0 24px',
@@ -236,7 +236,7 @@ const Scanner = () => {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
                 borderBottom: '3px solid #4CAF50',
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div className="scanner-header-copy" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <img
                         src={logo}
                         alt="CvSU Logo"
@@ -256,7 +256,7 @@ const Scanner = () => {
                 </div>
             </div>
 
-            <div style={{ display: 'flex', flex: 1 }}>
+            <div className="scanner-body" style={{ display: 'flex', flex: 1 }}>
 
                 <ScannerSideBar
                     currentTime={currentTime}
@@ -266,7 +266,7 @@ const Scanner = () => {
                     colleges={colleges}
                 />
 
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: '40px' }}>
+                <div className="scanner-page-main" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: '40px' }}>
                     <div style={{
                         width: '100%',
                         maxWidth: '560px',
@@ -324,7 +324,7 @@ const Scanner = () => {
                                     </span>
                                 </div>
 
-                                <div style={{ flex: 1 }}>
+                                <div className="scanner-result-copy" style={{ flex: 1 }}>
                                     <div style={{ fontSize: '18px', fontWeight: 800, color: status === "error" ? '#b91c1c' : '#111827' }}>
                                         {status === "error" 
                                             ? (scanResult?.full_name || "ACCESS DENIED") 

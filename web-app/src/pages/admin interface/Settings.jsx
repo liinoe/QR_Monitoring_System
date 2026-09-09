@@ -275,7 +275,8 @@ const Settings = () => {
                 </form>
               )}
 
-              <table className="w-full text-sm">
+              <div className="responsive-table-container">
+              <table className="responsive-table settings-staff-table w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-500 border-b">
                     <th className="pb-2">Name</th>
@@ -295,6 +296,7 @@ const Settings = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
