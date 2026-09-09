@@ -195,7 +195,7 @@ const StudentLogs = () => {
             <div className="relative">
               <input type="text" placeholder="Search by name or student no..." className="pl-10 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            <div className="flex gap-3">
+            <div className="student-log-filters flex gap-3 flex-wrap">
               <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
                 <option>All Colleges</option>
                 {collegeOptions.map((college) => (

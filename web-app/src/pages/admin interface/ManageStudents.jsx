@@ -170,8 +170,8 @@ const ManageStudents = () => {
             </select>
           </div>
 
-          <div className="bg-white rounded-[10px] border shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="responsive-table-container bg-white rounded-[10px] border shadow-sm overflow-hidden">
+            <table className="responsive-table w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-500 border-b bg-[#FAFAFA]">
                   <th className="py-3 px-4">Name</th>
@@ -226,7 +226,7 @@ const ManageStudents = () => {
             )}
 
             <form onSubmit={handleSave} className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 student-edit-name-fields">
                 <input name="surname" placeholder="Surname" value={form.surname} onChange={handleChange}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required />
                 <input name="first_name" placeholder="First Name" value={form.first_name} onChange={handleChange}
@@ -249,7 +249,7 @@ const ManageStudents = () => {
               <input name="address" placeholder="Address" value={form.address} onChange={handleChange}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 student-edit-academic-fields">
                 <select name="college" value={form.college} onChange={handleCollegeChange}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm" required>
                   <option value="" disabled>Select college</option>

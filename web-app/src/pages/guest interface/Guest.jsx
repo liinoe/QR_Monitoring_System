@@ -116,7 +116,7 @@ const GuestEntry = () => {
   return (
     <div className="min-h-screen w-screen bg-[#EAF5EA] font-sans flex flex-col">
       {/* HEADER */}
-      <div className="bg-[#1B5E20] text-white px-6 h-[72px] flex items-center justify-between shadow-md border-b-[3px] border-[#F5C518] flex-shrink-0">
+      <div className="guest-header bg-[#1B5E20] text-white px-6 h-[72px] flex items-center justify-between shadow-md border-b-[3px] border-[#F5C518] flex-shrink-0">
         <div className="flex items-center gap-3.5">
           <img src={logo} alt="CvSU Logo" className="w-12 h-12 object-contain flex-shrink-0" />
           <div>
@@ -133,7 +133,7 @@ const GuestEntry = () => {
 
           {/* Welcome Toast */}
           {feedback && feedback.type === "success" && (
-            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-green-200 shadow-lg rounded-xl px-6 py-4 flex items-center gap-3 animate-[fadeIn_0.3s_ease-out]">
+            <div className="guest-toast fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-green-200 shadow-lg rounded-xl px-6 py-4 flex items-center gap-3 animate-[fadeIn_0.3s_ease-out]">
               <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />

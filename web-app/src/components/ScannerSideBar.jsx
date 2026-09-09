@@ -5,7 +5,7 @@ const ScannerSideBar = ({ currentTime, totalInside, guestsInside = 0, boardData 
   const monthDay = currentTime.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   return (
-    <div className="w-[320px] bg-gradient-to-b from-[#EAF5EA] to-[#F3FAF3] p-6 space-y-5 min-h-full">
+    <div className="scanner-sidebar w-[320px] bg-gradient-to-b from-[#EAF5EA] to-[#F3FAF3] p-6 space-y-5 min-h-full">
 
       {/* DATE CARD */}
       <div className="bg-gradient-to-br from-[#1B5E20] to-[#2E7D32] text-white rounded-xl p-6 text-center shadow-lg shadow-green-900/20 relative overflow-hidden">
