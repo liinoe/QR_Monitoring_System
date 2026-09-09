@@ -5,14 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
-import ChangePasswordModal from '../components/ChangePasswordModal';
 import { API_URL } from '../config';
 
 const CHART_MAX_BAR_HEIGHT = 80;
@@ -50,7 +48,6 @@ const getDisplayName = (student) => {
 export default function HomeScreen({ navigation }) {
   const [now, setNow] = useState(new Date());
   const [qrOpen, setQrOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [studentData, setStudentData] = useState(null);
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
@@ -130,19 +127,6 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        onPress: async () => {
-          await AsyncStorage.removeItem('student');
-          navigation.replace('Login');
-        },
-      },
-    ]);
-  };
-
   useEffect(() => {
     fetchProfileData(true);
     fetchAnalytics();
@@ -194,12 +178,8 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.name}>{getDisplayName(studentData)}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
-          <TouchableOpacity onPress={() => setChangePasswordOpen(true)} style={styles.iconBtn}>
-            <Ionicons name="key-outline" size={22} color="#1B5E20" />
-          </TouchableOpacity>
-          <View style={{ width: 10 }} />
-          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn}>
-            <Ionicons name="log-out-outline" size={26} color="#1B5E20" />
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.iconBtn}>
+            <Ionicons name="settings-outline" size={22} color="#1B5E20" />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -323,7 +303,7 @@ export default function HomeScreen({ navigation }) {
           <>
             <View style={styles.kpiRow}>
               <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Live Occupancy</Text>
+                <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
                 <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
                 <Text style={styles.kpiSub}>currently inside the library</Text>
               </View>
@@ -412,12 +392,6 @@ export default function HomeScreen({ navigation }) {
       {isApproved && (
         <QRModal visible={qrOpen} onClose={() => setQrOpen(false)} value={studentData?.qr_code} />
       )}
-
-      <ChangePasswordModal
-        visible={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
-        studentNumber={studentData?.student_number}
-      />
     </View>
   );
 }

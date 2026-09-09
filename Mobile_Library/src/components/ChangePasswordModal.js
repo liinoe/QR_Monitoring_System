@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, Alert, Acti
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { PasswordLengthCheck, PasswordMatchCheck } from '../screens/RegisterScreen';
+import { API_URL } from '../config';
 
 import { API_URL } from '../config';
 
