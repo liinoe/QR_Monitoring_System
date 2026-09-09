@@ -27,8 +27,8 @@ const GuestLogTable = ({ data = [], onMarkExited }) => {
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   return (
-    <div className="bg-white rounded-[10px] border overflow-hidden shadow-sm">
-      <table className="w-full text-sm">
+    <div className="data-table-container bg-white rounded-[10px] border overflow-hidden shadow-sm">
+      <table className="data-table w-full text-sm">
         <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
           <tr>
             <th className="p-4 text-left font-semibold">No.</th>

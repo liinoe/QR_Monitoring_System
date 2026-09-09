@@ -13,7 +13,7 @@ const Header = () => {
     date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
-    <div className="w-full h-[72px] bg-[#1B5E20] border-b-[3px] border-[#F5C518] flex items-center justify-between px-6 flex-shrink-0 shadow-md">
+    <div className="app-header w-full h-[72px] bg-[#1B5E20] border-b-[3px] border-[#F5C518] flex items-center justify-between px-6 flex-shrink-0 shadow-md">
       <div className="flex items-center gap-3.5">
         <img
           src={cvsuLogo}

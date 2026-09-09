@@ -24,7 +24,7 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="w-[300px] bg-white flex-shrink-0 flex flex-col justify-between">
+    <div className="app-sidebar w-[300px] bg-white flex-shrink-0 flex flex-col justify-between">
       <div>
         {menu.map((item, i) => {
           const isActive = location.pathname === item.path;
