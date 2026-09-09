@@ -3,8 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, Alert, Acti
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { PasswordLengthCheck, PasswordMatchCheck } from '../screens/RegisterScreen';
-
-const API_URL = 'http://192.168.1.55:5000';
+import { API_URL } from '../config';
 
 export default function ChangePasswordModal({ visible, onClose, studentNumber }) {
   const [currentPassword, setCurrentPassword] = useState('');
