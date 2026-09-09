@@ -84,6 +84,11 @@ const Registrations = () => {
     [latestRequestByStudent]
   );
 
+  const currentPeriodRequests = useMemo(
+  () => latestRequestsList.filter((req) => req.period === currentPeriod),
+  [latestRequestsList, currentPeriod]
+);
+
   const handleApprove = async (id) => {
     try {
       const response = await authFetch(`${API_URL}/api/admin/approve`, {
@@ -193,12 +198,14 @@ const Registrations = () => {
         <Sidebar />
         <div className="flex-1 px-[50px] pt-[40px] space-y-[20px] pb-[40px]">
           <p className="text-[#666]">Approve, reject, or review pending student registrations.</p>
-
+          <p className="text-sm font-medium text-[#1B651B]">
+            Current Academic Period: {currentPeriod || "Loading..."}
+          </p>
           <div className="grid grid-cols-4 gap-[20px]">
-            <Card title="Pending" value={requests.filter(r => r.approval_status === 'pending').length} color="text-[#E76D22]" border="border-[#E76D22]" />
-            <Card title="Approved" value={requests.filter(r => r.approval_status === 'approved').length} color="text-[#1B651B]" border="border-[#1B651B]" />
-            <Card title="Rejected" value={requests.filter(r => r.approval_status === 'rejected').length} color="text-[#812022]" border="border-[#812022]" />
-            <Card title="Total Requests" value={requests.length} color="text-[#225276]" border="border-[#225276]" />
+            <Card title="Pending" value={currentPeriodRequests.filter(r => r.approval_status === 'pending').length} color="text-[#E76D22]" border="border-[#E76D22]" />
+            <Card title="Approved" value={currentPeriodRequests.filter(r => r.approval_status === 'approved').length} color="text-[#1B651B]" border="border-[#1B651B]" />
+            <Card title="Rejected" value={currentPeriodRequests.filter(r => r.approval_status === 'rejected').length} color="text-[#812022]" border="border-[#812022]" />
+            <Card title="Total Requests" value={currentPeriodRequests.length} color="text-[#225276]" border="border-[#225276]" />
           </div>
 
           <div className="flex justify-between items-center flex-wrap gap-3">
