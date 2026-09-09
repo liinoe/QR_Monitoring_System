@@ -250,7 +250,6 @@ app.post('/api/renew', async (req, res) => {
         const student = existing[0];
         const currentPeriod = await getCurrentPeriod();
 
-        // Update student record
         await db.query(
             `UPDATE students SET
                 college = ?, program = ?, year_level = ?,
@@ -259,13 +258,28 @@ app.post('/api/renew', async (req, res) => {
             [college, program, year_level, currentPeriod, student_number]
         );
 
-        // Update the active pending registration request for this period with the submitted academic info
-        await db.query(
+        const [result] = await db.query(
             `UPDATE registration_requests 
              SET college = ?, program = ?, year_level = ?, created_at = NOW()
              WHERE student_number = ? AND period = ? AND approval_status = "pending"`,
             [college, program, year_level, student_number, currentPeriod]
         );
+
+        // No existing pending row for this period was found to update —
+        // create one now instead of silently doing nothing.
+        if (result.affectedRows === 0) {
+            await db.query(
+                `INSERT INTO registration_requests (
+                    full_name, surname, first_name, middle_name,
+                    email, phone_number, address, sex,
+                    student_number, college, program, year_level, period,
+                    approval_status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                [student.full_name, student.surname, student.first_name, student.middle_name,
+                 student.email, student.phone_number, student.address, student.sex,
+                 student_number, college, program, year_level, currentPeriod]
+            );
+        }
 
         res.status(201).json({ message: "Renewal submitted! Please wait for admin approval." });
     } catch (err) {

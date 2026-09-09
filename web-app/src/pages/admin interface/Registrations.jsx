@@ -12,7 +12,7 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 
-const STATUS_TABS = ["All", "Pending", "Approved", "Rejected", "Deactivated"];
+const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected", "Deactivated"];
 
 const REJECT_REASONS = [
   "Invalid or unreadable student ID/documents",
@@ -78,6 +78,11 @@ const Registrations = () => {
     }
     return map;
   }, [requests]);
+
+  const latestRequestsList = useMemo(
+    () => Object.values(latestRequestByStudent),
+    [latestRequestByStudent]
+  );
 
   const handleApprove = async (id) => {
     try {
@@ -154,7 +159,7 @@ const Registrations = () => {
     }
   };
 
-  const filteredRequests = requests.filter((req) => {
+  const filteredRequests = latestRequestsList.filter((req) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       (req.full_name || "").toLowerCase().includes(term) ||
