@@ -995,6 +995,45 @@ app.get('/api/guests/all', verifyToken, async (req, res) => {
     }
 });
 
+// PUBLIC — lists guests currently inside, for the self-service Guest Logout
+// kiosk screen. Deliberately minimal fields (no affiliation/email-equivalent)
+// since this is publicly viewable, same principle as /api/logs/scan.
+app.get('/api/guests/inside', async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT gl.guest_log_id, g.full_name, g.purpose, g.other_purpose
+            FROM guest_logs gl JOIN guests g ON gl.guest_id = g.guest_id
+            WHERE gl.status = "inside"
+            ORDER BY gl.time_in DESC
+        `);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUBLIC — lets a guest mark themselves as exited from the kiosk, without
+// admin auth. Separate from the existing /api/guests/exit/:guest_log_id
+// (which stays admin-only) so this can't be used to prematurely exit
+// someone else's visit outside the guest's own action, beyond picking
+// their own name off the inside list.
+app.patch('/api/guests/self-exit/:guest_log_id', async (req, res) => {
+    const { guest_log_id } = req.params;
+    try {
+        const [result] = await db.query(
+            'UPDATE guest_logs SET time_out = NOW(), status = "exited" WHERE guest_log_id = ? AND status = "inside"',
+            [guest_log_id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "This visit was already logged out or could not be found." });
+        }
+        res.json({ success: true, message: "You have been logged out. Thank you for visiting!" });
+    } catch (err) {
+        console.error("Guest self-exit error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Guests have no QR to scan out with, so exits are marked manually by an admin.
 app.patch('/api/guests/exit/:guest_log_id', verifyToken, async (req, res) => {
     const { guest_log_id } = req.params;

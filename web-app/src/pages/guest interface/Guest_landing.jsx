@@ -20,12 +20,21 @@ const GuestLanding = () => {
           Please log your visit before entering the premises.
         </p>
 
-        <button
-          onClick={() => navigate("/guest")}
-          className="bg-[#F5C518] hover:bg-[#e0b510] text-[#1B5E20] font-semibold px-8 py-3 rounded-lg text-base transition-colors shadow-md"
-        >
-          Log My Visit →
-        </button>
+        <div className="flex gap-3 mt-2">
+          <button
+            onClick={() => navigate("/guest-logout")}
+            className="bg-transparent border border-white/40 hover:bg-white/10 text-white font-medium px-8 py-3 rounded-lg text-base transition-colors"
+          >
+            Log Out of My Visit
+          </button>
+          
+          <button
+            onClick={() => navigate("/guest")}
+            className="bg-[#F5C518] hover:bg-[#e0b510] text-[#1B5E20] font-semibold px-8 py-3 rounded-lg text-base transition-colors shadow-md"
+          >
+            Log My Visit →
+          </button>
+        </div>
 
         <p className="text-[#A9D6AA] text-[11px] mt-8">
           Your information is recorded securely and used only for library access monitoring.
