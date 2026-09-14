@@ -37,12 +37,25 @@ const GuestLogs = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleMarkExited = async (log_id) => {
-    try {
-      const response = await authFetch(`${API_URL}/api/guests/exit/${log_id}`, { method: 'PATCH' });
-      if (response.ok) fetchLogs();
-    } catch (error) {
-      console.error("Exit error:", error);
+  // BULK FORCE EXIT FUNCTION
+  const handleForceExitAll = async () => {
+    const confirm = window.confirm(`Are you sure you want to force exit all ${currentlyInside} currently active guest(s)? This is usually done at library closing time.`);
+    if (confirm) {
+      try {
+        const response = await authFetch(`${API_URL}/api/guests/force-exit-all`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          alert(data.message || "Successfully logged out all active guests.");
+          fetchLogs(); // Refresh the table to show the new exits
+        } else {
+          alert(data.message || "Failed to force exit logs.");
+        }
+      } catch (error) {
+        console.error("Force exit error:", error);
+      }
     }
   };
 
@@ -139,6 +152,21 @@ const GuestLogs = () => {
         <Sidebar />
         <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
 
+          {/* HEADER SECTION WITH BULK ACTION BUTTON */}
+          <div className="flex justify-between items-start text-[#666] text-[16px]">
+            <div>
+              <p>Guests library entry and exit records.</p>
+            </div>
+            {currentlyInside > 0 && (
+              <button 
+                onClick={handleForceExitAll} 
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
+              >
+                Force Exit All Active ({currentlyInside})
+              </button>
+            )}
+          </div>
+
           {/* KPI CARDS */}
           <div className="grid grid-cols-4 gap-[20px]">
             <Card
@@ -231,7 +259,7 @@ const GuestLogs = () => {
             )}
           </div>
 
-          <GuestLogTable data={filteredData} onMarkExited={handleMarkExited} />
+          <GuestLogTable data={filteredData} />
         </div>
       </div>
     </div>

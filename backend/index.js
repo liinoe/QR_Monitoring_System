@@ -1035,12 +1035,17 @@ app.patch('/api/guests/self-exit/:guest_log_id', async (req, res) => {
 });
 
 // Guests have no QR to scan out with, so exits are marked manually by an admin.
-app.patch('/api/guests/exit/:guest_log_id', verifyToken, async (req, res) => {
-    const { guest_log_id } = req.params;
+app.patch('/api/guests/force-exit-all', verifyToken, async (req, res) => {
     try {
-        await db.query('UPDATE guest_logs SET time_out = NOW(), status = "exited" WHERE guest_log_id = ?', [guest_log_id]);
-        res.json({ success: true, message: "Guest marked as exited." });
+        const [result] = await db.query(
+            'UPDATE guest_logs SET time_out = NOW(), status = "exited" WHERE status = "inside"'
+        );
+        res.json({ 
+            success: true, 
+            message: `Successfully forced exit for ${result.affectedRows} guest(s).` 
+        });
     } catch (err) {
+        console.error("Force exit all guests error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });

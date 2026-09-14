@@ -13,7 +13,7 @@ const formatTypeLabel = (type) => {
   return type.charAt(0).toUpperCase() + type.slice(1);
 };
 
-const GuestLogTable = ({ data = [], onMarkExited }) => {
+const GuestLogTable = ({ data = [] }) => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(data.length / rowsPerPage));
@@ -71,20 +71,10 @@ const GuestLogTable = ({ data = [], onMarkExited }) => {
                     {item.time_out ? new Date(item.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
                   </td>
                   <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 w-fit ${isInside ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEE2E2] text-[#991B1B]'}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${isInside ? 'bg-[#166534]' : 'bg-[#991B1B]'}`} />
-                        {isInside ? 'Inside' : 'Outside'}
-                      </span>
-                      {isInside && onMarkExited && (
-                        <button
-                          onClick={() => onMarkExited(item.guest_log_id)}
-                          className="text-[11px] text-gray-400 hover:text-red-600 hover:underline"
-                        >
-                          Mark exited
-                        </button>
-                      )}
-                    </div>
+                    <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 w-fit ${isInside ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEE2E2] text-[#991B1B]'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isInside ? 'bg-[#166534]' : 'bg-[#991B1B]'}`} />
+                      {isInside ? 'Inside' : 'Outside'}
+                    </span>
                   </td>
                 </tr>
               );

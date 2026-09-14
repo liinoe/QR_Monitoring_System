@@ -200,7 +200,15 @@ const Dashboard = () => {
       <Header />
       <div className="flex flex-1">
         <Sidebar />
-        <div className="flex-1 px-[50px] pt-[40px]">
+        <div className="flex-1 px-[50px] pt-[40px] space-y-[20px]">
+          
+          {/* HEADER SECTION */}
+          <div className="flex justify-between items-start text-[#666] text-[16px]">
+            <div>
+              <p>Here's what happening at the library today.</p>
+            </div>
+          </div>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-4 gap-[20px]">
             <Card
@@ -234,7 +242,7 @@ const Dashboard = () => {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-2 gap-[20px] mt-[20px]">
+          <div className="grid grid-cols-2 gap-[20px]">
             <div className="bg-white rounded-[10px] p-[20px] h-[300px]">
               <p className="text-sm text-gray-500 mb-4">Daily entries this week</p>
               <ResponsiveContainer width="100%" height="80%">
@@ -276,7 +284,7 @@ const Dashboard = () => {
           </div>
 
           {/* Recent Activity Section */}
-          <div className="mt-[20px] bg-white rounded-[10px] p-[20px] w-full shadow-sm">
+          <div className="bg-white rounded-[10px] p-[20px] w-full shadow-sm">
             <p className="text-[#333] font-semibold mb-[20px]">Recent Activity</p>
             <div className="grid grid-cols-4 gap-4 text-xs font-semibold text-gray-400 uppercase mb-3 px-2">
               <span>Student No.</span>

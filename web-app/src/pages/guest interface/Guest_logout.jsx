@@ -9,6 +9,9 @@ const GuestLogout = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loggingOutId, setLoggingOutId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  
+  // New state for the confirmation modal
+  const [guestToConfirm, setGuestToConfirm] = useState(null);
 
   const fetchInsideGuests = async () => {
     try {
@@ -24,9 +27,14 @@ const GuestLogout = () => {
 
   useEffect(() => { fetchInsideGuests(); }, []);
 
-  const handleLogout = async (guest_log_id) => {
+  const handleLogout = async () => {
+    if (!guestToConfirm) return;
+    
+    const guest_log_id = guestToConfirm.guest_log_id;
     setLoggingOutId(guest_log_id);
+    setGuestToConfirm(null); // Close the modal immediately
     setFeedback(null);
+    
     try {
       const res = await fetch(`http://localhost:5000/api/guests/self-exit/${guest_log_id}`, {
         method: "PATCH",
@@ -38,7 +46,7 @@ const GuestLogout = () => {
         setTimeout(() => navigate("/guest-landing"), 1800);
       } else {
         setFeedback({ type: "error", message: data.message || "Could not log out. Please try again." });
-        fetchInsideGuests(); // refresh in case the row is now stale
+        fetchInsideGuests();
       }
     } catch (err) {
       setFeedback({ type: "error", message: "Cannot reach the server. Please check your connection." });
@@ -55,7 +63,7 @@ const GuestLogout = () => {
     g.purpose === "Other" && g.other_purpose ? g.other_purpose : g.purpose || "—";
 
   return (
-    <div className="min-h-screen w-screen bg-[#EAF5EA] font-sans flex flex-col">
+    <div className="min-h-screen w-screen bg-[#EAF5EA] font-sans flex flex-col relative">
       {/* HEADER */}
       <div className="bg-[#1B5E20] text-white px-6 h-[72px] flex items-center justify-between shadow-md border-b-[3px] border-[#F5C518] flex-shrink-0">
         <div className="flex items-center gap-3.5">
@@ -76,7 +84,6 @@ const GuestLogout = () => {
       {/* BODY */}
       <div className="flex-1 flex justify-center py-10 px-4">
         <div className="w-full max-w-[680px] space-y-5">
-
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-1">Find Your Name</h2>
             <p className="text-sm text-gray-500">
@@ -131,7 +138,7 @@ const GuestLogout = () => {
                       <td className="p-3 text-gray-600">{displayReason(g)}</td>
                       <td className="p-3 text-right">
                         <button
-                          onClick={() => handleLogout(g.guest_log_id)}
+                          onClick={() => setGuestToConfirm(g)}
                           disabled={loggingOutId === g.guest_log_id}
                           className="bg-[#1B5E20] hover:bg-[#164a1a] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
                         >
@@ -146,6 +153,35 @@ const GuestLogout = () => {
           </div>
         </div>
       </div>
+
+      {/* CONFIRMATION MODAL */}
+      {guestToConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full transform transition-all">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Confirm Logout</h3>
+            <p className="text-gray-600 text-sm mb-6">
+              Are you sure you want to log out{" "}
+              <span className="font-semibold text-gray-900">
+                {guestToConfirm.full_name}
+              </span>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setGuestToConfirm(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#1B5E20] hover:bg-[#164a1a] rounded-lg transition-colors"
+              >
+                Yes, Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -20,19 +20,19 @@ const GuestLanding = () => {
           Please log your visit before entering the premises.
         </p>
 
-        <div className="flex gap-3 mt-2">
+        <div className="flex flex-col w-full max-w-xs mx-auto gap-3 mt-2">
           <button
-            onClick={() => navigate("/guest-logout")}
-            className="bg-transparent border border-white/40 hover:bg-white/10 text-white font-medium px-8 py-3 rounded-lg text-base transition-colors"
+            onClick={() => navigate("/guest")}
+            className="bg-[#F5C518] hover:bg-[#e0b510] text-[#1B5E20] font-semibold px-8 py-3 rounded-lg text-base transition-colors shadow-md w-full"
           >
-            Log Out of My Visit
+            Log In →
           </button>
           
           <button
-            onClick={() => navigate("/guest")}
-            className="bg-[#F5C518] hover:bg-[#e0b510] text-[#1B5E20] font-semibold px-8 py-3 rounded-lg text-base transition-colors shadow-md"
+            onClick={() => navigate("/guest-logout")}
+            className="bg-transparent border border-white/40 hover:bg-white hover:text-[#1B5E20] text-white font-medium px-8 py-3 rounded-lg text-base transition-colors w-full"
           >
-            Log My Visit →
+            Log Out
           </button>
         </div>
 

@@ -167,7 +167,6 @@ const StudentLogs = () => {
           <div className="flex justify-between items-start text-[#666] text-[16px]">
             <div>
               <p>Students library entry and exit records.</p>
-              <p>1st Semester A.Y. 2025-2026</p>
             </div>
             {currentlyInside > 0 && (
               <button 
