@@ -1,18 +1,18 @@
 import React, { useState } from "react";
+import Pagination from "./Pagination";
 
 const StudentLogTable = ({ data = [] }) => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.ceil(data.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
+  const totalPages = Math.max(1, Math.ceil(data.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * rowsPerPage;
   const displayedData = data.slice(startIndex, startIndex + rowsPerPage);
 
-  const handleNext = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
-  const handlePrevious = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
-
   return (
-    <div className="data-table-container bg-white rounded-[10px] border overflow-hidden shadow-sm">
-      <table className="data-table w-full text-sm">
+    <div className="bg-white rounded-[10px] border shadow-sm">
+      <div className="overflow-x-auto rounded-t-[10px] overflow-hidden">
+        <table className="data-table w-full text-sm">
         <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
           <tr>
             <th className="p-4 text-left font-semibold">No.</th>
@@ -42,24 +42,18 @@ const StudentLogTable = ({ data = [] }) => {
             </tr>
           ))}
         </tbody>
-      </table>
-      {/* Pagination Footer */}
-      <div className="flex items-center justify-between p-4 bg-white border-t">
-        <div className="flex items-center gap-4">
-          <select className="border px-3 py-1.5 rounded-lg text-sm bg-white outline-none" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
-            <option value={10}>10 items</option>
-            <option value={20}>20 items</option>
-          </select>
-          <p className="text-sm text-gray-400">Showing {data.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + rowsPerPage, data.length)} of {data.length} logs</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 rounded bg-[#1B651B] text-white text-xs font-bold">{currentPage}</button>
-          <div className="flex items-center gap-2 ml-4">
-            <button onClick={handlePrevious} disabled={currentPage === 1} className={`border px-3 py-1 rounded-lg text-sm text-gray-600 ${currentPage === 1 ? 'opacity-50' : 'hover:bg-gray-50'}`}>← Previous</button>
-            <button onClick={handleNext} disabled={currentPage === totalPages || totalPages === 0} className={`border px-3 py-1 rounded-lg text-sm text-gray-600 ${currentPage === totalPages || totalPages === 0 ? 'opacity-50' : 'hover:bg-gray-50'}`}>Next →</button>
-          </div>
-        </div>
+        </table>
       </div>
+      <Pagination
+        currentPage={safePage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(n) => { setRowsPerPage(n); setCurrentPage(1); }}
+        rowsPerPageOptions={[10, 20]}
+        totalItems={data.length}
+        itemLabel="logs"
+      />
     </div>
   );
 };

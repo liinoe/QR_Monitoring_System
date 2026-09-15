@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
+import SearchInput from "../../components/SearchInput";
+import FilterTabs from "../../components/FilterTabs";
+import MonthPicker from "../../components/MonthPicker";
 import GuestLogTable from "../../components/GuestLogTable";
 import { authFetch } from "../../auth";
 
@@ -201,60 +204,27 @@ const GuestLogs = () => {
 
           {/* SEARCH AND FILTERS */}
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by name or purpose..."
-                className="pl-4 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              {STATUS_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setStatusFilter(tab)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    statusFilter === tab
-                      ? "bg-[#1B651B] text-white"
-                      : "bg-white text-gray-600 border hover:bg-gray-50"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+            <SearchInput
+              placeholder="Search by name or purpose..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+
+            <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
 
             {/* Divider between status and date filters */}
             <div className="h-6 w-px bg-gray-300 mx-1" />
 
-            <div className="flex gap-2">
-              {DATE_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setDateFilter(tab)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    dateFilter === tab
-                      ? "bg-[#1B651B] text-white"
-                      : "bg-white text-gray-600 border hover:bg-gray-50"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+            <FilterTabs options={DATE_TABS} value={dateFilter} onChange={setDateFilter} />
 
             {dateFilter === "This Month" && (
-              <input
-                type="month"
+              <MonthPicker
                 value={selectedMonth}
                 max={(() => {
                   const now = new Date();
                   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
                 })()}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="px-3 py-2 border rounded-lg bg-white text-sm text-gray-700 outline-none focus:ring-1 focus:ring-green-600"
               />
             )}
           </div>

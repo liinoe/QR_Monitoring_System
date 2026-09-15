@@ -56,8 +56,10 @@ const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = []
           <div className="bg-white rounded-[14px] w-full max-w-[600px] max-h-[85vh] overflow-y-auto">
           <div className="px-6 pt-6 pb-4 border-b flex items-start justify-between">
                <div>
-               <h2 className="text-lg font-bold text-gray-800">{full_name}</h2>
-               <p className="text-xs text-gray-400 mt-0.5">Student No. {student_number}</p>
+               <span className="inline-flex items-center gap-1.5 mt-1.5 bg-[#F3FAF3] border border-[#1B651B]/30 rounded-md px-2.5 py-1">
+                    <span className="text-[10px] font-semibold text-[#1B651B]/70 uppercase tracking-wide">Student No.</span>
+                    <span className="text-sm font-mono font-bold text-[#1B651B]">{student_number}</span>
+               </span>
                </div>
                <span className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 ${STATUS_COLORS[displayStatus] || "bg-gray-100"}`}>
                {displayStatus?.toUpperCase()}

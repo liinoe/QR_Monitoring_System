@@ -2,18 +2,23 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
+import SearchInput from "../../components/SearchInput";
+import FilterSelect from "../../components/FilterSelect";
+import FilterTabs from "../../components/FilterTabs";
+import MonthPicker from "../../components/MonthPicker";
 import StudentLogTable from "../../components/StudentLogTable";
 import { authFetch } from "../../auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const DATE_OPTIONS = ["All Time", "Today", "This Week", "This Month"];
+const STATUS_TABS = ["All", "Active", "Inactive"];
 
 const StudentLogs = () => {
   const [logs, setLogs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
-  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("All Time");
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
@@ -124,7 +129,7 @@ const StudentLogs = () => {
   const filteredData = logs.filter(log => {
     const matchesSearch = (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (log.student_number || "").includes(searchTerm);
     const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;
-    const matchesStatus = statusFilter === "All Status" || 
+    const matchesStatus = statusFilter === "All" || 
                           (statusFilter === "Active" && log.status === "inside") || 
                           (statusFilter === "Inactive" && log.status === "exited");
     const matchesDate = isWithinDateFilter(log);
@@ -185,40 +190,37 @@ const StudentLogs = () => {
             <Card title="Avg. Stay Duration" value={`${avgStay} hr`} subtitle="Based on exits" color="text-emerald-700" border="border-emerald-700" />
           </div>
 
-          <div className="flex justify-between items-center">
-            <div className="relative">
-              <input type="text" placeholder="Search by name or student no..." className="pl-10 pr-4 py-2 border rounded-lg w-[320px] bg-white outline-none focus:ring-1 focus:ring-green-600" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
-            <div className="student-log-filters flex gap-3 flex-wrap">
-              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
-                <option>All Colleges</option>
-                {collegeOptions.map((college) => (
-                  <option key={college} value={college}>{college}</option>
-                ))}
-              </select>
-              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option>All Status</option>
-                <option value="Active">Active / Inside</option>
-                <option value="Inactive">Inactive / Exited</option>
-              </select>
-              <select className="border px-4 py-2 rounded-lg bg-white text-gray-600" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
-                {DATE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              {dateFilter === "This Month" && (
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  max={(() => {
-                    const now = new Date();
-                    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                  })()}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="border px-4 py-2 rounded-lg bg-white text-gray-600"
-                />
-              )}
-            </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <SearchInput
+              placeholder="Search by name or student no..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+
+            <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
+
+            <FilterSelect value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
+              <option value="All Colleges">All Colleges</option>
+              {collegeOptions.map((college) => (
+                <option key={college} value={college}>{college}</option>
+              ))}
+            </FilterSelect>
+
+            {/* Divider between status/college and date filters */}
+            <div className="h-6 w-px bg-gray-300 mx-1" />
+
+            <FilterTabs options={DATE_OPTIONS} value={dateFilter} onChange={setDateFilter} />
+
+            {dateFilter === "This Month" && (
+              <MonthPicker
+                value={selectedMonth}
+                max={(() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                })()}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+              />
+            )}
           </div>
 
           <StudentLogTable data={filteredData.map(log => ({

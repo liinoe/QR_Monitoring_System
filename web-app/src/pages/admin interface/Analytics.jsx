@@ -3,6 +3,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
+import FilterSelect from "../../components/FilterSelect";
 import { authFetch } from "../../auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -228,7 +229,10 @@ const Analytics = () => {
       if (code) acc[code] = (acc[code] || 0) + 1;
       return acc;
     }, {});
-    return COLLEGE_OPTIONS.map(c => ({ name: c, visits: counts[c] || 0 }));
+    return COLLEGE_OPTIONS
+      .map(c => ({ name: c, visits: counts[c] || 0 }))
+      .filter(c => c.visits > 0)
+      .sort((a, b) => b.visits - a.visits);
   }, [monthLogs]);
 
   // Top visiting students
@@ -271,15 +275,11 @@ const Analytics = () => {
 
           <div className="flex justify-between items-center">
             <p className="text-[#666]">Library usage trends, peak hours, and departmental breakdown.</p>
-            <select
-              className="border px-4 py-2 rounded-lg bg-white text-gray-600 text-sm"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-            >
+            <FilterSelect value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
               {availableMonths.map(m => (
                 <option key={m} value={m}>{monthLabel(m)}</option>
               ))}
-            </select>
+            </FilterSelect>
           </div>
 
           {/* KPI Cards */}
@@ -371,19 +371,25 @@ const Analytics = () => {
           <div className="grid grid-cols-2 gap-[20px]">
             <div className="bg-white rounded-[10px] p-[20px] h-[340px]">
               <p className="text-sm font-semibold text-green-700 mb-4">Visits by College (this month) <span className="text-gray-400 font-normal">— students only</span></p>
-              <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={collegeChartData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                  <XAxis type="number" fontSize={12} />
-                  <YAxis type="category" dataKey="name" fontSize={12} width={60} />
-                  <Tooltip cursor={false} />
-                  <Bar dataKey="visits" radius={[0, 4, 4, 0]}>
-                    {collegeChartData.map((entry, i) => (
-                      <Cell key={i} fill={COLLEGE_COLORS[entry.name]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {collegeChartData.length === 0 ? (
+                <div className="h-[90%] flex items-center justify-center text-sm text-gray-400">
+                  No visits recorded this month
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="90%">
+                  <BarChart data={collegeChartData} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                    <XAxis type="number" fontSize={12} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" fontSize={12} width={60} interval={0} />
+                    <Tooltip cursor={false} />
+                    <Bar dataKey="visits" radius={[0, 4, 4, 0]} barSize={28}>
+                      {collegeChartData.map((entry, i) => (
+                        <Cell key={i} fill={COLLEGE_COLORS[entry.name]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
 
             <div className="bg-white rounded-[10px] p-[20px] h-[340px] overflow-auto">

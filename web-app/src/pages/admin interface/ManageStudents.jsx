@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
+import SearchInput from "../../components/SearchInput";
+import FilterSelect from "../../components/FilterSelect";
+import Pagination from "../../components/Pagination";
 import { authFetch } from "../../auth";
 import { colleges, programsByCollege, yearLevels } from "../../data/options";
 
@@ -42,6 +45,8 @@ const ManageStudents = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -126,7 +131,9 @@ const ManageStudents = () => {
     }
   };
 
-  const filtered = students.filter((s) => {
+  const filtered = students
+    .filter((s) => s.status === "approved")
+    .filter((s) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       (s.full_name || "").toLowerCase().includes(term) ||
@@ -135,6 +142,15 @@ const ManageStudents = () => {
       collegeFilter === "All Colleges" || toAcronym(s.college) === collegeFilter;
     return matchesSearch && matchesCollege;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, collegeFilter, rowsPerPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * rowsPerPage;
+  const paginated = filtered.slice(startIndex, startIndex + rowsPerPage);
 
   return (
     <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
@@ -149,65 +165,76 @@ const ManageStudents = () => {
             </p>
           </div>
 
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <input
-              type="text"
+          <div className="flex items-center gap-3 flex-wrap">
+            <SearchInput
               placeholder="Search students..."
-              className="pl-4 pr-4 py-2 border rounded-lg w-[280px] bg-white outline-none focus:ring-1 focus:ring-green-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <select
-              className="border px-4 py-2 rounded-lg bg-white text-gray-600"
-              value={collegeFilter}
-              onChange={(e) => setCollegeFilter(e.target.value)}
-            >
-              <option>All Colleges</option>
+            <FilterSelect value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
+              <option value="All Colleges">All Colleges</option>
               {COLLEGE_FILTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            </FilterSelect>
           </div>
 
-          <div className="responsive-table-container bg-white rounded-[10px] border shadow-sm overflow-hidden">
-            <table className="responsive-table w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b bg-[#FAFAFA]">
-                  <th className="py-3 px-4">Student No.</th>
-                  <th className="py-3 px-4">Name</th>
-                  <th className="py-3 px-4">College</th>
-                  <th className="py-3 px-4">Program</th>
-                  <th className="py-3 px-4">Year</th>
-                  <th className="py-3 px-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-gray-400">No students match your filters.</td></tr>
-                ) : (
-                  filtered.map((s) => (
-                    <tr key={s.student_number} className="border-b last:border-0">
-                      <td className="py-3 px-4 font-medium text-gray-900">{s.student_number}</td>
-                      <td className="py-3 px-4">{s.full_name}</td>
-                      <td className="py-3 px-4">{toAcronym(s.college) || s.college}</td>
-                      <td className="py-3 px-4">{s.program}</td>
-                      <td className="py-3 px-4">{s.year_level}</td>
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => openEdit(s)}
-                          className="inline-flex items-center gap-1 bg-[#1B651B] text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-[#165516] active:scale-[0.98] transition"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                          </svg>
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          {/* NEW STRUCTURE: Main wrapper for styling, inner wrapper for scrolling */}
+          <div className="bg-white rounded-[10px] border shadow-sm">
+            <div className="overflow-x-auto rounded-t-[10px] overflow-hidden">
+              <table className="responsive-table w-full text-sm">
+                <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
+                  <tr>
+                    <th className="p-4 text-left font-semibold">Student No.</th>
+                    <th className="p-4 text-left font-semibold">Name</th>
+                    <th className="p-4 text-left font-semibold">College</th>
+                    <th className="p-4 text-left font-semibold">Program</th>
+                    <th className="p-4 text-left font-semibold">Year</th>
+                    <th className="p-4 text-left font-semibold"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>
+                  ) : filtered.length === 0 ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-gray-400">No students match your filters.</td></tr>
+                  ) : (
+                    paginated.map((s) => (
+                      <tr key={s.student_number} className="border-b last:border-0">
+                        <td className="p-4 font-medium text-gray-900">{s.student_number}</td>
+                        <td className="p-4">{s.full_name}</td>
+                        <td className="p-4">{toAcronym(s.college) || s.college}</td>
+                        <td className="p-4">{s.program}</td>
+                        <td className="p-4">{s.year_level}</td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => openEdit(s)}
+                            className="inline-flex items-center gap-1 bg-[#1B651B] text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-[#165516] active:scale-[0.98] transition"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                            </svg>
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination is now OUTSIDE the overflow-x-auto div */}
+            {!loading && filtered.length > 0 && (
+              <Pagination
+                currentPage={safePage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={setRowsPerPage}
+                rowsPerPageOptions={[10, 20]}
+                totalItems={filtered.length}
+                itemLabel="students"
+              />
+            )}
           </div>
         </div>
       </div>

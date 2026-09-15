@@ -42,7 +42,7 @@ const VISITOR_TYPES = [
   { id: "student", label: "Student", icon: StudentIcon },
 ];
 
-const PURPOSES = ["Book Reference", "Research / Thesis", "Museum Visit", "General Reading", "Other"];
+const PURPOSES = ["Book Reference", "Research / Thesis", "Library Visit", "General Reading", "Other"];
 
 const GuestEntry = () => {
   const navigate = useNavigate();
@@ -54,7 +54,8 @@ const GuestEntry = () => {
   const [purpose, setPurpose] = useState("Book Reference");
   const [otherPurpose, setOtherPurpose] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState(null); 
+  const [feedback, setFeedback] = useState(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -70,13 +71,21 @@ const GuestEntry = () => {
     setOtherPurpose("");
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim() || !affiliation.trim()) {
       setFeedback({ type: "error", message: "Please fill in all required fields." });
       return;
     }
+    if (purpose === "Other" && !otherPurpose.trim()) {
+      setFeedback({ type: "error", message: "Please specify your purpose of visit." });
+      return;
+    }
+    setFeedback(null);
+    setShowConfirm(true);
+  };
 
+  const confirmSubmit = async () => {
     setSubmitting(true);
     setFeedback(null);
 
@@ -95,14 +104,17 @@ const GuestEntry = () => {
       });
 
       if (response.ok) {
+        setShowConfirm(false);
         setFeedback({ type: "success", message: "Visit logged successfully! Welcome to the library." });
         resetForm();
         setTimeout(() => navigate("/guest-landing"), 1500);
       } else {
+        setShowConfirm(false);
         const result = await response.json();
         setFeedback({ type: "error", message: result.message || result.error || "Something went wrong. Please try again." });
       }
     } catch (err) {
+      setShowConfirm(false);
       setFeedback({ type: "error", message: "Cannot reach the server. Please check your connection." });
     } finally {
       setSubmitting(false);
@@ -259,7 +271,7 @@ const GuestEntry = () => {
                 disabled={submitting}
                 className="w-full bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-60"
               >
-                {submitting ? "Logging visit..." : "Log My Visit →"}
+                Review & Log Visit →
               </button>
               <p className="text-center text-[11px] text-gray-400">
                 Your information is recorded securely and used only for library access monitoring.
@@ -268,6 +280,60 @@ const GuestEntry = () => {
           </form>
         </div>
       </div>
+
+      {/* Confirm Info Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[420px] overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div className="bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] px-6 py-4 border-b-[3px] border-[#F5C518]">
+              <h3 className="text-white font-semibold text-lg">Confirm Your Details</h3>
+              <p className="text-white/80 text-xs mt-0.5">Please check that everything is correct.</p>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <div className="flex justify-between text-sm border-b pb-2">
+                <span className="text-gray-500">Visitor Type</span>
+                <span className="font-semibold text-gray-800 capitalize">
+                  {VISITOR_TYPES.find((v) => v.id === guestType)?.label || guestType}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm border-b pb-2">
+                <span className="text-gray-500">Name</span>
+                <span className="font-semibold text-gray-800">{firstName} {lastName}</span>
+              </div>
+              <div className="flex justify-between text-sm border-b pb-2 gap-4">
+                <span className="text-gray-500 flex-shrink-0">Affiliation</span>
+                <span className="font-semibold text-gray-800 text-right">{affiliation}</span>
+              </div>
+              <div className="flex justify-between text-sm gap-4">
+                <span className="text-gray-500 flex-shrink-0">Purpose</span>
+                <span className="font-semibold text-gray-800 text-right">
+                  {purpose === "Other" ? otherPurpose : purpose}
+                </span>
+              </div>
+            </div>
+
+            <div className="px-6 pb-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                disabled={submitting}
+                className="flex-1 border border-gray-300 text-gray-600 font-semibold py-2.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                Edit Details
+              </button>
+              <button
+                type="button"
+                onClick={confirmSubmit}
+                disabled={submitting}
+                className="flex-1 bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
+              >
+                {submitting ? "Logging..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

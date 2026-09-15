@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
+import SearchInput from "../../components/SearchInput";
+import FilterSelect from "../../components/FilterSelect";
+import FilterTabs from "../../components/FilterTabs";
+import Pagination from "../../components/Pagination";
 import RegistrationItem from "../../components/RegistrationItem";
 import ReasonModal from "../../components/ReasonModal";
 import StudentDetailsModal from "../../components/StudentDetailsModal";
@@ -15,7 +19,6 @@ const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected", "Deactivated"];
 
 const REJECT_REASONS = [
-  "Invalid or unreadable student ID/documents",
   "Information does not match university records",
   "Duplicate registration",
   "Incomplete personal information",
@@ -208,145 +211,103 @@ const Registrations = () => {
             <Card title="Total Requests" value={currentPeriodRequests.length} color="text-[#225276]" border="border-[#225276]" />
           </div>
 
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <input
-              type="text"
+          <div className="flex items-center gap-3 flex-wrap">
+            <SearchInput
               placeholder="Search students..."
-              className="pl-4 pr-4 py-2 border rounded-lg w-[280px] bg-white outline-none focus:ring-1 focus:ring-green-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
 
-            <div className="flex gap-2 flex-wrap">
-              {STATUS_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setStatusFilter(tab)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    statusFilter === tab
-                      ? "bg-[#1B651B] text-white"
-                      : "bg-white text-gray-600 border hover:bg-gray-50"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+            <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
 
-            <select
-              className="border px-4 py-2 rounded-lg bg-white text-gray-600"
-              value={collegeFilter}
-              onChange={(e) => setCollegeFilter(e.target.value)}
-            >
-              <option>All Colleges</option>
+            <FilterSelect value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
+              <option value="All Colleges">All Colleges</option>
               {COLLEGE_FILTER_OPTIONS.map((college) => (
                 <option key={college} value={college}>{college}</option>
               ))}
-            </select>
+            </FilterSelect>
           </div>
 
-          <div className="responsive-table-container bg-white rounded-[10px] border overflow-hidden shadow-sm">
-            <table className="responsive-table w-full text-sm">
-              <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
-                <tr>
-                  <th className="p-4 text-left font-semibold">Student No.</th>
-                  <th className="p-4 text-left font-semibold">Name</th>
-                  <th className="p-4 text-left font-semibold">College</th>
-                  <th className="p-4 text-left font-semibold">Program</th>
-                  <th className="p-4 text-left font-semibold">Status</th>
-                  <th className="p-4 text-left font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-gray-400">Loading...</td></tr>
-                ) : filteredRequests.length === 0 ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-gray-400">No registrations match your filters.</td></tr>
-                ) : (
-                  paginatedRequests.map((req) => {
-                    const latest = latestRequestByStudent[req.student_number];
-                    const isLatest = latest?.request_id === req.request_id;
-                    
-                    const studentRequests = requests.filter(r => r.student_number === req.student_number);
-                    const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
+          <div className="bg-white rounded-[10px] border shadow-sm">
+            <div className="overflow-x-auto rounded-t-[10px] overflow-hidden">
+              <table className="responsive-table w-full text-sm">
+                <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
+                  <tr>
+                    <th className="p-4 text-left font-semibold">Student No.</th>
+                    <th className="p-4 text-left font-semibold">Name</th>
+                    <th className="p-4 text-left font-semibold">College</th>
+                    <th className="p-4 text-left font-semibold">Program</th>
+                    <th className="p-4 text-left font-semibold">Status</th>
+                    <th className="p-4 text-left font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={7} className="p-8 text-center text-gray-400">Loading...</td></tr>
+                  ) : filteredRequests.length === 0 ? (
+                    <tr><td colSpan={7} className="p-8 text-center text-gray-400">No registrations match your filters.</td></tr>
+                  ) : (
+                    paginatedRequests.map((req) => {
+                      const latest = latestRequestByStudent[req.student_number];
+                      const isLatest = latest?.request_id === req.request_id;
+                      
+                      const studentRequests = requests.filter(r => r.student_number === req.student_number);
+                      const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
 
-                    let displayStatus = req.approval_status;
-                    if (req.approval_status === "pending") {
-                      if (req.period === currentPeriod) {
-                        displayStatus = isRenewal ? "pending renewal" : "pending";
-                      } else {
-                        displayStatus = "expired / unapproved"; // Or "pending (past term)"
+                      let displayStatus = req.approval_status;
+                      if (req.approval_status === "pending") {
+                        if (req.period === currentPeriod) {
+                          displayStatus = isRenewal ? "pending renewal" : "pending";
+                        } else {
+                          displayStatus = "expired / unapproved"; // Or "pending (past term)"
+                        }
                       }
-                    }
 
-                    const displayName = req.first_name && req.surname
-                      ? (req.middle_name 
-                          ? `${req.first_name} ${req.middle_name.charAt(0).toUpperCase()}. ${req.surname}` 
-                          : `${req.first_name} ${req.surname}`)
-                      : req.full_name;
+                      const displayName = req.first_name && req.surname
+                        ? (req.middle_name 
+                            ? `${req.first_name} ${req.middle_name.charAt(0).toUpperCase()}. ${req.surname}` 
+                            : `${req.first_name} ${req.surname}`)
+                        : req.full_name;
 
-                    return (
-                      <RegistrationItem
-                        key={req.request_id}
-                        studentNumber={req.student_number}
-                        name={displayName}
-                        email={req.email}
-                        college={toCollegeAcronym(req.college)}
-                        program={req.program}
-                        period={req.period}
-                        status={displayStatus}
-                        isLatest={isLatest}
-                        currentStatus={latest?.approval_status === 'pending' && isRenewal ? 'pending renewal' : latest?.approval_status}
-                        onRowClick={() => setSelectedRequest(req)}
-                        onApprove={() => handleApprove(req.request_id)}
-                        onReject={() => openReject(req.request_id)}
-                        onDeactivate={() => openDeactivate(req.request_id, req.student_number)}
-                        onReactivate={() => handleReactivate(req.request_id, req.student_number)}
-                      />
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {!loading && filteredRequests.length > 0 && (
-            <div className="flex items-center justify-between pt-2">
-              <select
-                className="border px-3 py-2 rounded-lg bg-white text-gray-600 text-sm"
-                value={itemsPerPage}
-                onChange={(e) => setItemsPerPage(Number(e.target.value))}
-              >
-                <option value={5}>5 items</option>
-                <option value={10}>10 items</option>
-                <option value={15}>15 items</option>
-              </select>
-
-              <p className="text-sm text-gray-500">
-                Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredRequests.length)} of {filteredRequests.length} registrations
-              </p>
-
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 flex items-center justify-center bg-[#1B651B] text-white rounded-lg text-sm font-medium">
-                  {currentPage}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 border rounded-lg bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  ← Previous
-                </button>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-4 py-2 border rounded-lg bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next →
-                </button>
-              </div>
+                      return (
+                        <RegistrationItem
+                          key={req.request_id}
+                          studentNumber={req.student_number}
+                          name={displayName}
+                          email={req.email}
+                          college={toCollegeAcronym(req.college)}
+                          program={req.program}
+                          period={req.period}
+                          status={displayStatus}
+                          isLatest={isLatest}
+                          currentStatus={latest?.approval_status === 'pending' && isRenewal ? 'pending renewal' : latest?.approval_status}
+                          onRowClick={() => setSelectedRequest(req)}
+                          onApprove={() => handleApprove(req.request_id)}
+                          onReject={() => openReject(req.request_id)}
+                          onDeactivate={() => openDeactivate(req.request_id, req.student_number)}
+                          onReactivate={() => handleReactivate(req.request_id, req.student_number)}
+                        />
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+
+            {/* Pagination is now OUTSIDE the overflow-x-auto div */}
+            {!loading && filteredRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                rowsPerPage={itemsPerPage}
+                onRowsPerPageChange={(n) => { setItemsPerPage(n); setCurrentPage(1); }}
+                rowsPerPageOptions={[5, 10, 15]}
+                totalItems={filteredRequests.length}
+                itemLabel="registrations"
+              />
+            )}
+          </div>
         </div>
       </div>
 

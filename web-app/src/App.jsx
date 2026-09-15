@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/admin interface/Dashboard";
-import StudentLogs from "./pages/admin interface/studentLogs";
+import StudentLogs from "./pages/admin interface/StudentLogs";
 import Registrations from "./pages/admin interface/Registrations";
 import GuestLogs from "./pages/admin interface/GuestLogs";
 import Analytics from "./pages/admin interface/Analytics";

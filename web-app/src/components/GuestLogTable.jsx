@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination from "./Pagination";
 
 const TYPE_STYLES = {
   faculty: "bg-blue-100 text-blue-700",
@@ -21,14 +22,10 @@ const GuestLogTable = ({ data = [] }) => {
   const startIndex = (safePage - 1) * rowsPerPage;
   const displayedData = data.slice(startIndex, startIndex + rowsPerPage);
 
-  const handleNext = () => { if (safePage < totalPages) setCurrentPage(safePage + 1); };
-  const handlePrevious = () => { if (safePage > 1) setCurrentPage(safePage - 1); };
-
-  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
-
   return (
-    <div className="data-table-container bg-white rounded-[10px] border overflow-hidden shadow-sm">
-      <table className="data-table w-full text-sm">
+    <div className="bg-white rounded-[10px] border shadow-sm">
+      <div className="overflow-x-auto rounded-t-[10px] overflow-hidden">
+        <table className="data-table w-full text-sm">
         <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
           <tr>
             <th className="p-4 text-left font-semibold">No.</th>
@@ -81,54 +78,19 @@ const GuestLogTable = ({ data = [] }) => {
             })
           )}
         </tbody>
-      </table>
-
-      {/* Pagination Footer */}
-      <div className="flex items-center justify-between p-4 bg-white border-t">
-        <div className="flex items-center gap-4">
-          <select
-            className="border px-3 py-1.5 rounded-lg text-sm bg-white outline-none"
-            value={rowsPerPage}
-            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-          >
-            <option value={10}>10 items</option>
-            <option value={20}>20 items</option>
-          </select>
-          <p className="text-sm text-gray-400">
-            Showing {data.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + rowsPerPage, data.length)} of {data.length} logs
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrevious}
-            disabled={safePage === 1}
-            className={`border px-3 py-1 rounded-lg text-sm text-gray-600 ${safePage === 1 ? 'opacity-50' : 'hover:bg-gray-50'}`}
-          >
-            ← Previous
-          </button>
-
-          {pageNumbers.map((num) => (
-            <button
-              key={num}
-              onClick={() => setCurrentPage(num)}
-              className={`w-8 h-8 rounded text-xs font-bold ${
-                num === safePage ? 'bg-[#1B651B] text-white' : 'border text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {num}
-            </button>
-          ))}
-
-          <button
-            onClick={handleNext}
-            disabled={safePage === totalPages}
-            className={`border px-3 py-1 rounded-lg text-sm text-gray-600 ${safePage === totalPages ? 'opacity-50' : 'hover:bg-gray-50'}`}
-          >
-            Next →
-          </button>
-        </div>
+        </table>
       </div>
+
+      <Pagination
+        currentPage={safePage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(n) => { setRowsPerPage(n); setCurrentPage(1); }}
+        rowsPerPageOptions={[10, 20]}
+        totalItems={data.length}
+        itemLabel="logs"
+      />
     </div>
   );
 };
