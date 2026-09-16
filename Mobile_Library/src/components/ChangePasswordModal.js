@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { PasswordLengthCheck, PasswordMatchCheck } from '../screens/RegisterScreen';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 export default function ChangePasswordModal({ visible, onClose, studentNumber }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -67,7 +70,7 @@ export default function ChangePasswordModal({ visible, onClose, studentNumber })
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={resetAndClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { width: '100%', maxWidth: layout.contentWidth, padding: layout.cardPadding }]}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>Change Password</Text>
             <TouchableOpacity onPress={resetAndClose} hitSlop={10}>

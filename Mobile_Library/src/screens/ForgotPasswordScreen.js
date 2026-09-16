@@ -8,13 +8,17 @@ import {
      KeyboardAvoidingView,
      Platform,
      ActivityIndicator,
+     useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 export default function ForgotPasswordScreen({ navigation }) {
+     const { width, height } = useWindowDimensions();
+     const layout = getResponsive(width, height);
      const [email, setEmail] = useState('');
      const [emailFocused, setEmailFocused] = useState(false);
      const [loading, setLoading] = useState(false);
@@ -66,7 +70,7 @@ export default function ForgotPasswordScreen({ navigation }) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
           >
-          <View style={styles.content}>
+          <View style={[styles.content, { paddingHorizontal: layout.horizontalPadding, maxWidth: layout.contentWidth, width: '100%', alignSelf: 'center' }]}>
                {!submitted ? (
                <>
                <View style={styles.iconWrap}>

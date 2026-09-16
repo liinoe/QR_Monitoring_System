@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+     useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,8 +14,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 export default function SettingsScreen({ navigation }) {
+     const { width, height } = useWindowDimensions();
+     const layout = getResponsive(width, height);
      const [studentData, setStudentData] = useState(null);
      const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
@@ -52,14 +56,14 @@ export default function SettingsScreen({ navigation }) {
 
      return (
      <View style={styles.root}>
-          <SafeAreaView edges={['top']} style={styles.headerWrap}>
+          <SafeAreaView edges={['top']} style={[styles.headerWrap, { paddingHorizontal: layout.horizontalPadding }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>
                <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
           </SafeAreaView>
 
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, width: '100%', alignSelf: 'center', maxWidth: layout.contentWidth }]}>
           {/* ACCOUNT */}
           <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.accountCard}>
@@ -95,8 +99,8 @@ export default function SettingsScreen({ navigation }) {
           {/* LOGOUT lives in the fixed footer below, not here — see root return */}
           </ScrollView>
 
-          <View style={styles.footer}>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
+          <View style={[styles.footer, { paddingHorizontal: layout.horizontalPadding }]}>
+          <TouchableOpacity style={[styles.logoutBtn, { maxWidth: layout.contentWidth, alignSelf: 'center' }]} onPress={handleLogout} activeOpacity={0.85}>
                <Ionicons name="log-out-outline" size={18} color="#B91C1C" />
                <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>

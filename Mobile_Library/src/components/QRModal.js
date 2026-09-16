@@ -1,14 +1,18 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { getResponsive } from '../theme/responsive';
 
 export default function QRModal({ visible, onClose, value }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
+        <Pressable style={[styles.card, { maxWidth: layout.contentWidth, padding: layout.cardPadding, paddingTop: 48 }]} onPress={() => {}}>
           <TouchableOpacity style={styles.close} onPress={onClose}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
@@ -17,7 +21,7 @@ export default function QRModal({ visible, onClose, value }) {
             Present this code at the entrance scanner to log your visit
           </Text>
           <View style={styles.qrWrap}>
-            <QRCode value={value || 'CVSU-LIB-USER'} size={240} color={colors.primary} />
+            <QRCode value={value || 'CVSU-LIB-USER'} size={layout.qrSize} color={colors.primary} />
           </View>
         </Pressable>
       </Pressable>

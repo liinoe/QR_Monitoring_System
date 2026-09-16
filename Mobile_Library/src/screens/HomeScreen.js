@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -46,6 +48,8 @@ const getDisplayName = (student) => {
 };
 
 export default function HomeScreen({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
   const [now, setNow] = useState(new Date());
   const [qrOpen, setQrOpen] = useState(false);
   const [studentData, setStudentData] = useState(null);
@@ -172,7 +176,7 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
-        <View style={styles.headerInner}>
+        <View style={[styles.headerInner, { paddingHorizontal: layout.horizontalPadding }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
             <Text style={styles.name}>{getDisplayName(studentData)}</Text>
@@ -184,12 +188,12 @@ export default function HomeScreen({ navigation }) {
         </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' }]}>
         <View style={{ height: 24 }} />
 
         {/* NOT REGISTERED */}
         {isNotRegistered && (
-          <View style={styles.registerCard}>
+          <View style={[styles.registerCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.registerIconWrap}>
               <Ionicons name="person-add-outline" size={36} color="#1B5E20" />
             </View>
@@ -209,7 +213,7 @@ export default function HomeScreen({ navigation }) {
 
         {/* NEEDS RENEWAL */}
         {needsRenewal && (
-          <View style={[styles.qrCard, styles.lockedCard]}>
+          <View style={[styles.qrCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.restrictedContainer}>
               <View style={styles.lockIconWrap}>
                 <Ionicons name="refresh-outline" size={28} color="#7F6000" />
@@ -233,7 +237,7 @@ export default function HomeScreen({ navigation }) {
 
         {/* PENDING APPROVAL */}
         {isPending && (
-          <View style={[styles.qrCard, styles.lockedCard]}>
+          <View style={[styles.qrCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.restrictedContainer}>
               <View style={styles.lockIconWrap}>
                 <Ionicons name="time-outline" size={28} color="#7F6000" />
@@ -254,7 +258,7 @@ export default function HomeScreen({ navigation }) {
             resubmit, since rejection just means "not this attempt", not
             "never allowed" (that's what Deactivate is for). */}
         {isRejected && (
-          <View style={[styles.qrCard, styles.rejectedCard]}>
+          <View style={[styles.qrCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.restrictedContainer}>
               <View style={styles.rejectedIconWrap}>
                 <Ionicons name="close-circle-outline" size={28} color="#B91C1C" />
@@ -279,7 +283,7 @@ export default function HomeScreen({ navigation }) {
         {/* DEACTIVATED — admin-only recovery path (Reactivate), so the next
             step here is "contact the library", not a self-service button. */}
         {isDeactivated && (
-          <View style={[styles.qrCard, styles.rejectedCard]}>
+          <View style={[styles.qrCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.restrictedContainer}>
               <View style={styles.rejectedIconWrap}>
                 <Ionicons name="ban-outline" size={28} color="#B91C1C" />
@@ -301,7 +305,7 @@ export default function HomeScreen({ navigation }) {
         {/* APPROVED — DASHBOARD ANALYTICS + QR */}
         {isApproved && (
           <>
-            <View style={styles.kpiRow}>
+            <View style={[styles.kpiRow, { width: layout.contentWidth }]}>
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
                 <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
@@ -319,7 +323,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => setQrOpen(true)}
-              style={styles.qrCard}
+              style={[styles.qrCard, { padding: layout.cardPadding, width: layout.contentWidth }]}
             >
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
@@ -330,13 +334,13 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
               <View style={styles.qrPreview}>
-                <QRCode value={studentData?.qr_code || 'NA'} size={85} color="#1B5E20" />
+                <QRCode value={studentData?.qr_code || 'NA'} size={Math.min(85, layout.contentWidth * 0.2)} color="#1B5E20" />
               </View>
             </TouchableOpacity>
 
             <View style={{ height: 16 }} />
 
-            <View style={styles.chartCard}>
+            <View style={[styles.chartCard, { width: layout.contentWidth, padding: layout.cardPadding }]}>
               <Text style={styles.chartTitle}>Library Activity</Text>
 
               {analytics ? (

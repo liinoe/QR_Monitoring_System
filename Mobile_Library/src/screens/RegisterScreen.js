@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +20,7 @@ import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels, sexOptions } from '../data/options';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 const sexLabelToValue = {
   'Male': 'male',
@@ -27,6 +29,8 @@ const sexLabelToValue = {
 };
 
 export default function RegisterScreen({ navigation, route }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
   // Renewal mode is passed explicitly via navigation params (from HomeScreen's
   // "Renew Registration" button) — NOT inferred from whatever happens to be
   // in AsyncStorage, since that could be stale in edge cases (e.g. a
@@ -249,13 +253,13 @@ export default function RegisterScreen({ navigation, route }) {
       >
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' }]}
           keyboardShouldPersistTaps="handled"
         >
           {/* RENEWAL: personal info is completely hidden — credentials
               stay exactly as they are, only academic info is shown. */}
           {isRenewal && renewalStudent && (
-            <View style={styles.renewalBanner}>
+            <View style={[styles.renewalBanner, { width: layout.contentWidth }]}>
               <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
               <Text style={styles.renewalBannerText}>
                 Renewing for {renewalStudent.full_name} ({renewalStudent.student_number})
@@ -264,7 +268,7 @@ export default function RegisterScreen({ navigation, route }) {
           )}
 
           {!isRenewal && (
-            <View style={styles.stepRow}>
+            <View style={[styles.stepRow, { width: layout.contentWidth }]}>
               <StepIndicator number={1} active />
               <View style={styles.card}>
                 <Text style={styles.stepHeading}>Personal Info</Text>
@@ -351,7 +355,7 @@ export default function RegisterScreen({ navigation, route }) {
           )}
 
           {/* ACADEMIC INFO — always shown, the only step in renewal mode */}
-          <View style={styles.stepRow}>
+          <View style={[styles.stepRow, { width: layout.contentWidth }]}>
             <StepIndicator number={isRenewal ? 1 : 2} active={isRenewal} />
             <View style={styles.card}>
               <Text style={styles.stepHeading}>Academic Info</Text>
@@ -381,7 +385,7 @@ export default function RegisterScreen({ navigation, route }) {
           </View>
 
           {/* REVIEW */}
-          <View style={styles.stepRow}>
+          <View style={[styles.stepRow, { width: layout.contentWidth }]}>
             <StepIndicator number={isRenewal ? 2 : 3} isLast />
             <View style={styles.confirmActions}>
               <TouchableOpacity style={[styles.btn, styles.confirmBtn]} onPress={handleReview}>
@@ -393,7 +397,7 @@ export default function RegisterScreen({ navigation, route }) {
             </View>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={{ marginTop: 8 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={{ marginTop: 8, width: layout.contentWidth }}>
             <Text style={{ textAlign: 'center', color: colors.primary, fontWeight: '600', fontSize: 15 }}>
               Already have an account? Back to Login
             </Text>

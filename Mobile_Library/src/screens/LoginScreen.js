@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,8 +19,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { API_URL } from '../config';
+import { getResponsive } from '../theme/responsive';
 
 export default function LoginScreen({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -73,7 +77,7 @@ export default function LoginScreen({ navigation }) {
         style={{ flex: 1 }}
       >
         {/* PHOTO HEADER */}
-        <View style={styles.hero}>
+        <View style={[styles.hero, { height: layout.heroHeight }]}>
           <View style={styles.imagePlaceholder} />
           <View style={styles.heroOverlay} />
           <SafeAreaView edges={['top']} />
@@ -81,8 +85,8 @@ export default function LoginScreen({ navigation }) {
 
         {/* CARD */}
         <ScrollView 
-          style={styles.card}
-          contentContainerStyle={styles.cardContent}
+          style={[styles.card, { marginTop: -layout.cardOverlap }]}
+          contentContainerStyle={[styles.cardContent, { paddingHorizontal: layout.cardPadding }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -168,7 +172,7 @@ export default function LoginScreen({ navigation }) {
       </KeyboardAvoidingView>
 
       {/* Logo badge */}
-      <View pointerEvents="none" style={styles.logoBadgeWrapper}>
+      <View pointerEvents="none" style={[styles.logoBadgeWrapper, { top: layout.heroHeight - layout.cardOverlap - BADGE_SIZE / 2 }]}>
         <View style={styles.logoBadge}>
           <Ionicons name="library-outline" size={26} color={colors.primary} />
         </View>
@@ -177,28 +181,22 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const HERO_HEIGHT = 280;
-const CARD_OVERLAP = 36; 
 const BADGE_SIZE = 60;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
 
-  hero: { height: HERO_HEIGHT, backgroundColor: '#16382399' },
+  hero: { backgroundColor: '#16382399' },
   imagePlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: '#16382399' },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6, 31, 17, 0.5)' },
 
   card: {
     flex: 1,
     backgroundColor: '#fff',
-    marginTop: -CARD_OVERLAP,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    paddingHorizontal: 28,
-    paddingTop: 40,
   },
   cardContent:{
-    paddingHorizontal: 28,
     paddingTop: 40,
     paddingBottom: 40,
     alignItems: 'center',
@@ -207,7 +205,6 @@ const styles = StyleSheet.create({
 
   logoBadgeWrapper: {
     position: 'absolute',
-    top: HERO_HEIGHT - CARD_OVERLAP - BADGE_SIZE / 2,
     left: 0,
     right: 0,
     alignItems: 'center',

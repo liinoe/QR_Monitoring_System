@@ -1,23 +1,27 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { getResponsive } from '../theme/responsive';
 
 export default function SplashScreen({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const layout = getResponsive(width, height);
+
   return (
     <View style={styles.root}>
       <View style={styles.imagePlaceholder} />
 
       <View style={styles.overlay} />
 
-      <SafeAreaView style={styles.content}>
+      <SafeAreaView style={[styles.content, { paddingHorizontal: layout.horizontalPadding }]}>
         <View style={{ flex: 1 }} />
 
         <View style={styles.logoWrap}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="library-outline" size={34} color="#fff" />
+          <View style={[styles.logoCircle, { width: layout.isCompact ? 72 : 84, height: layout.isCompact ? 72 : 84, borderRadius: layout.isCompact ? 36 : 42 }]}>
+            <Ionicons name="library-outline" size={layout.isCompact ? 30 : 34} color="#fff" />
           </View>
-          <Text style={styles.wordmark}>eDiwa</Text>
+          <Text style={[styles.wordmark, { fontSize: layout.isCompact ? 25 : 28 }]}>eDiwa</Text>
           <Text style={styles.wordmarkSub}>CvSU Library Companion</Text>
         </View>
 
