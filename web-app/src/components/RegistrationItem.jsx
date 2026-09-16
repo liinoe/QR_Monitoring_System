@@ -15,54 +15,31 @@ const RegistrationItem = ({
   };
 
   const renderAction = () => {
-  if (!isLatest) {
-    return (
-      <span className="text-xs text-gray-400 italic">
-        Updated — now {currentStatus?.toUpperCase() || "updated"}
-      </span>
-    );
-  }
-
-  if (status === "pending" || status === "pending renewal") {
-    // Hide buttons if academic info hasn't been submitted from mobile yet
-    if (!college || college === "—") {
-      return <span className="text-xs text-gray-400 italic">Awaiting student submission</span>;
+    if (!isLatest) {
+      return (
+        <span className="text-xs text-gray-400 italic">
+          Updated — now {currentStatus?.toUpperCase() || "updated"}
+        </span>
+      );
     }
 
-    return (
-      <>
-        <button
-          onClick={onApprove}
-          className="rounded-full bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white px-5 py-2 text-xs font-bold shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90 transition-all duration-200"
-        >
-          Approve
-        </button>
-        <button
-          onClick={onReject}
-          className="rounded-full bg-gray-200 text-gray-700 px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#DC2626] hover:text-white hover:shadow-md active:bg-[#B91C1C] transition-all duration-200"
-        >
-          Reject
-        </button>
-      </>
-    );
-  }
-       
     if (status === "pending" || status === "pending renewal") {
+      // Hide buttons if academic info hasn't been submitted from mobile yet
       if (!college || college === "—") {
-        return <span className="text-xs text-gray-400 italic">Awaiting student renewal submission</span>;
+        return <span className="text-xs text-gray-400 italic">Awaiting student submission</span>;
       }
 
       return (
         <>
           <button
             onClick={onApprove}
-            className="rounded-full bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white px-5 py-2 text-xs font-bold shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90 transition-all duration-200"
+            className="rounded-full bg-[#1B651B] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#165516] active:bg-[#124612] transition-colors duration-150"
           >
             Approve
           </button>
           <button
             onClick={onReject}
-            className="rounded-full bg-gray-200 text-gray-700 px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#DC2626] hover:text-white hover:shadow-md active:bg-[#B91C1C] transition-all duration-200"
+            className="rounded-full bg-gray-100 text-gray-600 px-5 py-2 text-xs font-bold border border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors duration-150"
           >
             Reject
           </button>
@@ -74,7 +51,7 @@ const RegistrationItem = ({
       return (
         <button
           onClick={onDeactivate}
-          className="rounded-full bg-gradient-to-b from-[#F59E0B] to-[#D97706] text-white px-5 py-2 text-xs font-bold shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90 transition-all duration-200"
+          className="rounded-full bg-[#D97706] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#B45309] active:bg-[#92400E] transition-colors duration-150"
         >
           Deactivate
         </button>
@@ -85,7 +62,7 @@ const RegistrationItem = ({
       return (
         <button
           onClick={onReactivate}
-          className="rounded-full bg-gradient-to-b from-[#3B82F6] to-[#2563EB] text-white px-5 py-2 text-xs font-bold shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90 transition-all duration-200"
+          className="rounded-full bg-[#2563EB] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#1D4ED8] active:bg-[#1E40AF] transition-colors duration-150"
         >
           Reactivate
         </button>
