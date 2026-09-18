@@ -182,20 +182,30 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.name}>{getDisplayName(studentData)}</Text>
             <Text style={styles.dateText}>{formatDateTime(now)}</Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.iconBtn}>
-            <Ionicons name="settings-outline" size={22} color="#1B5E20" />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={styles.iconBtn}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' }]}>
-        <View style={{ height: 24 }} />
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ height: 20 }} />
 
         {/* NOT REGISTERED */}
         {isNotRegistered && (
           <View style={[styles.registerCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.registerIconWrap}>
-              <Ionicons name="person-add-outline" size={36} color="#1B5E20" />
+              <Ionicons name="person-add-outline" size={32} color={colors.primary} />
             </View>
             <Text style={styles.registerTitle}>No Library Account Found</Text>
             <Text style={styles.registerSub}>
@@ -204,6 +214,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity
               style={styles.registerBtn}
               onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.88}
             >
               <Text style={styles.registerBtnText}>Register Now</Text>
               <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
@@ -213,10 +224,10 @@ export default function HomeScreen({ navigation }) {
 
         {/* NEEDS RENEWAL */}
         {needsRenewal && (
-          <View style={[styles.qrCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
-            <View style={styles.restrictedContainer}>
+          <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
+            <View style={styles.statusRow}>
               <View style={styles.lockIconWrap}>
-                <Ionicons name="refresh-outline" size={28} color="#7F6000" />
+                <Ionicons name="refresh-outline" size={24} color="#946800" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Renewal Required</Text>
@@ -226,9 +237,10 @@ export default function HomeScreen({ navigation }) {
                 <TouchableOpacity
                   style={styles.renewBtn}
                   onPress={() => navigation.navigate('Register', { mode: 'renewal' })}
+                  activeOpacity={0.88}
                 >
                   <Text style={styles.renewBtnText}>Renew Registration</Text>
-                  <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                  <Ionicons name="arrow-forward" size={15} color="#fff" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -237,10 +249,10 @@ export default function HomeScreen({ navigation }) {
 
         {/* PENDING APPROVAL */}
         {isPending && (
-          <View style={[styles.qrCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
-            <View style={styles.restrictedContainer}>
+          <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
+            <View style={styles.statusRow}>
               <View style={styles.lockIconWrap}>
-                <Ionicons name="time-outline" size={28} color="#7F6000" />
+                <Ionicons name="time-outline" size={24} color="#946800" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Access Restricted</Text>
@@ -258,22 +270,23 @@ export default function HomeScreen({ navigation }) {
             resubmit, since rejection just means "not this attempt", not
             "never allowed" (that's what Deactivate is for). */}
         {isRejected && (
-          <View style={[styles.qrCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
-            <View style={styles.restrictedContainer}>
+          <View style={[styles.statusCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
+            <View style={styles.statusRow}>
               <View style={styles.rejectedIconWrap}>
-                <Ionicons name="close-circle-outline" size={28} color="#B91C1C" />
+                <Ionicons name="close-circle-outline" size={24} color="#B3261E" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectedTitle}>Registration Rejected</Text>
                 <Text style={styles.rejectedSubText}>
-                  {studentData?.status_reason || "Your registration was not approved."}
+                  {studentData?.status_reason || 'Your registration was not approved.'}
                 </Text>
                 <TouchableOpacity
                   style={styles.resubmitBtn}
                   onPress={() => navigation.navigate('Register')}
+                  activeOpacity={0.88}
                 >
                   <Text style={styles.resubmitBtnText}>Register Again</Text>
-                  <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                  <Ionicons name="arrow-forward" size={15} color="#fff" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -283,18 +296,18 @@ export default function HomeScreen({ navigation }) {
         {/* DEACTIVATED — admin-only recovery path (Reactivate), so the next
             step here is "contact the library", not a self-service button. */}
         {isDeactivated && (
-          <View style={[styles.qrCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
-            <View style={styles.restrictedContainer}>
+          <View style={[styles.statusCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
+            <View style={styles.statusRow}>
               <View style={styles.rejectedIconWrap}>
-                <Ionicons name="ban-outline" size={28} color="#B91C1C" />
+                <Ionicons name="ban-outline" size={24} color="#B3261E" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectedTitle}>Account Deactivated</Text>
                 <Text style={styles.rejectedSubText}>
-                  {studentData?.status_reason || "Your account access has been deactivated."}
+                  {studentData?.status_reason || 'Your account access has been deactivated.'}
                 </Text>
                 <View style={styles.contactBadge}>
-                  <Ionicons name="information-circle-outline" size={14} color="#7F1D1D" />
+                  <Ionicons name="information-circle-outline" size={13} color="#7F1D1D" />
                   <Text style={styles.contactBadgeText}>Please visit the library front desk to resolve this</Text>
                 </View>
               </View>
@@ -318,27 +331,34 @@ export default function HomeScreen({ navigation }) {
               </View>
             </View>
 
-            <View style={{ height: 16 }} />
+            <View style={{ height: 14 }} />
 
             <TouchableOpacity
-              activeOpacity={0.85}
+              activeOpacity={0.88}
               onPress={() => setQrOpen(true)}
               style={[styles.qrCard, { padding: layout.cardPadding, width: layout.contentWidth }]}
             >
-              <View style={{ flex: 1, paddingRight: 10 }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={styles.qrTitle}>Present at entrance to log entry!</Text>
-                <Text style={styles.statusText}>Status: Approved</Text>
+                <View style={styles.statusPill}>
+                  <View style={styles.statusPillDot} />
+                  <Text style={styles.statusText}>Approved</Text>
+                </View>
                 <View style={styles.enlargeContainer}>
-                  <Ionicons name="expand-outline" size={14} color="#666" />
+                  <Ionicons name="expand-outline" size={13} color={colors.textSecondary} />
                   <Text style={styles.enlargeText}>Tap to enlarge</Text>
                 </View>
               </View>
               <View style={styles.qrPreview}>
-                <QRCode value={studentData?.qr_code || 'NA'} size={Math.min(85, layout.contentWidth * 0.2)} color="#1B5E20" />
+                <QRCode
+                  value={studentData?.qr_code || 'NA'}
+                  size={Math.min(80, layout.contentWidth * 0.19)}
+                  color={colors.primary}
+                />
               </View>
             </TouchableOpacity>
 
-            <View style={{ height: 16 }} />
+            <View style={{ height: 14 }} />
 
             <View style={[styles.chartCard, { width: layout.contentWidth, padding: layout.cardPadding }]}>
               <Text style={styles.chartTitle}>Library Activity</Text>
@@ -355,7 +375,7 @@ export default function HomeScreen({ navigation }) {
                         <View
                           style={[
                             styles.chartBar,
-                            { height: barHeight, backgroundColor: item.hours > 0 ? '#1B5E20' : '#E0E0E0' },
+                            { height: barHeight, backgroundColor: item.hours > 0 ? colors.primary : '#E5E7E5' },
                           ]}
                         />
                         <Text style={styles.chartDayLabel}>{item.day}</Text>
@@ -371,16 +391,20 @@ export default function HomeScreen({ navigation }) {
 
               <View style={styles.footerStatsRow}>
                 <View style={styles.footerStatItem}>
-                  <Ionicons name="calendar-outline" size={16} color="#1B5E20" />
-                  <View style={{ marginLeft: 8 }}>
+                  <View style={styles.footerStatIconWrap}>
+                    <Ionicons name="calendar-outline" size={15} color={colors.primary} />
+                  </View>
+                  <View style={{ marginLeft: 10 }}>
                     <Text style={styles.footerStatLabel}>Frequent Visit</Text>
                     <Text style={styles.footerStatValue}>{analytics ? analytics.frequent_day : '--'}</Text>
                   </View>
                 </View>
                 <View style={styles.footerVerticalDivider} />
                 <View style={styles.footerStatItem}>
-                  <Ionicons name="time-outline" size={16} color="#1B5E20" />
-                  <View style={{ marginLeft: 8 }}>
+                  <View style={styles.footerStatIconWrap}>
+                    <Ionicons name="time-outline" size={15} color={colors.primary} />
+                  </View>
+                  <View style={{ marginLeft: 10 }}>
                     <Text style={styles.footerStatLabel}>Avg. Stay Duration</Text>
                     <Text style={styles.footerStatValue}>
                       {analytics ? formatStayRange(analytics.avg_stay_hours) : '--'}
@@ -400,69 +424,209 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
+// Centralized palette so the whole screen shares one consistent, elegant
+// green identity instead of scattered hex literals per style.
+const colors = {
+  primary: '#1B5E20',
+  primaryMuted: '#E8F1E9',
+  textPrimary: '#1C1C1C',
+  textSecondary: '#8A8F8B',
+  background: '#F7F8F7',
+  cardBorder: '#EFF1EF',
+};
+
+const CARD_SHADOW = {
+  elevation: 2,
+  shadowColor: '#0B1F12',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.05,
+  shadowRadius: 12,
+};
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8F9F8' },
-  headerWrap: { backgroundColor: '#1B5E20', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingBottom: 25 },
-  headerInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  greeting: { color: '#E8F5E9', fontSize: 13 },
-  name: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 2 },
-  dateText: { color: '#A5D6A7', fontSize: 12, marginTop: 4 },
-  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 30 },
+  root: { flex: 1, backgroundColor: colors.background },
 
-  registerCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
-  registerIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#E8F5E9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  registerTitle: { fontSize: 17, fontWeight: '700', color: '#1B1B1B', textAlign: 'center', marginBottom: 8 },
-  registerSub: { fontSize: 13, color: '#666', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  registerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1B5E20', paddingVertical: 13, paddingHorizontal: 28, borderRadius: 14 },
-  registerBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  headerWrap: {
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    paddingBottom: 24,
+  },
+  headerInner: { flexDirection: 'row', alignItems: 'center' },
+  greeting: { color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: '500' },
+  name: { color: '#fff', fontSize: 23, fontWeight: '700', marginTop: 3 },
+  dateText: { color: 'rgba(255,255,255,0.6)', fontSize: 11.5, marginTop: 5 },
+  iconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  qrCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
-  qrTitle: { color: '#333', fontSize: 16, fontWeight: '700' },
-  statusText: { color: '#888', fontSize: 13, marginTop: 4 },
+  scrollContent: { flexGrow: 1, paddingBottom: 30 },
+
+  registerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    alignItems: 'center',
+    ...CARD_SHADOW,
+  },
+  registerIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  registerTitle: { fontSize: 16.5, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  registerSub: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', lineHeight: 19, marginBottom: 22 },
+  registerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 13,
+    paddingHorizontal: 26,
+    borderRadius: 14,
+  },
+  registerBtnText: { color: '#fff', fontWeight: '700', fontSize: 14.5 },
+
+  qrCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    ...CARD_SHADOW,
+  },
+  qrTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryMuted,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginTop: 9,
+  },
+  statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 6 },
+  statusText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   enlargeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 4 },
-  enlargeText: { color: '#666', fontSize: 12, fontWeight: '500' },
-  qrPreview: { padding: 8, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#F0F0F0' },
+  enlargeText: { color: colors.textSecondary, fontSize: 11.5, fontWeight: '500' },
+  qrPreview: {
+    padding: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
 
-  lockedCard: { backgroundColor: '#FFFDF0', borderColor: '#FCEFBC', borderWidth: 1 },
-  restrictedContainer: { flex: 1, flexDirection: 'row', alignItems: 'flex-start' },
-  lockIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFF9C4', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  restrictedTitle: { color: '#7F6000', fontSize: 18, fontWeight: 'bold' },
-  pendingSubText: { fontSize: 14, color: '#B8860B', marginTop: 4, lineHeight: 20 },
-  pendingBadge: { backgroundColor: '#FCEFBC', alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, marginTop: 12 },
-  badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4A017', marginRight: 6 },
-  pendingBadgeText: { color: '#7F6000', fontWeight: '700', fontSize: 13 },
-  renewBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B45309', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, marginTop: 14, alignSelf: 'flex-start' },
-  renewBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  statusCard: { borderRadius: 20, borderWidth: 1 },
+  statusRow: { flexDirection: 'row', alignItems: 'flex-start' },
 
-  rejectedCard: { backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1 },
-  rejectedIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  rejectedTitle: { color: '#B91C1C', fontSize: 18, fontWeight: 'bold' },
-  rejectedSubText: { fontSize: 14, color: '#7F1D1D', marginTop: 4, lineHeight: 20 },
-  resubmitBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B91C1C', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, marginTop: 14, alignSelf: 'flex-start' },
-  resubmitBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  contactBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEE2E2', alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, marginTop: 12, gap: 6, maxWidth: '100%' },
-  contactBadgeText: { color: '#7F1D1D', fontWeight: '600', fontSize: 12, flexShrink: 1 },
+  lockedCard: { backgroundColor: '#FFFBEF', borderColor: '#F5E7BC' },
+  lockIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FBF1CE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  restrictedTitle: { color: '#946800', fontSize: 16.5, fontWeight: '700' },
+  pendingSubText: { fontSize: 13, color: '#A87F1E', marginTop: 4, lineHeight: 19 },
+  pendingBadge: {
+    backgroundColor: '#F5E7BC',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  badgeDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C99A1E', marginRight: 6 },
+  pendingBadgeText: { color: '#946800', fontWeight: '700', fontSize: 12.5 },
+  renewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#A9720B',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 13,
+    alignSelf: 'flex-start',
+  },
+  renewBtnText: { color: '#fff', fontWeight: '700', fontSize: 12.5 },
+
+  rejectedCard: { backgroundColor: '#FDF3F2', borderColor: '#F5CFC9' },
+  rejectedIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FBDFDB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  rejectedTitle: { color: '#B3261E', fontSize: 16.5, fontWeight: '700' },
+  rejectedSubText: { fontSize: 13, color: '#8A362F', marginTop: 4, lineHeight: 19 },
+  resubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#B3261E',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 13,
+    alignSelf: 'flex-start',
+  },
+  resubmitBtnText: { color: '#fff', fontWeight: '700', fontSize: 12.5 },
+  contactBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FBDFDB',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 6,
+    maxWidth: '100%',
+  },
+  contactBadgeText: { color: '#8A362F', fontWeight: '600', fontSize: 11.5, flexShrink: 1 },
 
   kpiRow: { flexDirection: 'row', gap: 12 },
-  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
-  kpiLabel: { fontSize: 12, color: '#888', fontWeight: '600' },
-  kpiValue: { fontSize: 28, color: '#1B5E20', fontWeight: '800', marginTop: 6 },
-  kpiSub: { fontSize: 10, color: '#aaa', marginTop: 4 },
+  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, ...CARD_SHADOW },
+  kpiLabel: { fontSize: 11.5, color: colors.textSecondary, fontWeight: '600' },
+  kpiValue: { fontSize: 26, color: colors.primary, fontWeight: '800', marginTop: 6 },
+  kpiSub: { fontSize: 10, color: '#B0B4B1', marginTop: 4 },
 
-  chartCard: { backgroundColor: '#fff', borderRadius: 20, padding: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
-  chartTitle: { fontSize: 15, fontWeight: '700', color: '#1B1B1B', marginBottom: 16 },
-  chartLoadingText: { fontSize: 12, color: '#aaa', textAlign: 'center', paddingVertical: 30 },
+  chartCard: { backgroundColor: '#fff', borderRadius: 20, ...CARD_SHADOW },
+  chartTitle: { fontSize: 14.5, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
+  chartLoadingText: { fontSize: 12, color: '#B0B4B1', textAlign: 'center', paddingVertical: 30 },
   chartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: CHART_MAX_BAR_HEIGHT + 40 },
   chartBarWrap: { alignItems: 'center', flex: 1 },
-  chartValueLabel: { fontSize: 9, color: '#666', marginBottom: 4 },
-  chartBar: { width: 10, borderRadius: 5 },
-  chartDayLabel: { fontSize: 11, color: '#888', marginTop: 8, fontWeight: '600' },
+  chartValueLabel: { fontSize: 9, color: colors.textSecondary, marginBottom: 4 },
+  chartBar: { width: 9, borderRadius: 5 },
+  chartDayLabel: { fontSize: 10.5, color: colors.textSecondary, marginTop: 8, fontWeight: '600' },
 
-  footerDividerLine: { height: 1, backgroundColor: '#EEE', marginTop: 20, marginBottom: 14 },
+  footerDividerLine: { height: 1, backgroundColor: colors.cardBorder, marginTop: 18, marginBottom: 14 },
   footerStatsRow: { flexDirection: 'row', alignItems: 'center' },
   footerStatItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  footerStatLabel: { fontSize: 11, color: '#888' },
-  footerStatValue: { fontSize: 14, fontWeight: '700', color: '#1B1B1B', marginTop: 2 },
-  footerVerticalDivider: { width: 1, height: 32, backgroundColor: '#EEE', marginHorizontal: 12 },
+  footerStatIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerStatLabel: { fontSize: 10.5, color: colors.textSecondary },
+  footerStatValue: { fontSize: 13.5, fontWeight: '700', color: colors.textPrimary, marginTop: 2 },
+  footerVerticalDivider: { width: 1, height: 30, backgroundColor: colors.cardBorder, marginHorizontal: 12 },
 });
