@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Pagination from "./Pagination";
+import HoverTooltip from "./HoverTooltip";
 
 const TYPE_STYLES = {
   faculty: "bg-blue-100 text-blue-700",
@@ -55,8 +56,19 @@ const GuestLogTable = ({ data = [] }) => {
                       {formatTypeLabel(item.guest_type)}
                     </span>
                   </td>
-                  <td className="p-4 text-gray-600">
-                    {item.purpose || "—"}{item.other_purpose ? ` (${item.other_purpose})` : ""}
+                  <td className="p-4 text-gray-600 max-w-[200px]">
+                    {item.purpose === "Other" && item.other_purpose ? (
+                      <HoverTooltip label={item.other_purpose}>
+                        <span className="inline-flex items-center gap-1 cursor-help border-gray-300 hover:border-gray-500 hover:text-gray-800 transition-colors">
+                          Other
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                            <path fillRule="evenodd" d="M18 10A8 8 0 11 2 10a8 8 0 0116 0zM9 9a1 1 0 012 0v4a1 1 0 11-2 0V9zm1-4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+                          </svg>
+                        </span>
+                      </HoverTooltip>
+                    ) : (
+                      item.purpose || "—"
+                    )}
                   </td>
                   <td className="p-4 text-gray-600">
                     {item.visit_date ? new Date(item.visit_date).toLocaleDateString() : "—"}

@@ -38,7 +38,7 @@ const Registrations = () => {
   const [loading, setLoading] = useState(true);
   const [currentPeriod, setCurrentPeriod] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("Pending");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -167,24 +167,30 @@ const Registrations = () => {
     }
   };
 
-  const filteredRequests = latestRequestsList.filter((req) => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      (req.full_name || "").toLowerCase().includes(term) ||
-      (req.student_number || "").includes(searchTerm);
+  // Filtered first, then sorted FIRST-COME-FIRST-SERVED — oldest
+  // submission (created_at) first, so whoever registered earliest is
+  // reviewed earliest, matching a normal registrar queue rather than
+  // whatever order the backend happened to return.
+  const filteredRequests = latestRequestsList
+    .filter((req) => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch =
+        (req.full_name || "").toLowerCase().includes(term) ||
+        (req.student_number || "").includes(searchTerm);
 
-    const studentRequests = requests.filter(r => r.student_number === req.student_number);
-    const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
-    const effectiveStatus = (req.approval_status === "pending" && isRenewal) ? "pending renewal" : req.approval_status;
+      const studentRequests = requests.filter(r => r.student_number === req.student_number);
+      const isRenewal = studentRequests.length > 1 && req.period === currentPeriod;
+      const effectiveStatus = (req.approval_status === "pending" && isRenewal) ? "pending renewal" : req.approval_status;
 
-    const matchesStatus =
-      statusFilter === "All" || effectiveStatus === statusFilter.toLowerCase();
+      const matchesStatus =
+        statusFilter === "All" || effectiveStatus === statusFilter.toLowerCase();
 
-    const matchesCollege =
-      collegeFilter === "All Colleges" || toCollegeAcronym(req.college) === collegeFilter;
+      const matchesCollege =
+        collegeFilter === "All Colleges" || toCollegeAcronym(req.college) === collegeFilter;
 
-    return matchesSearch && matchesStatus && matchesCollege;
-  });
+      return matchesSearch && matchesStatus && matchesCollege;
+    })
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   useEffect(() => {
     setCurrentPage(1);
@@ -259,7 +265,7 @@ const Registrations = () => {
                         if (req.period === currentPeriod) {
                           displayStatus = isRenewal ? "pending renewal" : "pending";
                         } else {
-                          displayStatus = "expired / unapproved"; // Or "pending (past term)"
+                          displayStatus = "expired / unapproved";
                         }
                       }
 
@@ -294,7 +300,6 @@ const Registrations = () => {
               </table>
             </div>
 
-            {/* Pagination is now OUTSIDE the overflow-x-auto div */}
             {!loading && filteredRequests.length > 0 && (
               <Pagination
                 currentPage={currentPage}

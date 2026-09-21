@@ -140,7 +140,7 @@ const StudentLogs = () => {
   const currentlyInside = filteredData.filter(l => l.status === 'inside').length;
   const totalExits = filteredData.filter(l => l.status === 'exited').length;
 
-  const exitedLogs = filteredData.filter(l => l.time_in && l.time_out);
+  const exitedLogs = filteredData.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
 

@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const db = require('./db');
 require('dotenv').config();
+const cron = require('node-cron');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -591,7 +592,7 @@ app.post('/api/logs/scan', async (req, res) => {
 app.get('/api/logs/all', verifyToken, async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT sl.log_id, sl.visit_date, sl.time_in, sl.time_out, sl.status, s.full_name, s.student_number, s.college, s.program
+            SELECT sl.log_id, sl.visit_date, sl.time_in, sl.time_out, sl.status, sl.forced_exit, s.full_name, s.student_number, s.college, s.program, s.sex
             FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
             ORDER BY sl.visit_date DESC, sl.time_in DESC
         `);
@@ -605,7 +606,7 @@ app.get('/api/logs/all', verifyToken, async (req, res) => {
 app.patch('/api/logs/force-exit-all', verifyToken, async (req, res) => {
     try {
         const [result] = await db.query(
-            'UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE status = "inside"'
+            'UPDATE student_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
         );
         res.json({ 
             success: true, 
@@ -701,11 +702,20 @@ app.post('/api/admin/login', async (req, res) => {
             return res.status(401).json({ message: "Incorrect password." });
         }
 
-        // Removed the session_id generation and database UPDATE query.
-        // The frontend's localStorage lock handles browser exclusivity now.
+        // 1. Generate a unique session ID for this specific login attempt
+        const sessionId = crypto.randomUUID();
 
+        // 2. Save it to the database, overwriting any previous session for this admin
+        await db.query('UPDATE admins SET session_id = ? WHERE admin_id = ?', [sessionId, admin.admin_id]);
+
+        // 3. Include the session_id inside the signed JWT
         const token = jwt.sign(
-            { admin_id: admin.admin_id, role: admin.role, name: admin.name },
+            { 
+                admin_id: admin.admin_id, 
+                role: admin.role, 
+                name: admin.name,
+                session_id: sessionId 
+            },
             process.env.JWT_SECRET,
             { expiresIn: '8h' }
         );
@@ -977,7 +987,7 @@ app.post('/api/guests/log', async (req, res) => {
 app.get('/api/guests/all', verifyToken, async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT gl.guest_log_id, gl.time_in, gl.time_out, gl.visit_date, gl.status,
+            SELECT gl.guest_log_id, gl.time_in, gl.time_out, gl.visit_date, gl.status, gl.forced_exit,
                    g.guest_id, g.full_name, g.guest_type, g.affiliation, g.purpose, g.other_purpose
             FROM guest_logs gl JOIN guests g ON gl.guest_id = g.guest_id
             ORDER BY gl.visit_date DESC, gl.time_in DESC
@@ -1031,7 +1041,7 @@ app.patch('/api/guests/self-exit/:guest_log_id', async (req, res) => {
 app.patch('/api/guests/force-exit-all', verifyToken, async (req, res) => {
     try {
         const [result] = await db.query(
-            'UPDATE guest_logs SET time_out = NOW(), status = "exited" WHERE status = "inside"'
+            'UPDATE guest_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
         );
         res.json({ 
             success: true, 
@@ -1063,7 +1073,7 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
         const user_id = students[0].user_id;
 
         const [myLogs] = await db.query(
-            'SELECT time_in, time_out, visit_date FROM student_logs WHERE user_id = ? AND status != "voided"',
+            'SELECT time_in, time_out, visit_date, forced_exit FROM student_logs WHERE user_id = ? AND status != "voided"',
             [user_id]
         );
 
@@ -1092,7 +1102,7 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
             const idx = jsDay - 1;
             dayVisitCounts[idx] += 1;
 
-            if (log.time_in && log.time_out) {
+            if (log.time_in && log.time_out && !log.forced_exit) {
                 const hrs = (new Date(log.time_out) - new Date(log.time_in)) / (1000 * 60 * 60);
                 dayHourTotals[idx] += hrs;
                 dayHourCounts[idx] += 1;
@@ -1126,5 +1136,50 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
         res.status(500).json({ message: 'Server error computing analytics.' });
     }
 });
+
+// AUTO LOGOUT AT LIBRARY CLOSING TIME (5:01 PM, every day)
+// Safety net for entries an admin forgot to force-exit before leaving.
+// This runs the exact same SQL as the manual "Force Exit All" buttons, but
+// on a schedule — it does NOT replace those buttons. Admins should still use
+// "Force Exit All" for early closures, holidays, or any other situation this
+// scheduled job wasn't designed to foresee.
+const CLOSING_HOUR = 17;
+const CLOSING_MINUTE = 1;
+
+const runAutoLogout = async (reason) => {
+    try {
+        const [studentResult] = await db.query(
+            'UPDATE student_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
+        const [guestResult] = await db.query(
+            'UPDATE guest_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
+        console.log(
+            `[Auto Logout - ${reason}] Force-exited ${studentResult.affectedRows} student(s) and ${guestResult.affectedRows} guest(s).`
+        );
+    } catch (err) {
+        console.error(`[Auto Logout - ${reason}] Failed to auto-exit active logs:`, err.message);
+    }
+};
+
+cron.schedule('1 17 * * *', () => runAutoLogout('scheduled 5:01 PM'), {
+    timezone: 'Asia/Manila',
+});
+
+// CATCH-UP CHECK: node-cron only fires forward from whenever the server
+// process starts — if the server is restarted any time after 5:01 PM
+// (a deploy, a crash, a manual restart), that day's scheduled run is
+// already missed and won't fire again until tomorrow. This runs the same
+// cleanup once immediately on boot if it's already past closing time today,
+// so a late restart doesn't leave "inside" entries stuck until the next day.
+const isPastClosingTimeToday = () => {
+    const manilaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const minutesNow = manilaNow.getHours() * 60 + manilaNow.getMinutes();
+    return minutesNow >= (CLOSING_HOUR * 60 + CLOSING_MINUTE);
+};
+
+if (isPastClosingTimeToday()) {
+    runAutoLogout('startup catch-up');
+}
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

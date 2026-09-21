@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
@@ -56,6 +57,7 @@ export default function HomeScreen({ navigation }) {
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [currentPeriod, setCurrentPeriod] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
   const abortControllerRef = React.useRef(null);
 
   const formatDateTime = (d) => {
@@ -89,9 +91,14 @@ export default function HomeScreen({ navigation }) {
 
       if (response.status === 404) {
         setStudentData(null);
+        await AsyncStorage.removeItem('cached_profile');
       } else {
         const data = await response.json();
         setStudentData(data);
+        // Cached so the QR pass — which is static and doesn't need a live
+        // connection to be scanned — still displays if the app is opened
+        // with no internet.
+        AsyncStorage.setItem('cached_profile', JSON.stringify(data)).catch(() => {});
       }
     } catch (error) {
       if (error.name === 'AbortError') return;
@@ -132,6 +139,17 @@ export default function HomeScreen({ navigation }) {
   };
 
   useEffect(() => {
+    // Show the last-known QR/profile immediately (before the network call
+    // resolves, or even if it never does because we're offline right now).
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem('cached_profile');
+        if (cached) setStudentData(JSON.parse(cached));
+      } catch (e) {
+        // ignore — falls through to the normal fetch below
+      }
+    })();
+
     fetchProfileData(true);
     fetchAnalytics();
     fetchCurrentPeriod();
@@ -143,10 +161,18 @@ export default function HomeScreen({ navigation }) {
       fetchCurrentPeriod();
     }, 10000);
 
+    // isInternetReachable can briefly be `null` while the OS is still
+    // checking — only treat an explicit false (from either field) as
+    // offline, so we don't flash the banner on every check.
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      setIsOffline(state.isConnected === false || state.isInternetReachable === false);
+    });
+
     return () => {
       clearInterval(clockInterval);
       clearInterval(refreshInterval);
       if (abortControllerRef.current) abortControllerRef.current.abort();
+      unsubscribeNetInfo();
     };
   }, []);
 
@@ -191,6 +217,15 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {isOffline && (
+        <View style={[styles.offlineBanner, { paddingHorizontal: layout.horizontalPadding }]}>
+          <Ionicons name="cloud-offline-outline" size={15} color="#946800" />
+          <Text style={styles.offlineBannerText}>
+            You're offline — your QR pass still works, but live library data can't be updated.
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={[
@@ -321,13 +356,31 @@ export default function HomeScreen({ navigation }) {
             <View style={[styles.kpiRow, { width: layout.contentWidth }]}>
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
-                <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
-                <Text style={styles.kpiSub}>currently inside the library</Text>
+                {isOffline ? (
+                  <>
+                    <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
+                    <Text style={styles.kpiOfflineText}>Needs internet connection</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
+                    <Text style={styles.kpiSub}>currently inside the library</Text>
+                  </>
+                )}
               </View>
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiLabel}>Total Visits</Text>
-                <Text style={styles.kpiValue}>{analytics ? analytics.total_visits : '--'}</Text>
-                <Text style={styles.kpiSub}>all-time</Text>
+                {isOffline ? (
+                  <>
+                    <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
+                    <Text style={styles.kpiOfflineText}>Needs internet connection</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.kpiValue}>{analytics ? analytics.total_visits : '--'}</Text>
+                    <Text style={styles.kpiSub}>all-time</Text>
+                  </>
+                )}
               </View>
             </View>
 
@@ -363,7 +416,12 @@ export default function HomeScreen({ navigation }) {
             <View style={[styles.chartCard, { width: layout.contentWidth, padding: layout.cardPadding }]}>
               <Text style={styles.chartTitle}>Library Activity</Text>
 
-              {analytics ? (
+              {isOffline ? (
+                <View style={styles.chartOfflineWrap}>
+                  <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
+                  <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
+                </View>
+              ) : analytics ? (
                 <View style={styles.chartRow}>
                   {analytics.weekly_activity.map((item) => {
                     const barHeight = item.hours > 0
@@ -396,7 +454,7 @@ export default function HomeScreen({ navigation }) {
                   </View>
                   <View style={{ marginLeft: 10 }}>
                     <Text style={styles.footerStatLabel}>Frequent Visit</Text>
-                    <Text style={styles.footerStatValue}>{analytics ? analytics.frequent_day : '--'}</Text>
+                    <Text style={styles.footerStatValue}>{isOffline ? 'N/A' : (analytics ? analytics.frequent_day : '--')}</Text>
                   </View>
                 </View>
                 <View style={styles.footerVerticalDivider} />
@@ -407,7 +465,7 @@ export default function HomeScreen({ navigation }) {
                   <View style={{ marginLeft: 10 }}>
                     <Text style={styles.footerStatLabel}>Avg. Stay Duration</Text>
                     <Text style={styles.footerStatValue}>
-                      {analytics ? formatStayRange(analytics.avg_stay_hours) : '--'}
+                      {isOffline ? 'N/A' : (analytics ? formatStayRange(analytics.avg_stay_hours) : '--')}
                     </Text>
                   </View>
                 </View>
@@ -466,6 +524,20 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: { flexGrow: 1, paddingBottom: 30 },
+
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5E7BC',
+    paddingVertical: 9,
+    gap: 8,
+  },
+  offlineBannerText: { flex: 1, color: '#946800', fontSize: 11.5, fontWeight: '600', lineHeight: 15 },
+  kpiOfflineText: { fontSize: 11, color: '#B0B4B1', fontWeight: '600', marginTop: 6 },
+  chartOfflineWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 26, gap: 8 },
+  chartOfflineText: { fontSize: 12, color: '#B0B4B1', textAlign: 'center' },
 
   registerCard: {
     backgroundColor: '#fff',

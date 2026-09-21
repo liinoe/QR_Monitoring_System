@@ -107,4 +107,4 @@ const RegistrationItem = ({
   );
 };
 
-export default RegistrationItem;
+export default RegistrationItem; 

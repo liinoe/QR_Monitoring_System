@@ -35,6 +35,20 @@ const StudentIcon = ({ active }) => (
   </svg>
 );
 
+const ClockIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="8 12 11 15 16 9" />
+  </svg>
+);
+
 const VISITOR_TYPES = [
   { id: "faculty", label: "Faculty", icon: FacultyIcon },
   { id: "alumni", label: "Alumni", icon: AlumniIcon },
@@ -43,6 +57,12 @@ const VISITOR_TYPES = [
 ];
 
 const PURPOSES = ["Book Reference", "Research / Thesis", "Library Visit", "General Reading", "Other"];
+
+const HOW_TO_STEPS = [
+  { title: "Go to the Log Out screen", detail: "From the welcome screen, tap the \"Log Out\" button." },
+  { title: "Search for your name", detail: "Type your name in the search box to find your entry." },
+  { title: "Tap \"Log Out\"", detail: "Confirm, and your visit will be closed out." },
+];
 
 const GuestEntry = () => {
   const navigate = useNavigate();
@@ -56,6 +76,13 @@ const GuestEntry = () => {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Shown after a successful entry log — replaces the old auto-vanishing
+  // toast, since "don't forget to log out" is important enough that it
+  // shouldn't be something a guest can simply miss while looking away.
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [loggedGuestName, setLoggedGuestName] = useState("");
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -88,6 +115,7 @@ const GuestEntry = () => {
   const confirmSubmit = async () => {
     setSubmitting(true);
     setFeedback(null);
+    const guestName = `${firstName.trim()} ${lastName.trim()}`;
 
     try {
       const response = await fetch("http://localhost:5000/api/guests/log", {
@@ -105,9 +133,9 @@ const GuestEntry = () => {
 
       if (response.ok) {
         setShowConfirm(false);
-        setFeedback({ type: "success", message: "Visit logged successfully! Welcome to the library." });
+        setLoggedGuestName(guestName);
+        setShowWelcomeModal(true);
         resetForm();
-        setTimeout(() => navigate("/guest-landing"), 1500);
       } else {
         setShowConfirm(false);
         const result = await response.json();
@@ -120,6 +148,12 @@ const GuestEntry = () => {
       setSubmitting(false);
       setTimeout(() => setFeedback(null), 5000);
     }
+  };
+
+  const handleContinueToLanding = () => {
+    setShowWelcomeModal(false);
+    setShowHowTo(false);
+    navigate("/guest-landing");
   };
 
   const formatTime = (date) =>
@@ -143,22 +177,7 @@ const GuestEntry = () => {
       <div className="flex-1 flex justify-center py-10 px-4">
         <div className="w-full max-w-[680px] space-y-5">
 
-          {/* Welcome Toast */}
-          {feedback && feedback.type === "success" && (
-            <div className="guest-toast fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-green-200 shadow-lg rounded-xl px-6 py-4 flex items-center gap-3 animate-[fadeIn_0.3s_ease-out]">
-              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Welcome, {feedback.name}!</p>
-                <p className="text-xs text-gray-500">{feedback.message}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Error banner (kept as-is for non-success feedback) */}
+          {/* Error banner */}
           {feedback && feedback.type === "error" && (
             <div className="rounded-xl p-4 text-sm font-medium bg-red-50 text-red-700 border border-red-200">
               {feedback.message}
@@ -329,6 +348,70 @@ const GuestEntry = () => {
                 className="flex-1 bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
               >
                 {submitting ? "Logging..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Welcome + "Don't Forget to Log Out" Reminder Modal */}
+      {showWelcomeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[440px] overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div className="bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] px-6 py-5 border-b-[3px] border-[#F5C518] flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <CheckIcon />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">Welcome, {loggedGuestName}!</h3>
+                <p className="text-white/80 text-xs mt-0.5">Your visit has been logged successfully.</p>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Reminder banner */}
+              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <ClockIcon />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Don't forget to log out!</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Before you leave the library, please log your exit so your visit record is complete.
+                  </p>
+                </div>
+              </div>
+
+              {/* Expandable "How do I log out?" */}
+              <button
+                type="button"
+                onClick={() => setShowHowTo((v) => !v)}
+                className="w-full flex items-center justify-between text-sm font-semibold text-[#1B5E20] hover:underline"
+              >
+                <span>How do I log out?</span>
+                <span className={`transition-transform ${showHowTo ? "rotate-180" : ""}`}>▾</span>
+              </button>
+
+              {showHowTo && (
+                <div className="space-y-3 border-t pt-4">
+                  {HOW_TO_STEPS.map((step, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-100 text-[#1B5E20] text-xs font-bold flex items-center justify-center flex-shrink-0">
+                        {i + 1}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{step.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{step.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleContinueToLanding}
+                className="w-full bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3 rounded-lg transition-colors"
+              >
+                Got it, Continue
               </button>
             </div>
           </div>

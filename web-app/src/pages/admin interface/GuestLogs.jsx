@@ -3,6 +3,7 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import SearchInput from "../../components/SearchInput";
+import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
 import MonthPicker from "../../components/MonthPicker";
 import GuestLogTable from "../../components/GuestLogTable";
@@ -12,11 +13,18 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const STATUS_TABS = ["All", "Inside", "Exited"];
 const DATE_TABS = ["All Time", "Today", "This Week", "This Month"];
+const VISITOR_TYPE_OPTIONS = [
+  { value: "faculty", label: "Faculty" },
+  { value: "alumni", label: "Alumni" },
+  { value: "walkin", label: "Walk-in" },
+  { value: "student", label: "Student" },
+];
 
 const GuestLogs = () => {
   const [logs, setLogs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [visitorTypeFilter, setVisitorTypeFilter] = useState("All Types");
   const [dateFilter, setDateFilter] = useState("All Time");
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
@@ -108,16 +116,22 @@ const GuestLogs = () => {
       statusFilter === "All" ||
       (statusFilter === "Inside" && log.status === 'inside') ||
       (statusFilter === "Exited" && log.status === 'exited');
+    const matchesVisitorType =
+      visitorTypeFilter === "All Types" || log.guest_type === visitorTypeFilter;
     const matchesDate = isWithinDateFilter(log);
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesVisitorType && matchesDate;
   });
 
   // KPI STATS — all derived from filteredData so cards react to search + status + date filters
   const currentlyInside = filteredData.filter(l => l.status === 'inside').length;
   const alreadyExited = filteredData.filter(l => l.status === 'exited').length;
 
-  const visitorTypesPresent = Array.from(new Set(filteredData.map(l => l.guest_type).filter(Boolean)))
-    .map(t => t.charAt(0).toUpperCase() + t.slice(1));
+  // KPI: Avg. stay duration — forced exits (Force Exit All button, or the
+  // 5:01 PM auto-logout) don't reflect an actual departure time, so they're
+  // excluded from this average. Same logic as Student Logs and Analytics.
+  const exitedLogs = filteredData.filter(l => l.time_in && l.time_out && !l.forced_exit);
+  const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
+  const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
 
   // Label for the first card, matches the active date tab
   const totalLogsLabel = {
@@ -194,11 +208,11 @@ const GuestLogs = () => {
               border="border-amber-800"
             />
             <Card
-              title="Visitor Types"
-              value={visitorTypesPresent.length > 0 ? visitorTypesPresent.join(" • ") : "No data yet"}
-              subtitle={`${visitorTypesPresent.length} categories logged`}
-              color="text-yellow-600"
-              border="border-yellow-500"
+              title="Avg. Stay Duration"
+              value={`${avgStay} hr`}
+              subtitle="Based on exits"
+              color="text-emerald-700"
+              border="border-emerald-700"
             />
           </div>
 
@@ -211,6 +225,13 @@ const GuestLogs = () => {
             />
 
             <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
+
+            <FilterSelect value={visitorTypeFilter} onChange={(e) => setVisitorTypeFilter(e.target.value)}>
+              <option value="All Types">All Visitor Types</option>
+              {VISITOR_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </FilterSelect>
 
             {/* Divider between status and date filters */}
             <div className="h-6 w-px bg-gray-300 mx-1" />

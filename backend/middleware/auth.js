@@ -1,32 +1,37 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db'); 
 
-function verifyToken(req, res, next) {
+const verifyToken = async (req, res, next) => {
      const authHeader = req.headers['authorization'];
      const token = authHeader && authHeader.split(' ')[1];
 
-     if (!token) {
-          return res.status(401).json({ message: 'No token provided. Please log in.' });
-     }
+     if (!token) return res.status(401).json({ message: "Access denied. No token provided." });
 
-     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-          if (err) {
-               return res.status(403).json({ message: 'Invalid or expired session. Please log in again.' });
+     try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          
+          // Check the database to see if this session is still the active one
+          const [admins] = await db.query('SELECT session_id FROM admins WHERE admin_id = ?', [decoded.admin_id]);
+          
+          if (admins.length === 0 || admins[0].session_id !== decoded.session_id) {
+               return res.status(401).json({ 
+                    message: "Your session has expired because your account was logged in from another device or browser." 
+               });
           }
 
-          // removed the database session_id check here. 
-          // If the token is valid and not expired, let them in.
-          // This allows multiple devices to have valid tokens at the same time.
-
-          req.admin = decoded; // { admin_id, role, name }
+          req.admin = decoded;
           next();
-     });
-}
+     } catch (err) {
+          return res.status(403).json({ message: "Invalid or expired token. Please log in again." });
+     }
+};
 
-function requireSuperAdmin(req, res, next) {
+const requireSuperAdmin = (req, res, next) => {
+     // req.admin is set by the verifyToken middleware above
      if (!req.admin || req.admin.role !== 'super_admin') {
-          return res.status(403).json({ message: 'Super admin access required.' });
+          return res.status(403).json({ message: "Access denied. Super admin privileges required." });
      }
      next();
-}
+};
 
 module.exports = { verifyToken, requireSuperAdmin };

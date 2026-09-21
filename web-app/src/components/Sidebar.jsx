@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { getAdmin, isSuperAdmin, logout } from "../auth";
+import { getAdmin, isSuperAdmin, logout, authFetch } from "../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const Sidebar = () => {
   const location = useLocation();
@@ -9,12 +11,27 @@ const Sidebar = () => {
   const superAdmin = isSuperAdmin();
   const [isOpen, setIsOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const response = await authFetch(`${API_URL}/api/admin/pending`);
+        const data = await response.json();
+        setPendingCount(Array.isArray(data) ? data.length : 0);
+      } catch (err) {
+      }
+    };
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const menu = [
     { name: "Dashboard", path: "/" },
     { name: "Student Logs", path: "/student-logs" },
     { name: "Guest Logs", path: "/guest-logs" },
-    { name: "Registrations", path: "/registrations" },
+    { name: "Registrations", path: "/registrations", badge: pendingCount },
     { name: "Manage Students", path: "/manage-students" },
     ...(superAdmin ? [{ name: "Analytics", path: "/analytics" }] : []),
     ...(superAdmin ? [{ name: "Settings", path: "/settings" }] : []),
@@ -47,14 +64,19 @@ const Sidebar = () => {
               key={i}
               to={item.path}
               onClick={() => setIsOpen(false)}
-              className={`w-full h-[50px] flex items-center pl-[39px] mt-[20px] text-[23px] border-l-[5px] transition-colors duration-150
+              className={`w-full h-[50px] flex items-center justify-between pl-[39px] pr-[20px] mt-[20px] text-[23px] border-l-[5px] transition-colors duration-150
                 ${
                   isActive
                     ? "is-active bg-[#F3FAF3] border-[#1B651B] text-[#1B651B] font-medium"
                     : "border-transparent text-[#666] hover:bg-[#F3FAF3] hover:border-[#1B651B] hover:text-[#1B651B]"
                 }`}
             >
-              {item.name}
+              <span>{item.name}</span>
+              {!!item.badge && item.badge > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[24px] h-[24px] px-1.5 rounded-full bg-[#DC2626] text-white text-[12px] font-bold leading-none">
+                  {item.badge > 99 ? "99+" : item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
