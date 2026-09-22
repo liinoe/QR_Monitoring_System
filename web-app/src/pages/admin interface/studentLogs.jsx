@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
-import Card from "../../components/Card";
+import KpiTooltipCard from "../../components/KpiTooltipCard";
+import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import SearchInput from "../../components/SearchInput";
 import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
@@ -13,6 +14,12 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const DATE_OPTIONS = ["All Time", "Today", "This Week", "This Month"];
 const STATUS_TABS = ["All", "Active", "Inactive"];
+
+const KPI_TOOLTIPS = {
+  totalLogs: "Counts every student entry log matching your current search, college, status, and date filters.",
+  currentlyInside: "Live count of the filtered logs currently marked as \"inside\" right now.",
+  totalExits: "Number of filtered logs currently marked as \"exited.\"",
+};
 
 const StudentLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -143,6 +150,8 @@ const StudentLogs = () => {
   const exitedLogs = filteredData.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
+  const forcedExitCount = filteredData.filter(l => l.time_in && l.time_out && l.forced_exit).length;
+  const avgStayTooltip = buildAvgStayTooltip(exitedLogs.length, totalStayMs, avgStay, forcedExitCount);
 
   const dateSuffix = {
     "All Time": "",
@@ -184,10 +193,10 @@ const StudentLogs = () => {
           </div>
 
           <div className="grid grid-cols-4 gap-[20px]">
-            <Card title={`Total logs${dateSuffix}`} value={totalFiltered} subtitle={periodSubtitle} color="text-green-700" border="border-green-700" />
-            <Card title="Currently Inside" value={currentlyInside} subtitle="Live status" color="text-blue-700" border="border-blue-700" />
-            <Card title={`Total exits${dateSuffix}`} value={totalExits} subtitle={periodSubtitle} color="text-orange-700" border="border-orange-700" />
-            <Card title="Avg. Stay Duration" value={`${avgStay} hr`} subtitle="Based on exits" color="text-emerald-700" border="border-emerald-700" />
+            <KpiTooltipCard tooltip={KPI_TOOLTIPS.totalLogs} title={`Total Logs${dateSuffix}`} value={totalFiltered} subtitle={periodSubtitle} color="text-green-700" border="border-green-700" />
+            <KpiTooltipCard tooltip={KPI_TOOLTIPS.currentlyInside} title="Currently Inside" value={currentlyInside} subtitle="Live status" color="text-blue-700" border="border-blue-700" />
+            <KpiTooltipCard tooltip={KPI_TOOLTIPS.totalExits} title={`Total Exits${dateSuffix}`} value={totalExits} subtitle={periodSubtitle} color="text-orange-700" border="border-orange-700" />
+            <KpiTooltipCard tooltip={avgStayTooltip} title="Avg. Stay Duration" value={`${avgStay} hr`} subtitle="Based on exits" color="text-emerald-700" border="border-emerald-700" />
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">

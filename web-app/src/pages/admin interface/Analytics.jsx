@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie, Legend } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
-import Card from "../../components/Card";
 import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
-import KpiTooltipCard from "../../components/KPIToolTipCard";
+import KpiTooltipCard from "../../components/KpiTooltipCard";
+import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import StatBarList from "../../components/StatBarList";
 import { authFetch } from "../../auth";
 
@@ -142,7 +142,6 @@ const KPI_TOOLTIPS = {
   totalVisits: "Counts every entry log — students and guests — with a visit date inside the selected period.",
   avgDaily: "Total visits in this period ÷ number of days elapsed so far (or the full period length, once it has ended).",
   peakHour: "The 2-hour window with the most entries, based on time-in, across the selected period. The subtitle shows the weekday(s) with the most total visits.",
-  avgStay: "Average of (time out − time in) across completed visits this period. Visits ended by \"Force Exit All\" or the 5:01 PM auto-logout are excluded, since those don't reflect an actual exit time.",
 };
 
 const Analytics = () => {
@@ -291,6 +290,8 @@ const Analytics = () => {
   const exitedPeriodLogs = combinedPeriodEntries.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedPeriodLogs.reduce((acc, l) => acc + (new Date(l.time_out) - new Date(l.time_in)), 0);
   const avgStay = exitedPeriodLogs.length > 0 ? (totalStayMs / exitedPeriodLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
+  const forcedExitCount = combinedPeriodEntries.filter(l => l.time_in && l.time_out && l.forced_exit).length;
+  const avgStayTooltip = buildAvgStayTooltip(exitedPeriodLogs.length, totalStayMs, avgStay, forcedExitCount);
 
   const exitedPreviousPeriod = combinedPreviousPeriodEntries.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const previousPeriodStayMs = exitedPreviousPeriod.reduce((acc, l) => acc + (new Date(l.time_out) - new Date(l.time_in)), 0);
@@ -357,9 +358,9 @@ const Analytics = () => {
       return acc;
     }, {});
     return COLLEGE_OPTIONS
-      .map(c => ({ name: c, visits: counts[c] || 0 }))
-      .filter(c => c.visits > 0)
-      .sort((a, b) => b.visits - a.visits);
+      .map(c => ({ key: c, name: c, value: counts[c] || 0 }))
+      .filter(c => c.value > 0)
+      .sort((a, b) => b.value - a.value);
   }, [periodLogs]);
 
   // Highest program (course) by visits — capped to top 8 so the chart stays
@@ -460,6 +461,7 @@ const Analytics = () => {
       .slice(0, 5);
   }, [periodLogs]);
 
+  const topCollegeName = collegeChartData[0]?.name;
   const topProgramName = programChartData[0]?.name;
   const topGenderEntry = [...genderChartData].sort((a, b) => b.value - a.value)[0];
   const topGuestTypeEntry = [...guestTypeChartData].sort((a, b) => b.value - a.value)[0];
@@ -487,7 +489,7 @@ const Analytics = () => {
           <div className="grid grid-cols-4 gap-[20px]">
             <KpiTooltipCard
               tooltip={KPI_TOOLTIPS.totalVisits}
-              title={`Total visits (${periodType.toLowerCase()})`}
+              title={`Total Visits (${periodType.toLowerCase()})`}
               value={totalVisits}
               subtitle={visitsTrend === null ? `No data last ${periodType.toLowerCase()}` : `${visitsTrend >= 0 ? '↑' : '↓'} ${Math.abs(visitsTrend)}% vs ${previousPeriodLabel}`}
               color="text-green-700"
@@ -495,7 +497,7 @@ const Analytics = () => {
             />
             <KpiTooltipCard
               tooltip={KPI_TOOLTIPS.avgDaily}
-              title="Avg. daily visits"
+              title="Avg. Daily Visits"
               value={avgDailyVisits}
               subtitle="Weekdays and weekends"
               color="text-blue-700"
@@ -503,15 +505,15 @@ const Analytics = () => {
             />
             <KpiTooltipCard
               tooltip={KPI_TOOLTIPS.peakHour}
-              title="Peak hour"
+              title="Peak Hour"
               value={peakLabel}
               subtitle={busiestDaysLabel}
               color="text-orange-600"
               border="border-orange-600"
             />
             <KpiTooltipCard
-              tooltip={KPI_TOOLTIPS.avgStay}
-              title="Avg. stay duration"
+              tooltip={avgStayTooltip}
+              title="Avg. Stay Duration"
               value={`${avgStay} hr`}
               subtitle={avgStayPreviousPeriod === null ? "Based on exits" : `${parseFloat(avgStay) >= avgStayPreviousPeriod ? '↑' : '↓'} vs ${avgStayPreviousPeriod.toFixed(1)} hr ${previousPeriodLabel}`}
               color="text-emerald-700"
@@ -572,35 +574,51 @@ const Analytics = () => {
             </div>
           </div>
 
-          {/* Visits by college + Top students */}
-          <div className="grid grid-cols-2 gap-[20px]">
-            <div className="bg-white rounded-[10px] p-[20px] h-[340px]">
-              <p className="text-sm font-semibold text-green-700 mb-4">Visits by College <span className="text-gray-400 font-normal">— students only</span></p>
-              {collegeChartData.length === 0 ? (
-                <div className="h-[90%] flex items-center justify-center text-sm text-gray-400">
-                  No visits recorded this {periodType.toLowerCase()}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="90%">
-                  <BarChart data={collegeChartData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                    <XAxis type="number" fontSize={12} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" fontSize={12} width={60} interval={0} />
-                    <Tooltip cursor={false} />
-                    <Bar dataKey="visits" radius={[0, 4, 4, 0]} barSize={22}>
-                      {collegeChartData.map((entry, i) => (
-                        <Cell key={i} fill={COLLEGE_COLORS[entry.name]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+          {/* Row 1: Visits by College & Highest Program by Visits */}
+          <div className="grid grid-cols-2 gap-[20px] items-start">
+            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
+              <p className="text-sm font-semibold text-green-700 mb-1">Visits by College <span className="text-gray-400 font-normal text-xs">— students only</span></p>
+              <p className="text-xs text-gray-400 mb-3">
+                {topCollegeName ? `${topCollegeName} leads this ${periodType.toLowerCase()}` : "No student visits yet"}
+              </p>
+              <StatBarList
+                data={collegeChartData}
+                colorFor={(item) => COLLEGE_COLORS[item.key] || '#9ca3af'}
+                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+              />
             </div>
 
-            <div className="bg-white rounded-[10px] p-[20px] h-[340px] overflow-auto">
-              <p className="text-sm font-semibold text-green-700 mb-4">Top Visiting Students <span className="text-gray-400 font-normal">— students only</span></p>
+            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
+              <p className="text-sm font-semibold text-green-700 mb-1">Highest Program by Visits <span className="text-gray-400 font-normal text-xs">— students only</span></p>
+              <p className="text-xs text-gray-400 mb-3">
+                {topProgramName ? `${topProgramName} leads this ${periodType.toLowerCase()}` : "No student visits yet"}
+              </p>
+              <StatBarList
+                data={programChartData}
+                colorFor={(item, i) => PALETTE[i % PALETTE.length]}
+                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+              />
+            </div>
+          </div>
+
+          {/* Row 2: New vs Returning Students & Top Visiting Students */}
+          <div className="grid grid-cols-2 gap-[20px] items-start">
+            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
+              <p className="text-sm font-semibold text-green-700 mb-1">New vs Returning Students</p>
+              <p className="text-xs text-gray-400 mb-3">
+                {totalUniqueStudents > 0 ? `${returningPct}% of visiting students this ${periodType.toLowerCase()} are returning` : "No student visits yet"}
+              </p>
+              <StatBarList
+                data={newReturningData}
+                colorFor={(item) => (item.key === 'new' ? '#2563eb' : '#16a34a')}
+                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+              />
+            </div>
+
+            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px] overflow-auto">
+              <p className="text-sm font-semibold text-green-700 mb-3">Top Visiting Students <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               {topStudents.length === 0 ? (
-                <div className="h-[80%] flex items-center justify-center text-sm text-gray-400">
+                <div className="py-6 flex items-center justify-center text-sm text-gray-400">
                   No visits recorded this {periodType.toLowerCase()}
                 </div>
               ) : (
@@ -630,54 +648,20 @@ const Analytics = () => {
             </div>
           </div>
 
-          {/* Guest type comparison (chart) + New vs Returning (simple list) */}
+          {/* Row 3: Guest Type Comparison & Gender Comparison */}
           <div className="grid grid-cols-2 gap-[20px] items-start">
-            <div className="bg-white rounded-[10px] p-[20px] h-[320px]">
+            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Guest Type Comparison</p>
-              <p className="text-xs text-gray-400 mb-2">
+              <p className="text-xs text-gray-400 mb-3">
                 {topGuestTypeEntry ? `${topGuestTypeEntry.name} visits the most this ${periodType.toLowerCase()}` : "No guest visits yet"}
               </p>
-              {guestTypeChartData.length === 0 ? (
-                <div className="h-[75%] flex items-center justify-center text-sm text-gray-400">
-                  No guest visits recorded this {periodType.toLowerCase()}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="82%">
-                  <PieChart>
-                    <Pie
-                      data={guestTypeChartData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={85}
-                      paddingAngle={2}
-                    >
-                      {guestTypeChartData.map((entry) => (
-                        <Cell key={entry.key} fill={GUEST_TYPE_COLORS[entry.key] || '#9ca3af'} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value, name) => [`${value} visit(s)`, name]} />
-                    <Legend verticalAlign="bottom" height={24} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">New vs Returning Students</p>
-              <p className="text-xs text-gray-400 mb-3">
-                {totalUniqueStudents > 0 ? `${returningPct}% of visiting students this ${periodType.toLowerCase()} are returning` : "No student visits yet"}
-              </p>
               <StatBarList
-                data={newReturningData}
-                colorFor={(item) => (item.key === 'new' ? '#2563eb' : '#16a34a')}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+                data={guestTypeChartData}
+                colorFor={(item) => GUEST_TYPE_COLORS[item.key] || '#9ca3af'}
+                emptyLabel={`No guest visits recorded this ${periodType.toLowerCase()}`}
               />
             </div>
-          </div>
 
-          {/* Gender comparison + Highest program (simple lists) */}
-          <div className="grid grid-cols-2 gap-[20px] items-start">
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Gender Comparison <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               <p className="text-xs text-gray-400 mb-3">
@@ -689,23 +673,12 @@ const Analytics = () => {
                 emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
               />
             </div>
-
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">Highest Program by Visits <span className="text-gray-400 font-normal text-xs">— students only</span></p>
-              <p className="text-xs text-gray-400 mb-3">
-                {topProgramName ? `${topProgramName} leads this ${periodType.toLowerCase()}` : "No student visits yet"}
-              </p>
-              <StatBarList
-                data={programChartData}
-                colorFor={(item, i) => PALETTE[i % PALETTE.length]}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
-              />
-            </div>
           </div>
 
         </div>
       </div>
     </div>
+
   );
 };
 

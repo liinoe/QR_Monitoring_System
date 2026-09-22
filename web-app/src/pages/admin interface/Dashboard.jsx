@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LabelList } from "recharts";
 import Sidebar from "../../components/Sidebar";
-import KpiTooltipCard from "../../components/KPIToolTipCard";
+import KpiTooltipCard from "../../components/KpiTooltipCard";
+import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import Header from "../../components/Header";
 import { authFetch } from "../../auth";
 
@@ -46,7 +47,6 @@ const KPI_TOOLTIPS = {
   totalToday: "Counts every entry log — students and guests — with today's date, regardless of whether they've exited yet.",
   currentlyInside: "Live count of every log (students + guests) currently marked as \"inside\" right now.",
   pending: "Number of student registration requests awaiting admin approval on the Registrations page.",
-  avgStay: "Average of (time out − time in) across all completed visits, students and guests combined, all-time. Visits ended by \"Force Exit All\" or the 5:01 PM auto-logout are excluded, since those don't reflect an actual departure time.",
 };
 
 const Dashboard = () => {
@@ -114,11 +114,13 @@ const Dashboard = () => {
   // Forced exits (Force Exit All button, or the 5:01 PM auto-logout) don't
   // reflect an actual departure time, so they're excluded from this average
   // — same rule as Student Logs and Analytics.
-  const exitedLogs = logs.filter(l => l.time_in && l.time_out && !l.forced_exit);
-  const exitedGuestLogs = guestLogs.filter(g => g.time_in && g.time_out && !g.forced_exit);
+  const exitedLogs = logsToday.filter(l => l.time_in && l.time_out && !l.forced_exit);
+  const exitedGuestLogs = guestLogsToday.filter(g => g.time_in && g.time_out && !g.forced_exit);
   const allExited = [...exitedLogs, ...exitedGuestLogs];
   const totalStayMs = allExited.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = allExited.length > 0 ? (totalStayMs / allExited.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
+  const forcedExitCount = [...logsToday, ...guestLogsToday].filter(l => l.time_in && l.time_out && l.forced_exit).length;
+  const avgStayTooltip = buildAvgStayTooltip(allExited.length, totalStayMs, avgStay, forcedExitCount);
 
   const exitedYesterday = [...logsYesterday, ...guestLogsYesterday].filter(l => l.time_in && l.time_out && !l.forced_exit);
   const avgStayYesterdayMs = exitedYesterday.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
@@ -223,7 +225,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-4 gap-[20px]">
             <KpiTooltipCard
               tooltip={KPI_TOOLTIPS.totalToday}
-              title="Total visitors today"
+              title="Total Visitors Today"
               value={totalVisitorsToday}
               subtitle={visitorsTrend === null ? "No data from yesterday" : `${visitorsTrend >= 0 ? '↑' : '↓'} ${Math.abs(visitorsTrend)}% vs yesterday`}
               color="text-green-700"
@@ -246,10 +248,10 @@ const Dashboard = () => {
               border="border-orange-600"
             />
             <KpiTooltipCard
-              tooltip={KPI_TOOLTIPS.avgStay}
-              title="Avg. Stay Duration"
+              tooltip={avgStayTooltip}
+              title="Avg. Stay Duration (Today)"
               value={`${avgStay} hr`}
-              subtitle={avgStayYesterday === null ? "Based on exits" : `${parseFloat(avgStay) >= avgStayYesterday ? '↑' : '↓'} vs ${avgStayYesterday.toFixed(1)} hr yesterday`}
+              subtitle={avgStayYesterday === null ? "Based on today's exits" : `${parseFloat(avgStay) >= avgStayYesterday ? '↑' : '↓'} vs ${avgStayYesterday.toFixed(1)} hr yesterday`}
               color="text-emerald-700"
               border="border-emerald-700"
             />

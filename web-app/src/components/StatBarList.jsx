@@ -16,7 +16,7 @@ const StatBarList = ({ data, colorFor = () => '#16a34a', emptyLabel = "No data y
       {data.map((item, i) => {
         const share = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
         return (
-          <div key={item.key} className="py-2.5 border-b last:border-0">
+          <div key={item.key} className="py-2.5">
             <div className="flex items-center justify-between mb-1.5 gap-3">
               <span className="text-sm text-gray-700 truncate">{item.name}</span>
               <span className="text-sm font-semibold text-gray-800 flex-shrink-0">{item.value}</span>

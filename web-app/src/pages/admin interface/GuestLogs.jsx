@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
-import Card from "../../components/Card";
+import KpiTooltipCard from "../../components/KpiTooltipCard";
+import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import SearchInput from "../../components/SearchInput";
 import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
@@ -19,6 +20,12 @@ const VISITOR_TYPE_OPTIONS = [
   { value: "walkin", label: "Walk-in" },
   { value: "student", label: "Student" },
 ];
+
+const KPI_TOOLTIPS = {
+  totalLogs: "Counts every guest entry log matching your current search, status, visitor type, and date filters.",
+  currentlyInside: "Live count of the filtered guest logs currently marked as \"inside\" right now.",
+  alreadyExited: "Number of filtered guest logs currently marked as \"exited.\"",
+};
 
 const GuestLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -132,13 +139,15 @@ const GuestLogs = () => {
   const exitedLogs = filteredData.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
+  const forcedExitCount = filteredData.filter(l => l.time_in && l.time_out && l.forced_exit).length;
+  const avgStayTooltip = buildAvgStayTooltip(exitedLogs.length, totalStayMs, avgStay, forcedExitCount);
 
   // Label for the first card, matches the active date tab
   const totalLogsLabel = {
-    "All Time": "Total logs",
-    "Today": "Total logs today",
-    "This Week": "Total logs this week",
-    "This Month": "Total logs this month",
+    "All Time": "Total Logs",
+    "Today": "Total Logs Today",
+    "This Week": "Total Logs this week",
+    "This Month": "Total Logs this month",
   }[dateFilter];
 
   // Comparison subtitle: only meaningful for "Today", since prior-period math
@@ -186,28 +195,32 @@ const GuestLogs = () => {
 
           {/* KPI CARDS */}
           <div className="grid grid-cols-4 gap-[20px]">
-            <Card
+            <KpiTooltipCard
+              tooltip={KPI_TOOLTIPS.totalLogs}
               title={totalLogsLabel}
               value={filteredData.length}
               subtitle={totalLogsSubtitle}
               color="text-green-700"
               border="border-green-700"
             />
-            <Card
+            <KpiTooltipCard
+              tooltip={KPI_TOOLTIPS.currentlyInside}
               title="Currently Inside"
               value={currentlyInside}
               subtitle={`As of ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
               color="text-blue-700"
               border="border-blue-700"
             />
-            <Card
+            <KpiTooltipCard
+              tooltip={KPI_TOOLTIPS.alreadyExited}
               title="Already Exited"
               value={alreadyExited}
               subtitle={`${filteredData.length} total - ${currentlyInside} inside`}
               color="text-amber-800"
               border="border-amber-800"
             />
-            <Card
+            <KpiTooltipCard
+              tooltip={avgStayTooltip}
               title="Avg. Stay Duration"
               value={`${avgStay} hr`}
               subtitle="Based on exits"
