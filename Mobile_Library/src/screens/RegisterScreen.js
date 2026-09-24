@@ -28,6 +28,23 @@ const sexLabelToValue = {
   'Prefer not to say': 'prefer_not_to_say',
 };
 
+function normalizePhoneDigits(value) {
+  const digits = value.replace(/\D/g, '');
+  const localDigits = digits.startsWith('09')
+    ? digits.slice(1)
+    : digits.startsWith('63')
+      ? digits.slice(2)
+      : digits;
+  return localDigits.slice(0, 10);
+}
+
+function formatPhoneDigits(phoneNumber) {
+  const digits = phoneNumber.replace(/^\+63/, '').slice(0, 10);
+  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export default function RegisterScreen({ navigation, route }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
@@ -103,8 +120,8 @@ export default function RegisterScreen({ navigation, route }) {
       Alert.alert('Invalid Student Number', 'Student number must be exactly 9 digits.');
       return false;
     }
-    if (!form.phone_number || form.phone_number.replace(/\D/g, '').length < 10) {
-      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number.');
+    if (!/^\+639\d{9}$/.test(form.phone_number)) {
+      Alert.alert('Invalid Phone Number', 'Please enter all 10 digits after +63.');
       return false;
     }
     if (!form.address) {
@@ -145,6 +162,8 @@ export default function RegisterScreen({ navigation, route }) {
     if (!valid) return;
     setConfirmModalVisible(true);
   };
+
+  const phoneNumberIsValid = /^\+639\d{9}$/.test(form.phone_number);
 
   const resetForm = () => {
     setForm({
@@ -299,13 +318,7 @@ export default function RegisterScreen({ navigation, route }) {
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
-                <Field
-                  label="Phone Number"
-                  value={form.phone_number}
-                  onChangeText={(v) => update('phone_number', v)}
-                  placeholder="09XXXXXXXXX"
-                  keyboardType="phone-pad"
-                />
+                <PhoneNumberField value={form.phone_number} onChange={(v) => update('phone_number', v)} />
                 <Field
                   label="Address"
                   value={form.address}
@@ -388,8 +401,12 @@ export default function RegisterScreen({ navigation, route }) {
           <View style={[styles.stepRow, { width: layout.contentWidth }]}>
             <StepIndicator number={isRenewal ? 2 : 3} isLast />
             <View style={styles.confirmActions}>
-              <TouchableOpacity style={[styles.btn, styles.confirmBtn]} onPress={handleReview}>
-                <Text style={styles.confirmText}>Review</Text>
+              <TouchableOpacity
+                style={[styles.btn, styles.confirmBtn, !isRenewal && !phoneNumberIsValid && styles.disabledBtn]}
+                onPress={handleReview}
+                disabled={!isRenewal && !phoneNumberIsValid}
+              >
+                <Text style={styles.confirmText}>Continue</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.btn, styles.cancelBtn]} onPress={cancel}>
                 <Text style={styles.cancelText}>Cancel</Text>
@@ -444,6 +461,32 @@ export default function RegisterScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+function PhoneNumberField({ value, onChange }) {
+  const phoneDigits = value.replace(/^\+63/, '');
+  const isComplete = /^9\d{9}$/.test(phoneDigits);
+  const hasInput = phoneDigits.length > 0;
+
+  return (
+    <View style={styles.phoneFieldWrap}>
+      <Text style={styles.fieldLabel}>Phone Number</Text>
+      <View style={[styles.phoneInput, hasInput && !isComplete && styles.phoneInputInvalid]}>
+        <Text style={styles.countryCode}>+63</Text>
+        <TextInput
+          style={styles.phoneNumberInput}
+          value={formatPhoneDigits(value)}
+          onChangeText={(input) => onChange(`+63${normalizePhoneDigits(input)}`)}
+          placeholder="912 345 6789"
+          placeholderTextColor={colors.gray}
+          keyboardType="number-pad"
+          maxLength={12}
+        />
+      </View>
+      <Text>
+      </Text>
     </View>
   );
 }
@@ -554,6 +597,18 @@ const styles = StyleSheet.create({
   stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
+  phoneFieldWrap: { marginBottom: 16 },
+  phoneInput: {
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: '#fff', borderRadius: 14, paddingLeft: 14, paddingRight: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04,
+    shadowRadius: 5, elevation: 1,
+  },
+  phoneInputInvalid: { borderColor: '#DC2626' },
+  countryCode: { color: colors.primary, fontSize: 14, fontWeight: '600', paddingRight: 12, borderRightWidth: 1, borderRightColor: colors.border },
+  phoneNumberInput: { flex: 1, color: colors.textPrimary, fontSize: 14, paddingHorizontal: 12, paddingVertical: 12 },
+  phoneHint: { color: colors.textSecondary, fontSize: 11, marginTop: 6 },
+  phoneHintInvalid: { color: '#DC2626' },
 
   passwordInputRow: {
     flexDirection: 'row',
@@ -571,6 +626,7 @@ const styles = StyleSheet.create({
   confirmActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 12, gap: 10 },
   btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
   confirmBtn: { backgroundColor: colors.primary },
+  disabledBtn: { backgroundColor: '#AAB8AC' },
   confirmText: { color: '#fff', fontWeight: '700' },
   cancelBtn: { backgroundColor: colors.grayLight },
   cancelText: { color: colors.textPrimary, fontWeight: '700' },
