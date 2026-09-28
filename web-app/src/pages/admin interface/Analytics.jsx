@@ -102,24 +102,48 @@ const previousSemesterKey = (key) => {
   return `${ayStart}-2nd`;
 };
 
-const PERIOD_TYPES = ["Month", "Semester", "Year"];
+// "Last 7 Days" = today + the 6 days before it (rolling). The mobile app's
+// Peak Hours card uses exactly this window (backend: lastSevenDays in index.js),
+// so the Peak Hour KPI here matches the app when this tab is selected.
+const WEEK = "Last 7 Days";
+const PERIOD_TYPES = [WEEK, "Month", "Semester", "Year"];
+
+const LAST7 = "last7";
+const PREV7 = "prev7";
+const rollingWeekRange = (value) => {
+  const now = new Date();
+  const offset = value === PREV7 ? 7 : 0;
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 - offset, 0, 0, 0),
+    end: new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset, 23, 59, 59),
+  };
+};
+const rollingWeekLabel = (value) => {
+  const { start, end } = rollingWeekRange(value);
+  const fmt = (d) => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${value === PREV7 ? 'Previous 7 days' : 'Last 7 days'} • ${fmt(start)} – ${fmt(end)}`;
+};
 
 const getPeriodKeyForDate = (periodType, date) => {
+  if (periodType === WEEK) return LAST7;
   if (periodType === "Month") return monthKey(date);
   if (periodType === "Year") return String(date.getFullYear());
   return semesterKey(date);
 };
 const getPeriodRange = (periodType, value) => {
+  if (periodType === WEEK) return rollingWeekRange(value);
   if (periodType === "Month") return monthRange(value);
   if (periodType === "Year") return yearRange(value);
   return semesterRange(value);
 };
 const getPeriodLabel = (periodType, value) => {
+  if (periodType === WEEK) return rollingWeekLabel(value);
   if (periodType === "Month") return monthLabel(value);
   if (periodType === "Year") return `Year ${value}`;
   return semesterLabel(value);
 };
 const getPreviousPeriodValue = (periodType, value) => {
+  if (periodType === WEEK) return PREV7;
   if (periodType === "Month") {
     const [y, m] = value.split('-').map(Number);
     return monthKey(new Date(y, m - 2, 1));
@@ -183,6 +207,7 @@ const Analytics = () => {
   // Which period values (of the currently selected type) actually have data,
   // plus the current one so it's always selectable even before any visits.
   const availablePeriods = useMemo(() => {
+    if (periodType === WEEK) return [LAST7];
     const set = new Set([getPeriodKeyForDate(periodType, new Date())]);
     [...logs, ...guestLogs].forEach(l => {
       if (!l.visit_date) return;
@@ -201,6 +226,10 @@ const Analytics = () => {
   }, [periodType, availablePeriods]);
 
   const periodRange = useMemo(() => getPeriodRange(periodType, selectedPeriod), [periodType, selectedPeriod]);
+
+  // Wording for card subtitles: "this month" / "in the last 7 days", etc.
+  const periodPhrase = periodType === WEEK ? "in the last 7 days" : `this ${periodType.toLowerCase()}`;
+  const periodShort = periodType === WEEK ? "last 7 days" : periodType.toLowerCase();
 
   const periodLogs = useMemo(() => {
     return logs.filter(l => {
@@ -300,6 +329,21 @@ const Analytics = () => {
   // Entry trend — grouped by week when viewing a single month (W1..W5), or
   // by month when viewing a semester/year (too many weeks to show cleanly).
   const trendData = useMemo(() => {
+    if (periodType === WEEK) {
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(periodRange.start);
+        d.setDate(d.getDate() + i);
+        return { key: d.toDateString(), name: d.toLocaleDateString([], { weekday: 'short' }), visits: 0 };
+      });
+      const byKey = Object.fromEntries(days.map(d => [d.key, d]));
+      combinedPeriodEntries.forEach(l => {
+        const d = new Date(l.visit_date);
+        if (isNaN(d)) return;
+        if (byKey[d.toDateString()]) byKey[d.toDateString()].visits += 1;
+      });
+      return days.map(({ name, visits }) => ({ name, visits }));
+    }
+
     if (periodType === "Month") {
       const weekCounts = {};
       combinedPeriodEntries.forEach(l => {
@@ -332,7 +376,7 @@ const Analytics = () => {
     return buckets.map(({ name, visits }) => ({ name, visits }));
   }, [combinedPeriodEntries, periodType, periodRange, rangeTotalDays]);
 
-  const trendTitle = periodType === "Month" ? `Weekly entry trend` : `Monthly entry trend`;
+  const trendTitle = periodType === WEEK ? `Daily entry trend` : periodType === "Month" ? `Weekly entry trend` : `Monthly entry trend`;
 
   // Peak hours heatmap matrix (weekday x hour, students + guests)
   const heatmapMatrix = useMemo(() => {
@@ -489,9 +533,9 @@ const Analytics = () => {
           <div className="grid grid-cols-4 gap-[20px]">
             <KpiTooltipCard
               tooltip={KPI_TOOLTIPS.totalVisits}
-              title={`Total Visits (${periodType.toLowerCase()})`}
+              title={`Total Visits (${periodShort})`}
               value={totalVisits}
-              subtitle={visitsTrend === null ? `No data last ${periodType.toLowerCase()}` : `${visitsTrend >= 0 ? '↑' : '↓'} ${Math.abs(visitsTrend)}% vs ${previousPeriodLabel}`}
+              subtitle={visitsTrend === null ? (periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`) : `${visitsTrend >= 0 ? '↑' : '↓'} ${Math.abs(visitsTrend)}% vs ${previousPeriodLabel}`}
               color="text-green-700"
               border="border-green-700"
             />
@@ -579,24 +623,24 @@ const Analytics = () => {
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Visits by College <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               <p className="text-xs text-gray-400 mb-3">
-                {topCollegeName ? `${topCollegeName} leads this ${periodType.toLowerCase()}` : "No student visits yet"}
+                {topCollegeName ? `${topCollegeName} leads ${periodPhrase}` : "No student visits yet"}
               </p>
               <StatBarList
                 data={collegeChartData}
                 colorFor={(item) => COLLEGE_COLORS[item.key] || '#9ca3af'}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+                emptyLabel={`No visits recorded ${periodPhrase}`}
               />
             </div>
 
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Highest Program by Visits <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               <p className="text-xs text-gray-400 mb-3">
-                {topProgramName ? `${topProgramName} leads this ${periodType.toLowerCase()}` : "No student visits yet"}
+                {topProgramName ? `${topProgramName} leads ${periodPhrase}` : "No student visits yet"}
               </p>
               <StatBarList
                 data={programChartData}
                 colorFor={(item, i) => PALETTE[i % PALETTE.length]}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+                emptyLabel={`No visits recorded ${periodPhrase}`}
               />
             </div>
           </div>
@@ -606,12 +650,12 @@ const Analytics = () => {
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">New vs Returning Students</p>
               <p className="text-xs text-gray-400 mb-3">
-                {totalUniqueStudents > 0 ? `${returningPct}% of visiting students this ${periodType.toLowerCase()} are returning` : "No student visits yet"}
+                {totalUniqueStudents > 0 ? `${returningPct}% of visiting students ${periodPhrase} are returning` : "No student visits yet"}
               </p>
               <StatBarList
                 data={newReturningData}
                 colorFor={(item) => (item.key === 'new' ? '#2563eb' : '#16a34a')}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+                emptyLabel={`No visits recorded ${periodPhrase}`}
               />
             </div>
 
@@ -619,7 +663,7 @@ const Analytics = () => {
               <p className="text-sm font-semibold text-green-700 mb-3">Top Visiting Students <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               {topStudents.length === 0 ? (
                 <div className="py-6 flex items-center justify-center text-sm text-gray-400">
-                  No visits recorded this {periodType.toLowerCase()}
+                  No visits recorded {periodPhrase}
                 </div>
               ) : (
                 <table className="w-full text-sm">
@@ -653,24 +697,24 @@ const Analytics = () => {
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Guest Type Comparison</p>
               <p className="text-xs text-gray-400 mb-3">
-                {topGuestTypeEntry ? `${topGuestTypeEntry.name} visits the most this ${periodType.toLowerCase()}` : "No guest visits yet"}
+                {topGuestTypeEntry ? `${topGuestTypeEntry.name} visits the most ${periodPhrase}` : "No guest visits yet"}
               </p>
               <StatBarList
                 data={guestTypeChartData}
                 colorFor={(item) => GUEST_TYPE_COLORS[item.key] || '#9ca3af'}
-                emptyLabel={`No guest visits recorded this ${periodType.toLowerCase()}`}
+                emptyLabel={`No guest visits recorded ${periodPhrase}`}
               />
             </div>
 
             <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
               <p className="text-sm font-semibold text-green-700 mb-1">Gender Comparison <span className="text-gray-400 font-normal text-xs">— students only</span></p>
               <p className="text-xs text-gray-400 mb-3">
-                {topGenderEntry ? `${topGenderEntry.name} makes up the most visits this ${periodType.toLowerCase()}` : "No student visits yet"}
+                {topGenderEntry ? `${topGenderEntry.name} makes up the most visits ${periodPhrase}` : "No student visits yet"}
               </p>
               <StatBarList
                 data={genderChartData}
                 colorFor={(item) => GENDER_COLORS[item.key] || '#9ca3af'}
-                emptyLabel={`No visits recorded this ${periodType.toLowerCase()}`}
+                emptyLabel={`No visits recorded ${periodPhrase}`}
               />
             </div>
           </div>

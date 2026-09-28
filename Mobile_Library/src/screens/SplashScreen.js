@@ -2,1353 +2,425 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  Image,
-  TouchableOpacity,
   StyleSheet,
+  FlatList,
   Animated,
   Easing,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Image,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
+import { BRAND } from '../theme/brand';
 import { getResponsive } from '../theme/responsive';
-
-/**
- * SplashScreen — CvSU intro, green intro transition, then the eDiwa welcome content.
- *
- * Timeline:
- *    300 – 1100  GREEN screen, CvSU logo fades in + scales up
- *   1100 – 2100  Logo holds, centered
- *   2100 – 2900  Green intro panels split from center
- *                Green app background is revealed underneath.
- *   2800         eDiwa text
- *   3200         CvSU Library Companion
- *   3550         Tagline
- *   3900         CREATE ACCOUNT button
- *   4200         Login link
- *
- * UI-only file:
- * navigation targets ('Register' / 'Login') are unchanged.
- */
+import { QLessMark, QLessTile, ScanFrame, BrandPattern, TILE_RADIUS_RATIO } from '../components/QLessLogo';
 
 const CVSU_LOGO = require('../../assets/cvsu_logo.png');
+const APP_NAME = 'QLess';
+const WELCOME_TILE = 104;
 
-// If your PNG is not already green and you want it tinted.
-const TINT_LOGO_GREEN = false;
-const CVSU_GREEN = '#053915';
+const EASE = Easing.bezier(0.4, 0, 0.2, 1);
+const EASE_IN_OUT = Easing.bezier(0.65, 0, 0.35, 1);
 
-// ---------- Timeline ----------
-const T = {
-  LOGO_START: 500,
-  LOGO_IN: 1000,
-  HOLD_END: 2300,
-  SPLIT: 1000,
-  
-
-  BRAND: 2800,
-  CIRCLE: 1700,
-  ICON: 3400,
-
-  WORDMARK: 4000,
-  SUBTITLE: 4400,
-  TAGLINE: 4750,
-  BUTTON: 5100,
-  LOGIN: 5400,
-  DONE: 5900,
-};
-
-const GREEN = '#4b5b53';
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const OUT = Easing.out(Easing.cubic);
-const IN_OUT = Easing.bezier(0.65, 0, 0.35, 1);
-
-const timing = (
-  value,
-  toValue,
-  duration,
-  easing = OUT,
-  native = true
-) =>
-  Animated.timing(value, {
-    toValue,
-    duration,
-    easing,
-    useNativeDriver: native,
-  });
-
-const at = (ms, ...anims) =>
-  Animated.sequence([
-    Animated.delay(ms),
-    ...anims,
-  ]);
-
-// ---------- Soft radial glow ----------
-function RadialGlow({
-  id,
-  width,
-  height,
-  peak = 0.5,
-}) {
-  return (
-    <Svg width={width} height={height}>
-      <Defs>
-        <RadialGradient
-          id={id}
-          cx="50%"
-          cy="50%"
-          rx="50%"
-          ry="50%"
-          fx="50%"
-          fy="50%"
-        >
-          <Stop
-            offset="0%"
-            stopColor={GREEN}
-            stopOpacity={peak}
-          />
-
-          <Stop
-            offset="55%"
-            stopColor={GREEN}
-            stopOpacity={peak * 0.35}
-          />
-
-          <Stop
-            offset="100%"
-            stopColor={GREEN}
-            stopOpacity={0}
-          />
-        </RadialGradient>
-
-        <Rect
-          x="0"
-          y="0"
-          width="100%"
-          height="100%"
-          fill={`url(#${id})`}
-        />
-      </Defs>
-
-      <Rect
-        x="0"
-        y="0"
-        width="100%"
-        height="100%"
-        fill={`url(#${id})`}
-      />
-    </Svg>
-  );
-}
+const SLIDES = [
+  {
+    key: 'welcome',
+    title: `Welcome to ${APP_NAME}`,
+    description: 'Your digital companion for the Ladislao N. Diwa Memorial Library — simple, fast, and always with you.',
+    isBrand: true,
+  },
+  {
+    key: 'qr',
+    icon: 'qr-code-outline',
+    title: 'Scan In With Your QR',
+    description: "Show your personal QR pass at the entrance and you're checked in, automatically, every time.",
+  },
+  {
+    key: 'live',
+    icon: 'pulse-outline',
+    title: "See What's Happening",
+    description: "Check how many people are inside and the library's busiest hours before you even head over.",
+  },
+];
 
 export default function SplashScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
+  const [index, setIndex] = useState(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const listRef = useRef(null);
 
-  // ------------------------------------------------
-  // STATES
-  // ------------------------------------------------
+  // ---- intro state ----
+  const rootRef = useRef(null);
+  const tileRef = useRef(null);
+  const [rootSize, setRootSize] = useState({ w: width, h: height });
+  const [introDone, setIntroDone] = useState(false);
+  const [target, setTarget] = useState(null); // where the welcome tile sits
+  const morphStarted = useRef(false);
 
-  const [interactive, setInteractive] = useState(false);
+  const draw = useRef({
+    brackets: new Animated.Value(0),
+    ring: new Animated.Value(0),
+    handle: new Animated.Value(0),
+    book: new Animated.Value(0),
+    scan: new Animated.Value(0),
+  }).current;
+  const wordmark = useRef(new Animated.Value(0)).current;
+  const morph = useRef(new Animated.Value(0)).current;
+  const fadeOut = useRef(new Animated.Value(1)).current; // fallback if measuring fails
+  const introRef = useRef(null);
+  const cta = useRef(new Animated.Value(0)).current; // Get Started button
+  const ctaShown = useRef(false);
+  const insets = useSafeAreaInsets();
 
-  const [introGone, setIntroGone] = useState(false);
+  const isLast = index === SLIDES.length - 1;
+  const introMarkSize = Math.min(200, rootSize.w * 0.5);
 
-  // ------------------------------------------------
-  // CvSU INTRO
-  // ------------------------------------------------
-
-  const logoOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const logoScale = useRef(
-    new Animated.Value(0.12)
-  ).current;
-
-  const transitionScale = useRef(
-    new Animated.Value(0.02)
-  ).current;
-
-  // ------------------------------------------------
-  // SPLIT PANELS
-  // ------------------------------------------------
-
-  const split = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const halfW = width / 2;
-
-  const leftX = split.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -(halfW + 2)],
-  });
-
-  const rightX = split.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, halfW + 2],
-  });
-
-  // ------------------------------------------------
-  // WELCOME LOGO
-  // ------------------------------------------------
-
-  const brandOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const brandScale = useRef(
-    new Animated.Value(0.7)
-  ).current;
-
-  const brandTranslateY = useRef(
-    new Animated.Value(14)
-  ).current;
-
-  const spin = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const drawProgress = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const iconOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const iconScale = useRef(
-    new Animated.Value(0.7)
-  ).current;
-
-  const glowReveal = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const glowPulse = useRef(
-    new Animated.Value(0.6)
-  ).current;
-
-  const glowOpacity = useRef(
-    Animated.multiply(
-      glowReveal,
-      glowPulse
-    )
-  ).current;
-
-  const spinDeg = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['-360deg', '0deg'],
-  });
-
-  // ------------------------------------------------
-  // WELCOME CONTENT
-  // ------------------------------------------------
-
-  const wordmarkOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const wordmarkTranslateY = useRef(
-    new Animated.Value(14)
-  ).current;
-
-  const wordmarkScale = useRef(
-    new Animated.Value(0.9)
-  ).current;
-
-  const subtitleOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const subtitleTranslateY = useRef(
-    new Animated.Value(10)
-  ).current;
-
-  const taglineOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const taglineTranslateY = useRef(
-    new Animated.Value(18)
-  ).current;
-
-  const buttonOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const buttonTranslateY = useRef(
-    new Animated.Value(24)
-  ).current;
-
-  const buttonScale = useRef(
-    new Animated.Value(0.95)
-  ).current;
-
-  const buttonPressScale = useRef(
-    new Animated.Value(1)
-  ).current;
-
-  const buttonScaleCombined = useRef(
-    Animated.multiply(
-      buttonScale,
-      buttonPressScale
-    )
-  ).current;
-
-  const loginOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  const loginTranslateY = useRef(
-    new Animated.Value(10)
-  ).current;
-
-  // ------------------------------------------------
-  // SIZES
-  // ------------------------------------------------
-
-  const logoSize = layout.isCompact
-    ? 190
-    : 220;
-
-  const transitionSize =
-    Math.hypot(width, height) * 1.15;
-
-  // ------------------------------------------------
-  // CIRCLE LOGO GEOMETRY
-  // ------------------------------------------------
-
-  const brandSize = layout.isCompact
-    ? 72
-    : 84;
-
-  const strokeWidth = 1.5;
-
-  const radius =
-    (brandSize - strokeWidth) / 2;
-
-  const circumference =
-    2 * Math.PI * radius;
-
-  const glowSize =
-    brandSize * 2.2;
-
-  const dashOffset =
-    drawProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [
-        circumference - 0.1,
-        0,
-      ],
+  const measureTile = () =>
+    new Promise((resolve) => {
+      if (!rootRef.current || !tileRef.current) return resolve(null);
+      rootRef.current.measureInWindow((rx, ry) => {
+        tileRef.current.measureInWindow((x, y, w) => {
+          if (!w) return resolve(null);
+          resolve({ x: x - rx, y: y - ry, size: w });
+        });
+      });
     });
 
-  // ------------------------------------------------
-  // ANIMATION
-  // ------------------------------------------------
+  const startMorph = async () => {
+    if (morphStarted.current) return;
+    morphStarted.current = true;
+    const t = await measureTile();
+    const finish = () => setIntroDone(true);
+
+    if (!t) {
+      Animated.timing(fadeOut, { toValue: 0, duration: 400, easing: EASE, useNativeDriver: false }).start(finish);
+      return;
+    }
+    setTarget(t);
+    Animated.timing(morph, { toValue: 1, duration: 780, easing: EASE_IN_OUT, useNativeDriver: false }).start(finish);
+  };
 
   useEffect(() => {
-    // Glow loop
-    const glowLoop = Animated.loop(
-      Animated.sequence([
-        timing(
-          glowPulse,
-          1,
-          1800,
-          Easing.inOut(Easing.sin)
-        ),
+    const step = (v, duration, delay, easing = EASE) =>
+      Animated.timing(v, { toValue: 1, duration, delay, easing, useNativeDriver: false });
 
-        timing(
-          glowPulse,
-          0.6,
-          1800,
-          Easing.inOut(Easing.sin)
-        ),
-      ])
-    );
-
-    glowLoop.start();
-
-    // ------------------------------------------------
-    // MAIN TIMELINE
-    // ------------------------------------------------
-
-    const timeline = Animated.parallel([
-      // ----------------------------------------------
-      // 1. CvSU LOGO
-      // ----------------------------------------------
-
-      at(
-        T.LOGO_START,
-
-        Animated.parallel([
-          timing(
-            logoOpacity,
-            1,
-            T.LOGO_IN,
-            Easing.out(Easing.quad)
-          ),
-
-          timing(
-            logoScale,
-            1,
-            T.LOGO_IN,
-            Easing.out(Easing.back(1.4))
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 2. GREEN INTRO TRANSITION
-      // ----------------------------------------------
-
-      at(
-        T.HOLD_END,
-
-        Animated.parallel([
-          timing(
-            transitionScale,
-            1,
-            T.SPLIT,
-            IN_OUT
-          ),
-
-          timing(
-            split,
-            1,
-            T.SPLIT,
-            IN_OUT
-          ),
-
-          timing(
-            logoOpacity,
-            0,
-            T.SPLIT * 0.6,
-            Easing.in(Easing.quad)
-          ),
-
-          timing(
-            logoScale,
-            1.35,
-            T.SPLIT * 0.45,
-            Easing.out(Easing.quad)
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 3. CIRCULAR WELCOME LOGO
-      // ----------------------------------------------
-
-      at(
-        T.BRAND,
-
-        Animated.parallel([
-          timing(
-            brandOpacity,
-            1,
-            600
-          ),
-
-          timing(
-            brandTranslateY,
-            0,
-            700
-          ),
-
-          timing(
-            brandScale,
-            1,
-            900
-          ),
-
-          timing(
-            glowReveal,
-            1,
-            900
-          ),
-
-          timing(
-            spin,
-            1,
-            T.CIRCLE,
-            IN_OUT
-          ),
-
-          timing(
-            drawProgress,
-            1,
-            T.CIRCLE,
-            IN_OUT,
-            false
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 4. LIBRARY ICON
-      // ----------------------------------------------
-
-      at(
-        T.ICON,
-
-        Animated.parallel([
-          timing(
-            iconOpacity,
-            1,
-            450
-          ),
-
-          timing(
-            iconScale,
-            1,
-            450
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 5. EDIWA TEXT
-      // ----------------------------------------------
-
-      at(
-        T.WORDMARK,
-
-        Animated.parallel([
-          timing(
-            wordmarkOpacity,
-            1,
-            500
-          ),
-
-          timing(
-            wordmarkTranslateY,
-            0,
-            500
-          ),
-
-          timing(
-            wordmarkScale,
-            1,
-            500
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 6. SUBTITLE
-      // ----------------------------------------------
-
-      at(
-        T.SUBTITLE,
-
-        Animated.parallel([
-          timing(
-            subtitleOpacity,
-            1,
-            400
-          ),
-
-          timing(
-            subtitleTranslateY,
-            0,
-            400
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 7. TAGLINE
-      // ----------------------------------------------
-
-      at(
-        T.TAGLINE,
-
-        Animated.parallel([
-          timing(
-            taglineOpacity,
-            1,
-            500
-          ),
-
-          timing(
-            taglineTranslateY,
-            0,
-            500
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 8. CREATE ACCOUNT
-      // ----------------------------------------------
-
-      at(
-        T.BUTTON,
-
-        Animated.parallel([
-          timing(
-            buttonOpacity,
-            1,
-            400
-          ),
-
-          timing(
-            buttonTranslateY,
-            0,
-            500
-          ),
-
-          Animated.spring(
-            buttonScale,
-            {
-              toValue: 1,
-              friction: 6,
-              tension: 120,
-              useNativeDriver: true,
-            }
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 9. LOGIN
-      // ----------------------------------------------
-
-      at(
-        T.LOGIN,
-
-        Animated.parallel([
-          timing(
-            loginOpacity,
-            1,
-            400
-          ),
-
-          timing(
-            loginTranslateY,
-            0,
-            400
-          ),
-        ])
-      ),
-
-      // ----------------------------------------------
-      // 10. ENABLE INTERACTION
-      // ----------------------------------------------
-
-      Animated.delay(T.DONE),
+    introRef.current = Animated.parallel([
+      step(draw.brackets, 520, 0),
+      step(draw.ring, 680, 320),
+      step(draw.handle, 240, 960),
+      step(draw.book, 360, 1120),
+      step(wordmark, 460, 1260),
+      step(draw.scan, 820, 1320, Easing.inOut(Easing.quad)),
     ]);
-
-    // Remove intro overlay after transition
-    const introTimer = setTimeout(
-      () =>
-        setIntroGone(true),
-      T.HOLD_END +
-        T.SPLIT +
-        100
-    );
-
-    timeline.start(
-      ({ finished }) => {
-        if (finished) {
-          setInteractive(true);
-        }
-      }
-    );
-
-    return () => {
-      clearTimeout(introTimer);
-      timeline.stop();
-      glowLoop.stop();
-    };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    introRef.current.start(({ finished }) => {
+      if (finished) showCta();
+    });
+    return () => introRef.current?.stop();
   }, []);
 
-  // ------------------------------------------------
-  // BUTTON PRESS
-  // ------------------------------------------------
-
-  const handlePressIn = () => {
-    Animated.spring(
-      buttonPressScale,
-      {
-        toValue: 0.96,
-        friction: 6,
-        useNativeDriver: true,
-      }
-    ).start();
+  const showCta = () => {
+    if (ctaShown.current) return;
+    ctaShown.current = true;
+    Animated.timing(cta, { toValue: 1, duration: 420, delay: 120, easing: EASE, useNativeDriver: false }).start();
   };
 
-  const handlePressOut = () => {
-    Animated.spring(
-      buttonPressScale,
-      {
-        toValue: 1,
-        friction: 6,
-        useNativeDriver: true,
-      }
-    ).start();
+  // Tap during the intro → jump to the finished logo + button (doesn't leave the splash).
+  const skipIntro = () => {
+    if (ctaShown.current) return;
+    introRef.current?.stop();
+    [...Object.values(draw), wordmark].forEach((v) => v.setValue(1));
+    draw.scan.setValue(0);
+    showCta();
   };
 
-  // ------------------------------------------------
-  // RENDER
-  // ------------------------------------------------
+  // The button is invisible until the intro finishes, so an early tap there just skips ahead.
+  const handleGetStarted = () => (ctaShown.current ? startMorph() : skipIntro());
+
+  // ---- slides ----
+  const goToSlide = (i) => listRef.current?.scrollToIndex({ index: i, animated: true });
+  const handleNext = () => (isLast ? navigation.navigate('Register') : goToSlide(index + 1));
+  const handleSkip = () => navigation.navigate('Login');
+
+  const onScroll = Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false });
+  const onMomentumScrollEnd = (e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
+
+  // ---- intro overlay geometry ----
+  const lerp = (from, to) => morph.interpolate({ inputRange: [0, 1], outputRange: [from, to] });
+  const overlayStyle = target
+    ? {
+        left: lerp(0, target.x),
+        top: lerp(0, target.y),
+        width: lerp(rootSize.w, target.size),
+        height: lerp(rootSize.h, target.size),
+        borderRadius: lerp(0, target.size * TILE_RADIUS_RATIO),
+      }
+    : { left: 0, top: 0, width: rootSize.w, height: rootSize.h, opacity: fadeOut };
+  const overlayMarkSize = target ? lerp(introMarkSize, target.size) : introMarkSize;
+  const markLift = target ? lerp(-30, 0) : -30;
+  const wordmarkOpacity = Animated.multiply(
+    wordmark,
+    morph.interpolate({ inputRange: [0, 0.25], outputRange: [1, 0], extrapolate: 'clamp' })
+  );
+  const wordmarkRise = wordmark.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+  const ctaOpacity = Animated.multiply(
+    cta,
+    morph.interpolate({ inputRange: [0, 0.2], outputRange: [1, 0], extrapolate: 'clamp' })
+  );
+  const ctaRise = cta.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  const patternOpacity = morph.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
 
   return (
-    <View style={styles.root}>
+    <View
+      ref={rootRef}
+      collapsable={false}
+      style={styles.root}
+      onLayout={(e) => setRootSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
+      <StatusBar style={introDone ? 'dark' : 'light'} />
+      <BrandPattern size={260} color={BRAND.deep} opacity={0.045} style={{ top: -40, right: -70 }} />
+      <BrandPattern size={200} color={BRAND.deep} opacity={0.035} style={{ bottom: 120, left: -80 }} />
 
-      {/* ============================================
-          GREEN APP BACKGROUND
-          ============================================ */}
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+        {!isLast && (
+          <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} hitSlop={10}>
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        )}
 
-      <View style={styles.imagePlaceholder} />
+        <FlatList
+          ref={listRef}
+          data={SLIDES}
+          keyExtractor={(item) => item.key}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+          renderItem={({ item, index: i }) => {
+            const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
+            const scale = scrollX.interpolate({ inputRange, outputRange: [0.75, 1, 0.75], extrapolate: 'clamp' });
+            const opacity = scrollX.interpolate({ inputRange, outputRange: [0.3, 1, 0.3], extrapolate: 'clamp' });
 
-      <View style={styles.overlay} />
+            return (
+              <View style={[styles.slide, { width, paddingHorizontal: layout.horizontalPadding }]}>
+                {item.isBrand ? (
+                  // The intro morph lands exactly on this tile.
+                  <Animated.View style={[styles.brandTileWrap, { opacity, transform: [{ scale }] }]}>
+                    <View ref={tileRef} collapsable={false}>
+                      <QLessTile size={WELCOME_TILE} />
+                    </View>
+                  </Animated.View>
+                ) : (
+                  <Animated.View style={[styles.featureWrap, { transform: [{ scale }], opacity }]}>
+                    <ScanFrame size={148} arm={28} thickness={4} radius={14}>
+                      <View style={styles.featureTile}>
+                        <Ionicons name={item.icon} size={52} color={BRAND.green} />
+                      </View>
+                    </ScanFrame>
+                  </Animated.View>
+                )}
 
-      {/* ============================================
-          WELCOME CONTENT
-          ============================================ */}
-
-      <SafeAreaView
-        pointerEvents={
-          interactive
-            ? 'auto'
-            : 'none'
-        }
-        style={[
-          styles.content,
-          {
-            paddingHorizontal:
-              layout.horizontalPadding,
-          },
-        ]}
-      >
-
-        <View
-          style={{
-            flex: 1,
+                <Animated.View style={{ opacity }}>
+                  <Text style={styles.slideTitle}>{item.title}</Text>
+                  <Text style={styles.slideDescription}>{item.description}</Text>
+                  {item.isBrand && (
+                    <View style={styles.cvsuChip}>
+                      <Image source={CVSU_LOGO} style={styles.cvsuLogo} resizeMode="contain" />
+                      <Text style={styles.cvsuChipText}>Cavite State University - Main Campus</Text>
+                    </View>
+                  )}
+                </Animated.View>
+              </View>
+            );
           }}
         />
 
-        {/* ------------------------------------------
-            LOGO + BRANDING
-            ------------------------------------------ */}
+        <View style={styles.dotsRow}>
+          {SLIDES.map((_, i) => {
+            const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
+            const dotWidth = scrollX.interpolate({ inputRange, outputRange: [8, 22, 8], extrapolate: 'clamp' });
+            const dotOpacity = scrollX.interpolate({ inputRange, outputRange: [0.3, 1, 0.3], extrapolate: 'clamp' });
+            return <Animated.View key={i} style={[styles.dot, { width: dotWidth, opacity: dotOpacity }]} />;
+          })}
+        </View>
 
-        <View style={styles.logoWrap}>
+        <View style={[styles.footer, { paddingHorizontal: layout.horizontalPadding }]}>
+          {isLast ? (
+            <>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Register')} activeOpacity={0.88}>
+                <Text style={styles.primaryBtnText}>Create Account</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLinkWrap} hitSlop={8}>
+                <Text style={styles.loginLinkText}>
+                  Already have an account? <Text style={styles.loginLinkBold}>Log in</Text>
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.88}>
+              <Text style={styles.primaryBtnText}>Next</Text>
+              <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
 
-          <Animated.View
-            style={{
-              opacity: brandOpacity,
+      {/* INTRO OVERLAY — full-screen green that shrinks into the welcome tile */}
+      {!introDone && (
+        <TouchableWithoutFeedback onPress={skipIntro}>
+          <Animated.View style={[styles.intro, overlayStyle]}>
+            <Animated.View style={{ opacity: patternOpacity, ...StyleSheet.absoluteFillObject }}>
+              <BrandPattern size={rootSize.w * 0.9} opacity={0.05} style={{ top: -rootSize.w * 0.2, right: -rootSize.w * 0.35 }} />
+              <BrandPattern size={rootSize.w * 0.7} opacity={0.04} style={{ bottom: -rootSize.w * 0.1, left: -rootSize.w * 0.3 }} />
+            </Animated.View>
 
-              transform: [
-                {
-                  translateY:
-                    brandTranslateY,
-                },
-
-                {
-                  scale:
-                    brandScale,
-                },
-              ],
-            }}
-          >
-
-            {/* Glow */}
+            <Animated.View style={{ transform: [{ translateY: markLift }] }}>
+              <QLessMark size={overlayMarkSize} tone="dark" anim={draw} />
+            </Animated.View>
 
             <Animated.View
               pointerEvents="none"
-              style={{
-                position: 'absolute',
-
-                left:
-                  -(
-                    (glowSize -
-                      brandSize) /
-                    2
-                  ),
-
-                top:
-                  -(
-                    (glowSize -
-                      brandSize) /
-                    2
-                  ),
-
-                width: glowSize,
-                height: glowSize,
-
-                opacity:
-                  glowOpacity,
-              }}
-            >
-              <RadialGlow
-                id="logoGlow"
-                width={glowSize}
-                height={glowSize}
-                peak={0.5}
-              />
-            </Animated.View>
-
-            {/* Circular Logo */}
-
-            <Animated.View
               style={[
-                styles.logoCircle,
-
+                styles.wordmarkWrap,
                 {
-                  width: brandSize,
-                  height: brandSize,
-                  borderRadius:
-                    brandSize / 2,
-
-                  transform: [
-                    {
-                      rotate: spinDeg,
-                    },
-                  ],
+                  top: rootSize.h / 2 - 30 + introMarkSize / 2 + 18,
+                  opacity: wordmarkOpacity,
+                  transform: [{ translateY: wordmarkRise }],
                 },
               ]}
             >
-
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFill,
-
-                  {
-                    borderRadius:
-                      brandSize / 2,
-
-                    backgroundColor:
-                      'rgba(6, 41, 18, 0.4)',
-
-                    opacity:
-                      iconOpacity,
-                  },
-                ]}
-              />
-
-              <Svg
-                width={brandSize}
-                height={brandSize}
-                style={
-                  StyleSheet.absoluteFill
-                }
-              >
-
-                <AnimatedCircle
-                  cx={brandSize / 2}
-                  cy={brandSize / 2}
-                  r={radius}
-                  stroke="rgba(255,255,255,0.8)"
-                  strokeWidth={strokeWidth}
-                  strokeLinecap="round"
-                  fill="none"
-                  strokeDasharray={`${circumference} ${circumference}`}
-                  strokeDashoffset={
-                    dashOffset
-                  }
-                  rotation="-90"
-                  origin={`${brandSize / 2}, ${brandSize / 2}`}
-                />
-
-              </Svg>
-
-              <Animated.View
-                style={{
-                  opacity:
-                    iconOpacity,
-
-                  transform: [
-                    {
-                      scale:
-                        iconScale,
-                    },
-                  ],
-                }}
-              >
-                <Ionicons
-                  name="library-outline"
-                  size={
-                    layout.isCompact
-                      ? 30
-                      : 34
-                  }
-                  color="#fff"
-                />
-              </Animated.View>
-
+              <Text style={styles.wordmark}>
+                Q<Text style={styles.wordmarkLess}>Less</Text>
+              </Text>
+              <Text style={styles.tagline}>Scan in. Skip the line.</Text>
             </Animated.View>
 
-          </Animated.View>
-
-          {/* eDiwa */}
-
-          <Animated.Text
-            style={[
-              styles.wordmark,
-
-              {
-                fontSize:
-                  layout.isCompact
-                    ? 25
-                    : 28,
-
-                opacity:
-                  wordmarkOpacity,
-
-                transform: [
-                  {
-                    translateY:
-                      wordmarkTranslateY,
-                  },
-
-                  {
-                    scale:
-                      wordmarkScale,
-                  },
-                ],
-              },
-            ]}
-          >
-            eDiwa
-          </Animated.Text>
-
-          {/* Subtitle */}
-
-          <Animated.Text
-            style={[
-              styles.wordmarkSub,
-
-              {
-                opacity:
-                  subtitleOpacity,
-
-                transform: [
-                  {
-                    translateY:
-                      subtitleTranslateY,
-                  },
-                ],
-              },
-            ]}
-          >
-            CvSU Library Companion
-          </Animated.Text>
-
-        </View>
-
-        <View
-          style={{
-            flex: 1,
-          }}
-        />
-
-        {/* ------------------------------------------
-            TAGLINE
-            ------------------------------------------ */}
-
-        <Animated.Text
-          style={[
-            styles.tagline,
-
-            {
-              opacity:
-                taglineOpacity,
-
-              transform: [
-                {
-                  translateY:
-                    taglineTranslateY,
-                },
-              ],
-            },
-          ]}
-        >
-          Access and monitor your library visits with ease.
-        </Animated.Text>
-
-        {/* ------------------------------------------
-            CREATE ACCOUNT
-            ------------------------------------------ */}
-
-        <Animated.View
-          style={{
-            opacity:
-              buttonOpacity,
-
-            transform: [
-              {
-                translateY:
-                  buttonTranslateY,
-              },
-
-              {
-                scale:
-                  buttonScaleCombined,
-              },
-            ],
-          }}
-        >
-
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() =>
-              navigation.navigate(
-                'Register'
-              )
-            }
-            onPressIn={
-              handlePressIn
-            }
-            onPressOut={
-              handlePressOut
-            }
-            activeOpacity={0.85}
-          >
-            <Text
-              style={
-                styles.primaryBtnText
-              }
-            >
-              CREATE ACCOUNT
-            </Text>
-          </TouchableOpacity>
-
-        </Animated.View>
-
-        {/* ------------------------------------------
-            LOGIN
-            ------------------------------------------ */}
-
-        <Animated.View
-          style={{
-            opacity:
-              loginOpacity,
-
-            transform: [
-              {
-                translateY:
-                  loginTranslateY,
-              },
-            ],
-          }}
-        >
-
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate(
-                'Login'
-              )
-            }
-            style={{
-              marginTop: 16,
-              marginBottom: 8,
-            }}
-          >
-            <Text
-              style={
-                styles.loginLink
-              }
-            >
-              Already have an account? Log in
-            </Text>
-          </TouchableOpacity>
-
-        </Animated.View>
-
-      </SafeAreaView>
-
-      {/* ============================================
-          INTRO OVERLAY
-          GREEN INSTEAD OF WHITE
-          ============================================ */}
-
-      {!introGone && (
-        <View
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        >
-
-          {/* Green expanding circle */}
-
-          <Animated.View
-            style={{
-              position: 'absolute',
-
-              width:
-                transitionSize,
-
-              height:
-                transitionSize,
-
-              left:
-                (width -
-                  transitionSize) /
-                2,
-
-              top:
-                (height -
-                  transitionSize) /
-                2,
-
-              borderRadius:
-                transitionSize / 2,
-
-              backgroundColor:
-                CVSU_GREEN,
-
-              transform: [
-                {
-                  scale:
-                    transitionScale,
-                },
-              ],
-            }}
-          />
-
-          {/* LEFT GREEN PANEL */}
-
-          <Animated.View
-            style={[
-              styles.panel,
-
-              {
-                left: 0,
-
-                width:
-                  Math.ceil(
-                    halfW
-                  ) + 1,
-
-                transform: [
-                  {
-                    translateX:
-                      leftX,
-                  },
-                ],
-              },
-            ]}
-          />
-
-          {/* RIGHT GREEN PANEL */}
-
-          <Animated.View
-            style={[
-              styles.panel,
-
-              {
-                left:
-                  Math.floor(
-                    halfW
-                  ),
-
-                width:
-                  Math.ceil(
-                    halfW
-                  ) + 1,
-
-                transform: [
-                  {
-                    translateX:
-                      rightX,
-                  },
-                ],
-              },
-            ]}
-          />
-
-          {/* CvSU Logo */}
-
-          <View
-            style={
-              styles.introCenter
-            }
-          >
-
+            {/* GET STARTED — pressing it morphs the splash into the Welcome screen */}
             <Animated.View
-              style={{
-                opacity:
-                  logoOpacity,
-
-                transform: [
-                  {
-                    scale:
-                      logoScale,
-                  },
-
-                  {
-                    translateY: 250,
-                  },
-                ],
-              }}
+              style={[
+                styles.ctaWrap,
+                { bottom: insets.bottom + 36, opacity: ctaOpacity, transform: [{ translateY: ctaRise }] },
+              ]}
             >
-
-              <Image
-                source={
-                  CVSU_LOGO
-                }
-                style={[
-                  {
-                    width:
-                      logoSize,
-
-                    height:
-                      logoSize,
-                  },
-
-                  TINT_LOGO_GREEN && {
-                    tintColor:
-                      CVSU_GREEN,
-                  },
-                ]}
-                resizeMode="contain"
-              />
-
+              <TouchableOpacity style={styles.ctaBtn} onPress={handleGetStarted} activeOpacity={0.88}>
+                <Text style={styles.ctaText}>Get Started</Text>
+                <Ionicons name="arrow-forward" size={18} color={BRAND.deep} style={{ marginLeft: 8 }} />
+              </TouchableOpacity>
             </Animated.View>
-
-          </View>
-
-        </View>
+          </Animated.View>
+        </TouchableWithoutFeedback>
       )}
-
     </View>
   );
 }
 
-// ==================================================
-// STYLES
-// ==================================================
-
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
 
-  // Main screen
-  root: {
-    flex: 1,
-    backgroundColor:
-      CVSU_GREEN,
-  },
-
-  // Green background
-  imagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor:
-      CVSU_GREEN,
-  },
-
-  // Green overlay
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor:
-      'rgba(6, 31, 17, 0.55)',
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: 32,
-    paddingBottom: 24,
-  },
-
-  // ================================================
-  // INTRO
-  // ================================================
-
-  panel: {
+  intro: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    backgroundColor: BRAND.deep,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    zIndex: 50,
+    elevation: 50,
+  },
+  wordmarkWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  wordmark: { color: '#fff', fontSize: 34, fontWeight: '800', letterSpacing: 0.5 },
+  wordmarkLess: { color: BRAND.goldLight },
+  ctaWrap: { position: 'absolute', left: 28, right: 28 },
+  ctaBtn: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: { color: BRAND.deep, fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
+  tagline: { color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 6, letterSpacing: 1.2 },
 
-    // CHANGED:
-    // White → Green
-    backgroundColor:
-      CVSU_GREEN,
+  skipBtn: { position: 'absolute', top: 12, right: 20, zIndex: 10, padding: 8 },
+  skipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+
+  slide: { alignItems: 'center', justifyContent: 'center' },
+
+  brandTileWrap: {
+    marginBottom: 30,
+    borderRadius: WELCOME_TILE * TILE_RADIUS_RATIO,
+    elevation: 8,
+    shadowColor: BRAND.deep,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    backgroundColor: BRAND.deep,
   },
 
-  introCenter: {
-    ...StyleSheet.absoluteFillObject,
-
+  featureWrap: { marginBottom: 28 },
+  featureTile: {
+    width: 108,
+    height: 108,
+    borderRadius: 28,
+    backgroundColor: BRAND.mint,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // ================================================
-  // WELCOME LOGO
-  // ================================================
-
-  logoWrap: {
-    alignItems: 'center',
-  },
-
-  logoCircle: {
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginBottom: 16,
-  },
-
-  // ================================================
-  // WORDMARK
-  // ================================================
-
-  wordmark: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: 2,
-  },
-
-  wordmarkSub: {
-    color: '#CFE3D4',
-    fontSize: 12,
-    letterSpacing: 1,
-    marginTop: 6,
-    textTransform: 'uppercase',
-  },
-
-  // ================================================
-  // TAGLINE
-  // ================================================
-
-  tagline: {
-    color: '#E8F5E9',
-    fontSize: 14,
-    fontStyle: 'italic',
+  slideTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 12 },
+  slideDescription: {
+    fontSize: 14.5,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 28,
+    lineHeight: 21,
+    paddingHorizontal: 8,
   },
 
-  // ================================================
-  // CREATE ACCOUNT
-  // ================================================
+  cvsuChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 22,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#EFF1EF',
+    gap: 8,
+  },
+  cvsuLogo: { width: 22, height: 22 },
+  cvsuChipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
 
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 24 },
+  dot: { height: 8, borderRadius: 4, backgroundColor: BRAND.deep },
+
+  footer: { paddingBottom: 20 },
   primaryBtn: {
-    borderWidth: 1.5,
-    borderColor: '#fff',
-    borderRadius: 14,
-    paddingVertical: 16,
+    width: '100%',
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    elevation: 2,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
   },
+  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
 
-  primaryBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-    letterSpacing: 1,
-  },
-
-  // ================================================
-  // LOGIN
-  // ================================================
-
-  loginLink: {
-    color: '#CFE3D4',
-    fontSize: 13,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
+  loginLinkWrap: { marginTop: 16, alignItems: 'center' },
+  loginLinkText: { fontSize: 13, color: colors.textSecondary },
+  loginLinkBold: { color: colors.primary, fontWeight: '700' },
 });

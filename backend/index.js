@@ -373,9 +373,9 @@ app.post('/api/student/forgot-password', async (req, res) => {
         await transporter.sendMail({
             from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
             to: email.trim().toLowerCase(),
-            subject: 'Reset your eDiwa Library password',
+            subject: 'Reset your QLess Library password',
             html: `
-                <p>We received a request to reset your eDiwa Library password.</p>
+                <p>We received a request to reset your QLess Library password.</p>
                 <p><a href="${resetLink}">Click here to reset your password</a></p>
                 <p>This link is valid for 30 minutes and can only be used once.
                 If you didn't request this, you can safely ignore this email.</p>
@@ -684,7 +684,46 @@ app.post('/api/admin/bootstrap', async (req, res) => {
     }
 });
 
-// ADMIN LOGIN
+// ---------------------------------------------------------------------------
+// ADMIN LOGIN + SIGN-IN APPROVAL
+//
+// Rules:
+//   * Each browser that signs in gets its own row in admin_sessions.
+//   * If this account is NOT open anywhere right now, login works immediately.
+//   * If it IS open in another browser (seen in the last ACTIVE_WINDOW_SECONDS),
+//     the new browser has to wait until one of the signed-in browsers clicks
+//     Allow. Deny, Cancel, or no answer within APPROVAL_TIMEOUT_SECONDS = no login.
+//   * Once allowed, both browsers stay signed in.
+// "Open" is judged by the heartbeat every admin request leaves in
+// admin_sessions.last_seen_at (see middleware/auth.js), so a closed or
+// sleeping laptop stops counting after ACTIVE_WINDOW_SECONDS and can't lock
+// the account.
+// ---------------------------------------------------------------------------
+const ACTIVE_WINDOW_SECONDS = 120;
+const APPROVAL_TIMEOUT_SECONDS = 60;
+
+const clientInfo = (req) => ({
+    userAgent: (req.headers['user-agent'] || '').slice(0, 255),
+    ip: (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim().slice(0, 64),
+});
+
+const publicAdmin = (admin) => ({ admin_id: admin.admin_id, name: admin.name, email: admin.email, role: admin.role });
+
+// Creates a session row for this browser and returns a token bound to it.
+async function issueAdminSession(admin, info) {
+    const sessionId = crypto.randomUUID();
+    await db.query(
+        'INSERT INTO admin_sessions (session_id, admin_id, user_agent, ip_address) VALUES (?, ?, ?, ?)',
+        [sessionId, admin.admin_id, info.userAgent || null, info.ip || null]
+    );
+    const token = jwt.sign(
+        { admin_id: admin.admin_id, role: admin.role, name: admin.name, session_id: sessionId },
+        process.env.JWT_SECRET,
+        { expiresIn: '8h' }
+    );
+    return { token, admin: publicAdmin(admin) };
+}
+
 app.post('/api/admin/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -702,31 +741,139 @@ app.post('/api/admin/login', async (req, res) => {
             return res.status(401).json({ message: "Incorrect password." });
         }
 
-        // 1. Generate a unique session ID for this specific login attempt
-        const sessionId = crypto.randomUUID();
+        // Housekeeping: forget browsers that haven't been seen for a day, and
+        // close out approval requests nobody answered.
+        await db.query('DELETE FROM admin_sessions WHERE last_seen_at < NOW() - INTERVAL 1 DAY');
+        await db.query('UPDATE admin_login_requests SET status = "expired" WHERE status = "pending" AND expires_at <= NOW()');
 
-        // 2. Save it to the database, overwriting any previous session for this admin
-        await db.query('UPDATE admins SET session_id = ? WHERE admin_id = ?', [sessionId, admin.admin_id]);
-
-        // 3. Include the session_id inside the signed JWT
-        const token = jwt.sign(
-            { 
-                admin_id: admin.admin_id, 
-                role: admin.role, 
-                name: admin.name,
-                session_id: sessionId 
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '8h' }
+        const [[{ activeCount }]] = await db.query(
+            'SELECT COUNT(*) AS activeCount FROM admin_sessions WHERE admin_id = ? AND last_seen_at > NOW() - INTERVAL ? SECOND',
+            [admin.admin_id, ACTIVE_WINDOW_SECONDS]
         );
 
-        res.json({
-            success: true,
-            token,
-            admin: { admin_id: admin.admin_id, name: admin.name, email: admin.email, role: admin.role }
+        const info = clientInfo(req);
+
+        if (activeCount === 0) {
+            const session = await issueAdminSession(admin, info);
+            return res.json({ success: true, ...session });
+        }
+
+        // Account is open in another browser — ask it for approval.
+        const requestId = crypto.randomUUID();
+        await db.query(
+            `INSERT INTO admin_login_requests (request_id, admin_id, user_agent, ip_address, expires_at)
+             VALUES (?, ?, ?, ?, NOW() + INTERVAL ? SECOND)`,
+            [requestId, admin.admin_id, info.userAgent || null, info.ip || null, APPROVAL_TIMEOUT_SECONDS]
+        );
+
+        return res.status(202).json({
+            approval_required: true,
+            request_id: requestId,
+            expires_in: APPROVAL_TIMEOUT_SECONDS,
+            message: "This account is already signed in on another browser. Waiting for it to approve this sign-in.",
         });
     } catch (err) {
         console.error("Login error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Polled by the WAITING browser (not signed in yet). The random request_id
+// is only ever given to the browser that entered the correct password.
+app.get('/api/admin/login-requests/:request_id/status', async (req, res) => {
+    const { request_id } = req.params;
+    try {
+        await db.query(
+            'UPDATE admin_login_requests SET status = "expired" WHERE request_id = ? AND status = "pending" AND expires_at <= NOW()',
+            [request_id]
+        );
+        const [rows] = await db.query(
+            `SELECT r.status, TIMESTAMPDIFF(SECOND, NOW(), r.expires_at) AS seconds_left, a.*
+             FROM admin_login_requests r JOIN admins a ON a.admin_id = r.admin_id
+             WHERE r.request_id = ?`,
+            [request_id]
+        );
+        if (rows.length === 0) return res.status(404).json({ status: 'not_found' });
+        const row = rows[0];
+
+        if (row.status === 'approved') {
+            // Hand out the session exactly once, even if two polls race.
+            const [claim] = await db.query(
+                'UPDATE admin_login_requests SET status = "completed" WHERE request_id = ? AND status = "approved"',
+                [request_id]
+            );
+            if (claim.affectedRows === 1) {
+                const session = await issueAdminSession(row, clientInfo(req));
+                return res.json({ status: 'approved', ...session });
+            }
+            return res.json({ status: 'completed' });
+        }
+
+        res.json({ status: row.status, seconds_left: Math.max(0, row.seconds_left) });
+    } catch (err) {
+        console.error("Login request status error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// The waiting browser gave up (Cancel button, or closed the page).
+app.post('/api/admin/login-requests/:request_id/cancel', async (req, res) => {
+    try {
+        await db.query(
+            'UPDATE admin_login_requests SET status = "cancelled" WHERE request_id = ? AND status = "pending"',
+            [req.params.request_id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Polled by SIGNED-IN browsers to find sign-in attempts they need to answer.
+app.get('/api/admin/login-requests/pending', verifyToken, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            `SELECT request_id, user_agent, ip_address, created_at,
+                    TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS seconds_left
+             FROM admin_login_requests
+             WHERE admin_id = ? AND status = "pending" AND expires_at > NOW()
+             ORDER BY created_at ASC`,
+            [req.admin.admin_id]
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Allow / Deny from a signed-in browser.
+app.post('/api/admin/login-requests/:request_id/decision', verifyToken, async (req, res) => {
+    const { decision } = req.body;
+    if (!['approve', 'deny'].includes(decision)) {
+        return res.status(400).json({ message: "Decision must be 'approve' or 'deny'." });
+    }
+    try {
+        const [result] = await db.query(
+            `UPDATE admin_login_requests
+             SET status = ?, decided_by_session = ?, decided_at = NOW()
+             WHERE request_id = ? AND admin_id = ? AND status = "pending" AND expires_at > NOW()`,
+            [decision === 'approve' ? 'approved' : 'denied', req.sessionId, req.params.request_id, req.admin.admin_id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(409).json({ message: "This request was already answered or has expired." });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Ends ONLY this browser's session.
+app.post('/api/admin/logout', verifyToken, async (req, res) => {
+    try {
+        await db.query('DELETE FROM admin_sessions WHERE session_id = ?', [req.sessionId]);
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
@@ -1064,17 +1211,48 @@ app.get('/api/guests/live-count', async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------------------------
+// REPORTING PERIODS — shared by the mobile app and mirrored in the web
+// Analytics page (Analytics.jsx: semesterInfo / semesterRange, "Semester" tab).
+// Keep both sides identical so the numbers always match.
+//   Semester: 1st Sem = Aug–Dec, 2nd Sem = Jan–May, Midyear = Jun–Jul
+// Ranges are [start, endExclusive) on visit_date.
+// ---------------------------------------------------------------------------
+const SEM_SHORT_NAMES = { '1st': '1st Sem', '2nd': '2nd Sem', 'Summer': 'Midyear' };
+
+function currentSemester(date = new Date()) {
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    let ayStart, sem, start, endExclusive;
+    if (month >= 8) {
+        ayStart = year; sem = '1st';
+        start = new Date(ayStart, 7, 1); endExclusive = new Date(ayStart + 1, 0, 1);
+    } else if (month <= 5) {
+        ayStart = year - 1; sem = '2nd';
+        start = new Date(ayStart + 1, 0, 1); endExclusive = new Date(ayStart + 1, 5, 1);
+    } else {
+        ayStart = year - 1; sem = 'Summer';
+        start = new Date(ayStart + 1, 5, 1); endExclusive = new Date(ayStart + 1, 7, 1);
+    }
+    return { start, endExclusive, label: `${SEM_SHORT_NAMES[sem]} · AY ${ayStart}–${ayStart + 1}` };
+}
+
 // STUDENT PERSONAL ANALYTICS (for the mobile app home screen)
+// Total visits, the activity chart, frequent day and average stay all cover
+// the CURRENT SEMESTER only (matches the semester renewal cycle).
+// current_occupancy is live (everyone inside right now).
 app.get('/api/student/analytics/:student_number', async (req, res) => {
     const { student_number } = req.params;
     try {
         const [students] = await db.query('SELECT user_id FROM students WHERE student_number = ?', [student_number]);
         if (students.length === 0) return res.status(404).json({ message: 'Student not found.' });
         const user_id = students[0].user_id;
+        const semester = currentSemester();
 
         const [myLogs] = await db.query(
-            'SELECT time_in, time_out, visit_date, forced_exit FROM student_logs WHERE user_id = ? AND status != "voided"',
-            [user_id]
+            `SELECT time_in, time_out, visit_date, forced_exit FROM student_logs
+             WHERE user_id = ? AND visit_date >= ? AND visit_date < ?`,
+            [user_id, semester.start, semester.endExclusive]
         );
 
         const [[{ studentsInside }]] = await db.query(
@@ -1130,10 +1308,133 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
             weekly_activity: weeklyActivity,
             frequent_day: frequentDay,
             avg_stay_hours: avgStayHours,
+            period_label: semester.label,
         });
     } catch (err) {
         console.error("SQL ERROR during student analytics:", err.message);
         res.status(500).json({ message: 'Server error computing analytics.' });
+    }
+});
+
+// LIBRARY PEAK HOURS (for the mobile app home screen) — public, no personal data.
+//
+// Uses EXACTLY the same method as the web Analytics page (Peak Hour KPI +
+// heatmap), so both always show the same answer:
+//   * period   = the current semester (by visit_date), today included
+//                — the web's "Semester" tab
+//   * data     = every student + guest entry log in that period
+//   * counted  = check-ins, bucketed by the HOUR of time_in
+//   * peak     = the 2-hour window with the most check-ins (earliest wins a tie)
+//   * hours    = 8 AM–5 PM, the same columns as the web heatmap
+// If you change the rule on one side, change it on the other too.
+const PEAK_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+app.get('/api/library/peak-hours', async (req, res) => {
+    try {
+        const now = new Date();
+        const period = currentSemester(now);
+
+        const [studentRows] = await db.query(
+            'SELECT time_in, time_out FROM student_logs WHERE visit_date >= ? AND visit_date < ?',
+            [period.start, period.endExclusive]
+        );
+        const [guestRows] = await db.query(
+            'SELECT time_in, time_out FROM guest_logs WHERE visit_date >= ? AND visit_date < ?',
+            [period.start, period.endExclusive]
+        );
+        const entries = [...studentRows, ...guestRows];
+
+        // Check-ins per hour of day (all 24 hours, like the web KPI).
+        const hourCounts = new Array(24).fill(0);
+        for (const log of entries) {
+            if (!log.time_in) continue;
+            const d = new Date(log.time_in);
+            if (isNaN(d)) continue;
+            hourCounts[d.getHours()] += 1;
+        }
+
+        // Best 2-hour window — same loop and tie rule as Analytics.jsx.
+        let bestStart = 0, bestCount = -1;
+        for (let h = 0; h < 23; h++) {
+            const windowCount = hourCounts[h] + hourCounts[h + 1];
+            if (windowCount > bestCount) {
+                bestCount = windowCount;
+                bestStart = h;
+            }
+        }
+        const hasData = bestCount > 0;
+
+        // Days elapsed in the semester so far — same divisor the web's "Avg. Daily Visits" uses.
+        const daysElapsed = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - period.start) / 86400000) + 1;
+
+        const hours = PEAK_HOURS.map(h => ({
+            hour: h,
+            checkins: hourCounts[h],
+            avg_checkins: parseFloat((hourCounts[h] / daysElapsed).toFixed(1)),
+        }));
+
+        // Quietest stretch: among open hours OUTSIDE the busiest window, the
+        // hours with the fewest check-ins. If several consecutive hours tie
+        // (common while data is thin), return the longest such run so the app
+        // says "10 AM–5 PM" instead of picking one arbitrary hour.
+        let quietStart = null, quietEnd = null;
+        if (hasData) {
+            const outside = hours.filter(x => x.hour < bestStart || x.hour >= bestStart + 2);
+            if (outside.length) {
+                const minCount = Math.min(...outside.map(x => x.checkins));
+                let runStart = null, bestLen = 0;
+                for (let i = 0; i <= hours.length; i++) {
+                    const x = hours[i];
+                    const isQuiet = x && (x.hour < bestStart || x.hour >= bestStart + 2) && x.checkins === minCount;
+                    if (isQuiet && runStart === null) runStart = x.hour;
+                    if (!isQuiet && runStart !== null) {
+                        const runEnd = hours[i - 1].hour + 1;
+                        if (runEnd - runStart > bestLen) { bestLen = runEnd - runStart; quietStart = runStart; quietEnd = runEnd; }
+                        runStart = null;
+                    }
+                }
+            }
+        }
+
+        // Busiest single hour's average headcount this month, used by the app's
+        // "Right now: Not busy / Moderate / Busy" pill as its yardstick.
+        let peakAvgInside = 0;
+        if (hasData) {
+            const insideMinutes = {};
+            const dayKeys = new Set();
+            for (const log of entries) {
+                if (!log.time_in) continue;
+                const start = new Date(log.time_in);
+                const end = log.time_out ? new Date(log.time_out) : now;
+                if (end <= start) continue;
+                dayKeys.add(start.toDateString());
+                for (const h of PEAK_HOURS) {
+                    const slotStart = new Date(start); slotStart.setHours(h, 0, 0, 0);
+                    const slotEnd = new Date(start); slotEnd.setHours(h + 1, 0, 0, 0);
+                    const overlap = Math.min(end, slotEnd) - Math.max(start, slotStart);
+                    if (overlap > 0) insideMinutes[h] = (insideMinutes[h] || 0) + overlap / 60000;
+                }
+            }
+            const days = Math.max(1, dayKeys.size);
+            peakAvgInside = Math.max(0, ...Object.values(insideMinutes).map(m => m / 60 / days));
+        }
+
+        res.json({
+            hours,
+            peak_start: hasData ? bestStart : null,
+            peak_end: hasData ? bestStart + 2 : null,
+            peak_checkins: hasData ? bestCount : 0,
+            quiet_start: quietStart,
+            quiet_end: quietEnd,
+            peak_avg_inside: parseFloat(peakAvgInside.toFixed(1)),
+            period_label: period.label,
+            total_checkins: entries.length,
+            open_hour: PEAK_HOURS[0],
+            close_hour: PEAK_HOURS[PEAK_HOURS.length - 1] + 1,
+        });
+    } catch (err) {
+        console.error("SQL ERROR during peak hours:", err.message);
+        res.status(500).json({ message: 'Server error computing peak hours.' });
     }
 });
 

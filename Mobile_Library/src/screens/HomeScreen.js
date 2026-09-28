@@ -15,6 +15,8 @@ import QRCode from 'react-native-qrcode-svg';
 import QRModal from '../components/QRModal';
 import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
+import { BRAND, HEADER_RADIUS } from '../theme/brand';
+import { QLessMark, ScanFrame, BrandPattern } from '../components/QLessLogo';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -48,6 +50,133 @@ const getDisplayName = (student) => {
   return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 };
 
+// ---- Peak hours helpers ----
+const hourLabel = (h) => `${((h + 11) % 12) + 1}${h < 12 ? 'a' : 'p'}`;
+const hourRange = (h, span = 1) => {
+  const fmt = (x) => `${((x + 11) % 12) + 1} ${x < 12 ? 'AM' : 'PM'}`;
+  return `${fmt(h)}–${fmt(h + span)}`;
+};
+
+// How busy it is right now, compared with this library's usual peak.
+const getCrowdLevel = (current, peakAvg) => {
+  if (current == null) return null;
+  const ratio = peakAvg > 0 ? current / peakAvg : current > 0 ? 1 : 0;
+  if (ratio < 0.4) return { label: 'Not busy', color: '#1B5E20', bg: '#E8F1E9' };
+  if (ratio < 0.8) return { label: 'Moderate', color: '#946800', bg: '#FBF1CE' };
+  return { label: 'Busy', color: '#B3261E', bg: '#FBDFDB' };
+};
+
+const PEAK_BAR_MAX = 70;
+
+function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding }) {
+  const currentHour = now.getHours();
+
+  let body;
+  if (isOffline) {
+    body = (
+      <View style={styles.chartOfflineWrap}>
+        <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
+        <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
+      </View>
+    );
+  } else if (!data) {
+    body = <Text style={styles.chartLoadingText}>Loading peak hours...</Text>;
+  } else if (data.peak_start == null) {
+    body = <Text style={styles.chartLoadingText}>Not enough visit data yet — check back after a few library days.</Text>;
+  } else {
+    // Same numbers as the web Analytics page: check-ins this month,
+    // peak = the 2-hour window with the most check-ins.
+    const maxCheckins = Math.max(1, ...data.hours.map((x) => x.checkins));
+    const isOpenNow = currentHour >= data.open_hour && currentHour < data.close_hour;
+    const crowd = isOpenNow ? getCrowdLevel(currentOccupancy, data.peak_avg_inside) : null;
+    // "Peak" label goes on the busiest bar inside the busiest window (not on an empty one).
+    const peakBarHour = data.hours
+      .filter((x) => x.hour >= data.peak_start && x.hour < data.peak_end)
+      .reduce((a, b) => (b.checkins > a.checkins ? b : a), { hour: data.peak_start, checkins: -1 }).hour;
+
+    body = (
+      <>
+        <View style={styles.peakNowRow}>
+          <Text style={styles.peakNowLabel}>Right now</Text>
+          {isOpenNow ? (
+            crowd && (
+              <View style={[styles.crowdPill, { backgroundColor: crowd.bg }]}>
+                <View style={[styles.crowdDot, { backgroundColor: crowd.color }]} />
+                <Text style={[styles.crowdText, { color: crowd.color }]}>
+                  {crowd.label} · {currentOccupancy} inside
+                </Text>
+              </View>
+            )
+          ) : (
+            <View style={[styles.crowdPill, { backgroundColor: '#EFF1EF' }]}>
+              <Text style={[styles.crowdText, { color: '#8A8F8B' }]}>Library closed</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.peakChartRow}>
+          {data.hours.map((item) => {
+            const isPeak = item.hour >= data.peak_start && item.hour < data.peak_end && item.checkins > 0;
+            const isPeakLabel = item.hour === peakBarHour;
+            const isNow = isOpenNow && item.hour === currentHour;
+            const barHeight = item.checkins > 0 ? Math.max(6, (item.checkins / maxCheckins) * PEAK_BAR_MAX) : 4;
+            const barColor = isPeak ? BRAND.gold : isNow ? BRAND.deep : '#B9D3BC';
+            return (
+              <View key={item.hour} style={styles.peakBarWrap}>
+                <Text style={[styles.peakTopLabel, isNow && { color: BRAND.deep }, isPeak && !isNow && { color: '#A9720B' }]}>
+                  {isNow ? 'Now' : isPeakLabel ? 'Peak' : ''}
+                </Text>
+                <View style={[styles.peakBar, { height: barHeight, backgroundColor: barColor }]} />
+                <Text style={[styles.peakHourLabel, (isNow || isPeak) && styles.peakHourLabelActive]}>
+                  {hourLabel(item.hour)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {data.total_checkins < 10 && (
+          <Text style={styles.peakLowData}>
+            Based on only {data.total_checkins} check-in{data.total_checkins === 1 ? '' : 's'} this semester — this gets more accurate as more students visit.
+          </Text>
+        )}
+
+        <View style={styles.footerDividerLine} />
+
+        <View style={styles.footerStatsRow}>
+          <View style={styles.footerStatItem}>
+            <View style={[styles.footerStatIconWrap, { backgroundColor: BRAND.goldSoft }]}>
+              <Ionicons name="people-outline" size={15} color="#A9720B" />
+            </View>
+            <View style={{ marginLeft: 10 }}>
+              <Text style={styles.footerStatLabel}>Busiest</Text>
+              <Text style={styles.footerStatValue}>{hourRange(data.peak_start, 2)}</Text>
+            </View>
+          </View>
+          <View style={styles.footerVerticalDivider} />
+          <View style={styles.footerStatItem}>
+            <View style={styles.footerStatIconWrap}>
+              <Ionicons name="leaf-outline" size={15} color={colors.primary} />
+            </View>
+            <View style={{ marginLeft: 10 }}>
+              <Text style={styles.footerStatLabel}>Quietest</Text>
+              <Text style={styles.footerStatValue}>{data.quiet_start != null ? hourRange(data.quiet_start, data.quiet_end - data.quiet_start) : '—'}</Text>
+            </View>
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  return (
+    <View style={[styles.chartCard, { width, padding }]}>
+      <Text style={[styles.chartTitle, { marginBottom: 0 }]}>Peak Hours</Text>
+      <Text style={styles.peakSub}>Check-ins per hour · students + guests</Text>
+      {body}
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
@@ -57,6 +186,7 @@ export default function HomeScreen({ navigation }) {
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [currentPeriod, setCurrentPeriod] = useState(null);
+  const [peakHours, setPeakHours] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
   const abortControllerRef = React.useRef(null);
 
@@ -126,6 +256,15 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  const fetchPeakHours = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/library/peak-hours`);
+      if (response.ok) setPeakHours(await response.json());
+    } catch (error) {
+      console.error('Error fetching peak hours:', error);
+    }
+  };
+
   const fetchCurrentPeriod = async () => {
     try {
       const response = await fetch(`${API_URL}/api/settings/current-period`);
@@ -153,6 +292,7 @@ export default function HomeScreen({ navigation }) {
     fetchProfileData(true);
     fetchAnalytics();
     fetchCurrentPeriod();
+    fetchPeakHours();
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
 
     const refreshInterval = setInterval(() => {
@@ -160,6 +300,10 @@ export default function HomeScreen({ navigation }) {
       fetchAnalytics();
       fetchCurrentPeriod();
     }, 10000);
+
+    // Peak hours are based on weeks of history, so they barely change —
+    // refreshing every 5 minutes is plenty.
+    const peakInterval = setInterval(fetchPeakHours, 5 * 60 * 1000);
 
     // isInternetReachable can briefly be `null` while the OS is still
     // checking — only treat an explicit false (from either field) as
@@ -171,6 +315,7 @@ export default function HomeScreen({ navigation }) {
     return () => {
       clearInterval(clockInterval);
       clearInterval(refreshInterval);
+      clearInterval(peakInterval);
       if (abortControllerRef.current) abortControllerRef.current.abort();
       unsubscribeNetInfo();
     };
@@ -202,6 +347,13 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
+        <BrandPattern size={200} opacity={0.07} style={{ top: -30, right: -60 }} />
+        <View style={[styles.brandRow, { paddingHorizontal: layout.horizontalPadding }]}>
+          <QLessMark size={22} tone="dark" />
+          <Text style={styles.brandText}>
+            Q<Text style={{ color: BRAND.goldLight }}>Less</Text>
+          </Text>
+        </View>
         <View style={[styles.headerInner, { paddingHorizontal: layout.horizontalPadding }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
@@ -353,6 +505,18 @@ export default function HomeScreen({ navigation }) {
         {/* APPROVED — DASHBOARD ANALYTICS + QR */}
         {isApproved && (
           <>
+            {/* One label for the whole dashboard: every card below covers this
+                semester, except the headcount, which is marked "Live". */}
+            {!!(analytics?.period_label || peakHours?.period_label) && (
+              <View style={[styles.periodBanner, { width: layout.contentWidth }]}>
+                <Ionicons name="calendar-outline" size={14} color={BRAND.green} />
+                <Text style={styles.periodBannerText}>
+                  <Text style={styles.periodBannerStrong}>{analytics?.period_label || peakHours?.period_label}</Text>
+                  {'  ·  '}stats for this semester
+                </Text>
+              </View>
+            )}
+
             <View style={[styles.kpiRow, { width: layout.contentWidth }]}>
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
@@ -364,7 +528,10 @@ export default function HomeScreen({ navigation }) {
                 ) : (
                   <>
                     <Text style={styles.kpiValue}>{analytics ? analytics.current_occupancy : '--'}</Text>
-                    <Text style={styles.kpiSub}>currently inside the library</Text>
+                    <View style={styles.livePill}>
+                      <View style={styles.liveDot} />
+                      <Text style={styles.livePillText}>Live · inside right now</Text>
+                    </View>
                   </>
                 )}
               </View>
@@ -378,7 +545,7 @@ export default function HomeScreen({ navigation }) {
                 ) : (
                   <>
                     <Text style={styles.kpiValue}>{analytics ? analytics.total_visits : '--'}</Text>
-                    <Text style={styles.kpiSub}>all-time</Text>
+                    <Text style={styles.kpiSub}>this semester</Text>
                   </>
                 )}
               </View>
@@ -402,14 +569,33 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.enlargeText}>Tap to enlarge</Text>
                 </View>
               </View>
-              <View style={styles.qrPreview}>
+              {/* QR sits inside the same scan brackets as the logo */}
+              <ScanFrame
+                size={Math.min(80, layout.contentWidth * 0.19) + 28}
+                arm={18}
+                thickness={3}
+                radius={8}
+                color={BRAND.gold}
+              >
                 <QRCode
                   value={studentData?.qr_code || 'NA'}
                   size={Math.min(80, layout.contentWidth * 0.19)}
-                  color={colors.primary}
+                  color={BRAND.deep}
                 />
-              </View>
+              </ScanFrame>
             </TouchableOpacity>
+
+            <View style={{ height: 14 }} />
+
+            {/* PEAK HOURS — library-wide, promised on the Welcome slides */}
+            <PeakHoursCard
+              data={peakHours}
+              currentOccupancy={analytics ? analytics.current_occupancy : null}
+              isOffline={isOffline}
+              now={now}
+              width={layout.contentWidth}
+              padding={layout.cardPadding}
+            />
 
             <View style={{ height: 14 }} />
 
@@ -505,11 +691,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
 
   headerWrap: {
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
+    backgroundColor: BRAND.deep,
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
     paddingBottom: 24,
+    overflow: 'hidden',
   },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 14 },
+  brandText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.4 },
   headerInner: { flexDirection: 'row', alignItems: 'center' },
   greeting: { color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: '500' },
   name: { color: '#fff', fontSize: 23, fontWeight: '700', marginTop: 3 },
@@ -677,8 +866,30 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 11.5, color: colors.textSecondary, fontWeight: '600' },
   kpiValue: { fontSize: 26, color: colors.primary, fontWeight: '800', marginTop: 6 },
   kpiSub: { fontSize: 10, color: '#B0B4B1', marginTop: 4 },
+  livePill: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#2E9E44', marginRight: 5 },
+  livePillText: { fontSize: 10, color: '#8A8F8B', fontWeight: '600' },
 
   chartCard: { backgroundColor: '#fff', borderRadius: 20, ...CARD_SHADOW },
+
+  peakHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  peakBasis: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  peakSub: { fontSize: 11.5, color: '#B0B4B1', marginTop: 3, marginBottom: 14 },
+  peakNowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  peakNowLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  crowdPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10 },
+  crowdDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  crowdText: { fontSize: 12, fontWeight: '700' },
+  peakChartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: PEAK_BAR_MAX + 40 },
+  peakBarWrap: { alignItems: 'center', flex: 1 },
+  peakTopLabel: { fontSize: 9, fontWeight: '700', color: colors.textSecondary, marginBottom: 4, height: 12 },
+  peakBar: { width: 12, borderRadius: 5 },
+  peakHourLabel: { fontSize: 10, color: colors.textSecondary, marginTop: 8 },
+  peakHourLabelActive: { color: colors.textPrimary, fontWeight: '700' },
+  periodBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, paddingHorizontal: 4 },
+  periodBannerText: { fontSize: 12, color: colors.textSecondary },
+  periodBannerStrong: { color: colors.textPrimary, fontWeight: '700' },
+  peakLowData: { fontSize: 11, color: '#A3A8A4', lineHeight: 15, marginTop: 10 },
   chartTitle: { fontSize: 14.5, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   chartLoadingText: { fontSize: 12, color: '#B0B4B1', textAlign: 'center', paddingVertical: 30 },
   chartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: CHART_MAX_BAR_HEIGHT + 40 },

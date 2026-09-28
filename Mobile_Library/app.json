@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "QR Library",
-    "slug": "qr-library",
+    "name": "QLess",
+    "slug": "qless",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#1B5E20"
       },
-      "package": "com.anonymous.qrlibrary"
+      "package": "com.anonymous.qless"
     },
     "web": {
       "favicon": "./assets/favicon.png"

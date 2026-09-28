@@ -6,38 +6,23 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  ScrollView,
   Animated,
+  Keyboard,
+  TouchableWithoutFeedback,
   Easing,
   useWindowDimensions,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
-
-/**
- * LoginScreen — same fields, same handleLogin logic, same navigation.
- * Visual polish only, tuned for a restrained, professional feel:
- *   - Short, understated entrance: hero and card fade/rise in together,
- *     then the badge and form settle in with a tight, low-key stagger.
- *   - No bounce or overshoot anywhere — every spring is heavily damped and
- *     every timing curve eases out smoothly.
- *   - Input focus is a smooth color crossfade (border + background + icon),
- *     not a hard style swap, with no added movement.
- *   - The button has a quiet press-down scale, no entrance bounce.
- *   - A brief, small horizontal correction (not a cartoon shake) runs on
- *     validation or login failure, alongside the existing Alert — the
- *     Alert text, timing and conditions are unchanged.
- *
- * No backend, network, or storage logic was touched.
- */
+import { BRAND } from '../theme/brand';
+import { QLessMark, BrandPattern } from '../components/QLessLogo';
 
 const EASE = Easing.bezier(0.4, 0, 0.2, 1); // standard "material" ease-out
 const timing = (value, toValue, duration, easing = EASE, native = true) =>
@@ -64,6 +49,12 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  // ---- Keyboard slide-up ----
+  // keyboardY is how far (negative = up) the card is lifted while typing.
+  const keyboardY = useRef(new Animated.Value(0)).current;
+  const contentBottom = useRef(0); // bottom of the Log In button, inside the card
 
   // ---- Entrance timeline ----
   const heroOpacity = useRef(new Animated.Value(0)).current;
@@ -87,8 +78,6 @@ export default function LoginScreen({ navigation }) {
 
   const buttonOpacity = useRef(new Animated.Value(0)).current;
   const buttonTranslateY = useRef(new Animated.Value(8)).current;
-
-  const footerOpacity = useRef(new Animated.Value(0)).current;
 
   // ---- Interaction feedback ----
   const emailFocusAnim = useRef(new Animated.Value(0)).current; // 0 -> 1
@@ -135,13 +124,51 @@ export default function LoginScreen({ navigation }) {
         630,
         Animated.parallel([timing(buttonOpacity, 1, 320), timing(buttonTranslateY, 0, 340)])
       ),
-      at(720, timing(footerOpacity, 1, 300)),
     ]);
 
     entrance.start();
 
     return () => entrance.stop();
   }, []);
+
+  useEffect(() => {
+    const cardTop = layout.heroHeight - layout.cardOverlap; // card's resting y
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const slide = (toValue, duration) =>
+      Animated.timing(keyboardY, {
+        toValue,
+        duration: duration || 260,
+        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+        useNativeDriver: true,
+      }).start();
+
+    const onShow = (e) => {
+      // 1) cover the green hero: move the card's top up to the status bar
+      const coverHero = Math.max(0, cardTop - insets.top);
+      // 2) if the button would still sit under the keyboard, lift a bit more
+      const keyboardTop = e.endCoordinates.screenY - 16;
+      const buttonBottomAfterCover = cardTop - coverHero + contentBottom.current;
+      const extra = Math.max(0, buttonBottomAfterCover - keyboardTop);
+      slide(-(coverHero + extra), e.duration);
+    };
+    const onHide = (e) => slide(0, e?.duration);
+
+    const s1 = Keyboard.addListener(showEvt, onShow);
+    const s2 = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      s1.remove();
+      s2.remove();
+    };
+  }, [layout.heroHeight, layout.cardOverlap, insets.top]);
+
+  // Badge fades away as the card starts lifting, so it never overlaps the status bar.
+  const badgeKeyboardFade = keyboardY.interpolate({
+    inputRange: [-60, 0],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
 
   const runErrorCue = () => {
     cardShift.setValue(0);
@@ -247,18 +274,35 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.root}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        style={{ flex: 1 }}
-      >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={{ flex: 1 }}>
         {/* HERO */}
         <Animated.View
           style={[styles.hero, { height: layout.heroHeight, opacity: heroOpacity }]}
         >
-          <View style={styles.heroGradientTop} />
-          <View style={styles.heroOverlay} />
+          <BrandPattern size={layout.heroHeight * 1.25} opacity={0.07} style={{ top: -layout.heroHeight * 0.2, right: -layout.heroHeight * 0.35 }} />
+          <BrandPattern size={layout.heroHeight * 0.8} opacity={0.05} style={{ bottom: -layout.heroHeight * 0.15, left: -layout.heroHeight * 0.3 }} />
           <SafeAreaView edges={['top']} />
+
+          {/* Logo, centered in the visible green area (between the status bar
+              and the top of the white card). */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.heroLogoWrap,
+              {
+                top: insets.top,
+                bottom: layout.cardOverlap,
+                opacity: Animated.multiply(badgeOpacity, badgeKeyboardFade),
+                transform: [{ scale: badgeScale }],
+              },
+            ]}
+          >
+            <QLessMark
+              tone="dark"
+              size={Math.min(LOGO_SIZE, Math.max(56, (layout.heroHeight - layout.cardOverlap - insets.top) * 0.62))}
+            />
+          </Animated.View>
         </Animated.View>
 
         {/* CARD */}
@@ -267,22 +311,23 @@ export default function LoginScreen({ navigation }) {
             flex: 1,
             marginTop: -layout.cardOverlap,
             opacity: cardOpacity,
-            transform: [{ translateY: cardTranslateY }, { translateX: cardShift }],
+            transform: [
+              { translateY: Animated.add(cardTranslateY, keyboardY) },
+              { translateX: cardShift },
+            ],
           }}
         >
-          <ScrollView
-            style={styles.card}
-            contentContainerStyle={[styles.cardContent, { paddingHorizontal: layout.cardPadding }]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+          <View style={[styles.card, styles.cardContent, { paddingHorizontal: layout.cardPadding }]}>
             <Animated.View
               style={[
                 styles.brandBlock,
                 { opacity: brandOpacity, transform: [{ translateY: brandTranslateY }] },
               ]}
             >
-              <Text style={styles.title}>eDiwa</Text>
+              <Text style={styles.title}>
+                <Text style={{ color: BRAND.gold }}>Q</Text>
+                <Text style={{ color: BRAND.green }}>Less</Text>
+              </Text>
               <Text style={styles.subtitle}>Library App</Text>
             </Animated.View>
 
@@ -393,6 +438,10 @@ export default function LoginScreen({ navigation }) {
             </View>
 
             <Animated.View
+              onLayout={(e) => {
+                const { y, height: h } = e.nativeEvent.layout;
+                contentBottom.current = y + h;
+              }}
               style={{
                 width: '100%',
                 opacity: buttonOpacity,
@@ -414,48 +463,22 @@ export default function LoginScreen({ navigation }) {
                 )}
               </TouchableOpacity>
             </Animated.View>
-
-            <Animated.View style={[styles.footerRow, { opacity: footerOpacity }]}>
-              <Text style={styles.footerText}>New here? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Register')} hitSlop={6}>
-                <Text style={styles.footerLink}>Create an account</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          </ScrollView>
+          </View>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
+      </TouchableWithoutFeedback>
 
-      {/* Logo badge */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.logoBadgeWrapper,
-          {
-            top: layout.heroHeight - layout.cardOverlap - BADGE_SIZE / 2,
-            opacity: badgeOpacity,
-            transform: [{ scale: badgeScale }],
-          },
-        ]}
-      >
-        <View style={styles.logoBadge}>
-          <Ionicons name="library-outline" size={34} color={colors.primary} />
-        </View>
-      </Animated.View>
     </View>
   );
 }
 
-const BADGE_SIZE = 80;
+const LOGO_SIZE = 80;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  // White root so nothing grey peeks out below the card while it's lifted.
+  root: { flex: 1, backgroundColor: '#fff' },
 
-  hero: { backgroundColor: colors.primaryDark || '#163823' },
-  heroGradientTop: { ...StyleSheet.absoluteFillObject },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6, 31, 17, 0.35)',
-  },
+  hero: { backgroundColor: BRAND.deep, overflow: 'hidden' },
 
   card: {
     flex: 1,
@@ -464,31 +487,17 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
   },
   cardContent: {
-    paddingTop: 44,
+    paddingTop: 32,
     paddingBottom: 36,
     alignItems: 'center',
-    flexGrow: 1,
   },
 
-  logoBadgeWrapper: {
+  heroLogoWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
-    zIndex: 10,
-  },
-  logoBadge: {
-    width: BADGE_SIZE,
-    height: BADGE_SIZE,
-    borderRadius: BADGE_SIZE / 2,
-    backgroundColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
   },
 
   brandBlock: { alignItems: 'center', marginBottom: 30 },
