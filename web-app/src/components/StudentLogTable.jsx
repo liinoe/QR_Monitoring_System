@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import Pagination from "./Pagination";
+import { TimeOutCell } from "./AdminUI";
 
+// Table of student entry/exit logs, 10 or 20 rows per page.
+//   data: [{ studentNo, program, college, date, timeIn, timeOut, inside, forced }]
 const StudentLogTable = ({ data = [] }) => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -9,39 +12,45 @@ const StudentLogTable = ({ data = [] }) => {
   const startIndex = (safePage - 1) * rowsPerPage;
   const displayedData = data.slice(startIndex, startIndex + rowsPerPage);
 
+  // No overflow-hidden on the outer box, so the rows-per-page list isn't cut off.
   return (
-    <div className="bg-white rounded-[10px] border shadow-sm">
-      <div className="overflow-x-auto rounded-t-[10px] overflow-hidden">
+    <div className="bg-white rounded-[20px] border border-[#ECEFEC]">
+      <div className="overflow-x-auto rounded-t-[20px]">
         <table className="data-table w-full text-sm">
-        <thead className="bg-[#F3FAF3] text-[#1B651B] border-b">
-          <tr>
-            <th className="p-4 text-left font-semibold">No.</th>
-            <th className="p-4 text-left font-semibold">Student No.</th>
-            <th className="p-4 text-left font-semibold">College</th>
-            <th className="p-4 text-left font-semibold">Date</th>
-            <th className="p-4 text-left font-semibold">Time In</th>
-            <th className="p-4 text-left font-semibold">Time Out</th>
-            <th className="p-4 text-left font-semibold">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {displayedData.map((item, index) => (
-            <tr key={index} className="border-b hover:bg-gray-50 transition-colors">
-              <td className="p-4 text-gray-600">{startIndex + index + 1}</td>
-              <td className="p-4 text-gray-700 font-medium">{item.studentNo}</td>
-              <td className="p-4 text-gray-600">{item.college}</td>
-              <td className="p-4 text-gray-600">{item.date}</td>
-              <td className="p-4 text-gray-600">{item.timeIn}</td>
-              <td className="p-4 text-gray-600">{item.timeOut}</td>
-              <td className="p-4">
-                <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 w-fit ${item.status === 'Active' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEE2E2] text-[#991B1B]'}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'Active' ? 'bg-[#166534]' : 'bg-[#991B1B]'}`} />
-                  {item.status}
-                </span>
-              </td>
+          <thead>
+            <tr className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em] border-b border-[#F1F3F1]">
+              <th className="px-5 py-4 text-left">No.</th>
+              <th className="px-5 py-4 text-left">Student No.</th>
+              <th className="px-5 py-4 text-left">Program / College</th>
+              <th className="px-5 py-4 text-left">Date</th>
+              <th className="px-5 py-4 text-left">Time In</th>
+              <th className="px-5 py-4 text-left">Time Out</th>
             </tr>
-          ))}
-        </tbody>
+          </thead>
+          <tbody className="divide-y divide-[#F1F3F1]">
+            {displayedData.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-12 text-center text-gray-400">No student logs found.</td>
+              </tr>
+            ) : (
+              displayedData.map((item, index) => (
+                <tr key={index} className="hover:bg-[#F7F8F7] transition-colors">
+                  <td className="px-5 py-3.5 text-gray-400 tabular-nums">{startIndex + index + 1}</td>
+                  <td className="px-5 py-3.5 font-semibold text-gray-900 tabular-nums">{item.studentNo}</td>
+                  {/* Program in bold, college in gray underneath */}
+                  <td className="px-5 py-3.5 max-w-[320px]">
+                    <p className="font-semibold text-gray-900 truncate">{item.program || "—"}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{item.college}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-gray-600 tabular-nums">{item.date}</td>
+                  <td className="px-5 py-3.5 text-gray-600 tabular-nums">{item.timeIn}</td>
+                  <td className="px-5 py-3.5">
+                    <TimeOutCell inside={item.inside} time={item.timeOut} forced={item.forced} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
         </table>
       </div>
       <Pagination
@@ -57,4 +66,5 @@ const StudentLogTable = ({ data = [] }) => {
     </div>
   );
 };
+
 export default StudentLogTable;

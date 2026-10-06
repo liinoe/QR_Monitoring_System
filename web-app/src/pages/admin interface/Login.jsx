@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveSession, isLoggedIn, consumeAuthNotice, getAdmin, revokeToken } from "../../auth";
-import cvsuLogo from "../../assets/cvsu_logo.png";
+import Header from "../../components/Header";
+import { AuthInput } from "../../components/AuthInput";
+import { btn } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const POLL_MS = 2000;
 
+// Admin / staff sign-in page. Same deep green header as the admin pages and a
+// white card with the app-style inputs. Also handles "waiting for approval" when
+// the account is already open in another browser.
 const Login = () => {
     const navigate = useNavigate();
     const [email, setEmail] = useState("");
@@ -13,14 +18,16 @@ const Login = () => {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [checkingSetup, setCheckingSetup] = useState(true);
-    const [showPassword, setShowPassword] = useState(false);
 
     // Sign-in approval: set while waiting for the already-signed-in browser to answer.
     const [pending, setPending] = useState(null); // { requestId, secondsLeft }
     const pollRef = useRef(null);
     const countdownRef = useRef(null);
 
+    // On open: skip to the dashboard if already signed in, show any sign-out notice,
+    // and go to first-time setup if no admin account exists yet.
     useEffect(() => {
+        document.title = "Sign In · QLess";
         if (isLoggedIn()) {
             navigate("/", { replace: true });
             return;
@@ -41,6 +48,7 @@ const Login = () => {
             .catch(() => setCheckingSetup(false));
     }, [navigate]);
 
+    // Stops the polling and countdown timers and leaves the waiting screen.
     const stopWaiting = () => {
         clearInterval(pollRef.current);
         clearInterval(countdownRef.current);
@@ -61,6 +69,7 @@ const Login = () => {
         return () => window.removeEventListener("pagehide", cancelOnLeave);
     }, [pending?.requestId]);
 
+    // Clears the timers if the page is left.
     useEffect(() => () => {
         clearInterval(pollRef.current);
         clearInterval(countdownRef.current);
@@ -83,6 +92,7 @@ const Login = () => {
         navigate("/");
     };
 
+    // Shows the waiting screen and checks every 2 seconds if the other browser answered.
     const startWaiting = (requestId, expiresIn) => {
         setPending({ requestId, secondsLeft: expiresIn });
 
@@ -113,6 +123,7 @@ const Login = () => {
         }, POLL_MS);
     };
 
+    // "Cancel" while waiting: withdraws the sign-in request.
     const cancelWaiting = () => {
         const requestId = pending?.requestId;
         stopWaiting();
@@ -123,6 +134,7 @@ const Login = () => {
 
     if (checkingSetup) return null;
 
+    // "Sign In": checks the email and password with the server.
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
@@ -157,91 +169,82 @@ const Login = () => {
     };
 
     return (
-        <div className="w-screen min-h-screen flex items-center justify-center bg-[#F6F6F5] font-sans">
-            <div className="w-full max-w-[400px] bg-white p-8 rounded-[10px] border shadow-sm">
-                <div className="flex flex-col items-center mb-6">
-                    <img src={cvsuLogo} alt="CvSU Logo" className="w-16 h-16 object-contain mb-3" />
-                    <h1 className="text-lg font-bold text-gray-800 text-center leading-tight">
-                        Library Patron Access and Monitoring System
-                    </h1>
-                    <p className="text-xs text-gray-500 mt-1">Admin Sign In</p>
-                </div>
+        <div className="w-screen min-h-screen flex flex-col bg-[#F7F8F7] font-sans">
+            <Header />
 
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg mb-4">
-                        {error}
-                    </div>
-                )}
-
-                {pending ? (
-                    // WAITING FOR APPROVAL
-                    <div className="text-center">
-                        <div className="mx-auto mb-4 w-12 h-12 rounded-full border-4 border-green-100 border-t-[#1B651B] animate-spin" />
-                        <p className="text-sm font-semibold text-gray-800">Waiting for approval</p>
-                        <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                            <span className="font-medium text-gray-700">{email}</span> is already signed in on another browser.
-                            A prompt was sent there — ask them to click <span className="font-medium">Allow</span>.
-                        </p>
-                        <p className="text-xs text-gray-400 mt-3">
-                            Expires in <span className="font-semibold text-gray-600">{pending.secondsLeft}s</span>
-                        </p>
-                        <button
-                            type="button"
-                            onClick={cancelWaiting}
-                            className="w-full mt-5 border border-gray-300 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                            <input
-                                id="admin-email"
-                                name="email"
-                                type="email"
-                                required
-                                autoComplete="username"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B651B]"
-                                placeholder="admin@cvsu.edu.ph"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                            <div className="relative">
-                                <input
-                                    id="admin-password"
-                                    name="password"
-                                    type={showPassword ? "text" : "password"}
-                                    required
-                                    autoComplete="current-password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B651B]"
-                                    placeholder="••••••••"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-[#1B651B] hover:underline"
-                                >
-                                    {showPassword ? "Hide" : "Show"}
+            <main className="flex-1 flex items-center justify-center px-4 py-10">
+                <div className="w-full max-w-[420px]">
+                    <div className="bg-white rounded-[24px] px-7 py-8">
+                        {pending ? (
+                            // WAITING FOR APPROVAL
+                            <div className="text-center">
+                                <div className="mx-auto mb-5 w-14 h-14 rounded-full border-[5px] border-[#E8F1E9] border-t-[#1B5E20] animate-spin" />
+                                <h1 className="text-[20px] font-extrabold text-gray-900">Waiting for approval</h1>
+                                <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                                    <span className="font-semibold text-gray-800">{email}</span> is already signed in on another browser.
+                                    A prompt was sent there. Ask them to click <span className="font-semibold text-gray-800">Allow</span>.
+                                </p>
+                                <div className="inline-flex items-center gap-1.5 mt-4 px-3 py-1.5 rounded-full bg-[#FBF3DC] text-[#946800] text-xs font-bold tabular-nums">
+                                    Expires in {pending.secondsLeft}s
+                                </div>
+                                <button type="button" onClick={cancelWaiting} className={`${btn.secondary} w-full h-[50px] mt-6 rounded-[16px]`}>
+                                    Cancel
                                 </button>
                             </div>
-                        </div>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full bg-[#1B651B] text-white py-2 rounded-lg font-medium hover:bg-[#165516] transition-colors disabled:opacity-60"
-                        >
-                            {loading ? "Signing in..." : "Sign In"}
-                        </button>
-                    </form>
-                )}
-            </div>
+                        ) : (
+                            // SIGN-IN FORM
+                            <>
+                                <div className="text-center mb-7">
+                                    <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[#E8F1E9] text-[#1B5E20] flex items-center justify-center">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h1 className="text-[22px] font-extrabold text-gray-900">Welcome back</h1>
+                                    <p className="text-sm text-gray-500 mt-1">Sign in to the library admin dashboard.</p>
+                                </div>
+
+                                {error && (
+                                    <div className="flex items-start gap-2 rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-[13px] font-semibold px-4 py-3 mb-5">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="flex-shrink-0 mt-px">
+                                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                        </svg>
+                                        <span>{error}</span>
+                                    </div>
+                                )}
+
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <AuthInput
+                                        id="admin-email" name="email" label="Email" icon="mail" type="email" required
+                                        autoComplete="username" placeholder="name@cvsu.edu.ph"
+                                        value={email} onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                    <AuthInput
+                                        id="admin-password" name="password" label="Password" icon="lock" type="password" required
+                                        autoComplete="current-password" placeholder="Enter your password"
+                                        value={password} onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        style={{ marginTop: 24 }}
+                                        className="w-full h-[52px] rounded-[16px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors disabled:opacity-60"
+                                    >
+                                        {loading ? "Signing in…" : "Sign In"}
+                                    </button>
+                                </form>
+
+                                <p className="text-center text-[12.5px] text-gray-500 mt-5">
+                                    Forgot your password? Ask the super admin to reset it.
+                                </p>
+                            </>
+                        )}
+                    </div>
+                    <p className="text-center text-[11.5px] text-gray-400 mt-5">
+                        Cavite State University · Ladislao N. Diwa Memorial Library
+                    </p>
+                </div>
+            </main>
         </div>
     );
 };

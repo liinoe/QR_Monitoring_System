@@ -4,18 +4,15 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
-import KpiTooltipCard from "../../components/KpiTooltipCard";
 import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import StatBarList from "../../components/StatBarList";
+import HoverTooltip from "../../components/HoverTooltip";
 import { authFetch } from "../../auth";
+import { BRAND, PageTitle, Card, CardTitle, SectionLabel, KpiCard, TrendPill, ChartTooltip, EmptyState } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const COLLEGE_OPTIONS = ["CAFENR", "CAS", "CCJ", "CED", "CEIT", "CEMDS", "CON", "CSPEAR", "CTHM", "CVMBS", "COM", "CAPS"];
-const COLLEGE_COLORS = {
-  CAFENR: '#16a34a', CAS: '#ca8a04', CCJ: '#9333ea', CED: '#2563eb', CEIT: '#ea580c',
-  CEMDS: '#e11d48', CON: '#dc2626', CSPEAR: '#7f1d1d', CTHM: '#f97316', CVMBS: '#db2777', COM: '#0891b2', CAPS: '#65a30d',
-};
 
 const COLLEGE_ACRONYMS = {
   "college of agriculture, food, environment and natural resources": "CAFENR",
@@ -33,6 +30,7 @@ const COLLEGE_ACRONYMS = {
   "college of advanced and professional studies": "CAPS"
 };
 
+// Turns a full college name into its acronym, e.g. "College of Arts and Sciences" → "CAS".
 const toAcronym = (college) => {
   if (!college) return null;
   const key = college.trim().toLowerCase();
@@ -43,25 +41,42 @@ const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // Convert JS getDay() (0=Sun) to a Mon-first index (0=Mon .. 6=Sun)
 const toMonFirstIndex = (jsDay) => (jsDay + 6) % 7;
 
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+// Heatmap columns = library hours: opens 7 AM, closes 6 PM (cut-off 5:30 PM).
+// 7 = 7–8 AM ... 17 = 5–6 PM. Same hours as the mobile app's Peak Hours chart.
+const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+// Formats an hour number as a label, e.g. 13 → "1PM".
 const formatHour = (h) => {
   const period = h >= 12 ? 'PM' : 'AM';
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}${period}`;
 };
 
+const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// Hover bubble for one heatmap square, e.g. "Tuesday · 11AM – 12PM" + "5 visits".
+const HeatCellTip = ({ dayIdx, hour, count }) => (
+  <span className="block text-left">
+    <span className="block font-semibold">{WEEKDAY_FULL[dayIdx]} · {formatHour(hour)} – {formatHour(hour + 1)}</span>
+    <span className="block text-white/75 mt-0.5">{count === 0 ? "No visits" : `${count} ${count === 1 ? "visit" : "visits"}`}</span>
+  </span>
+);
+
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// Month id for a date, e.g. "2026-09".
 const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+// "2026-09" → "September 2026".
 const monthLabel = (key) => {
   const [y, m] = key.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
 };
+// First and last moment of a month.
 const monthRange = (key) => {
   const [y, m] = key.split('-').map(Number);
   return { start: new Date(y, m - 1, 1, 0, 0, 0), end: new Date(y, m, 0, 23, 59, 59) };
 };
 
+// First and last moment of a year.
 const yearRange = (yearStr) => {
   const y = Number(yearStr);
   return { start: new Date(y, 0, 1, 0, 0, 0), end: new Date(y, 11, 31, 23, 59, 59) };
@@ -77,16 +92,19 @@ const semesterInfo = (date) => {
   if (month <= 5) return { ayStart: year - 1, sem: '2nd' };
   return { ayStart: year - 1, sem: 'Summer' }; // Jun-Jul
 };
+// Semester id for a date, e.g. "2026-1st".
 const semesterKey = (date) => {
   const { ayStart, sem } = semesterInfo(date);
   return `${ayStart}-${sem}`;
 };
 const SEM_NAMES = { '1st': '1st Semester', '2nd': '2nd Semester', 'Summer': 'Midyear' };
+// "2026-1st" → "AY 2026-2027 • 1st Semester".
 const semesterLabel = (key) => {
   const [ayStart, sem] = key.split('-');
   const start = Number(ayStart);
   return `AY ${start}-${start + 1} • ${SEM_NAMES[sem] || sem}`;
 };
+// Start and end dates of a semester (1st = Aug–Dec, 2nd = Jan–May, Midyear = Jun–Jul).
 const semesterRange = (key) => {
   const [ayStartStr, sem] = key.split('-');
   const ayStart = Number(ayStartStr);
@@ -94,6 +112,7 @@ const semesterRange = (key) => {
   if (sem === '2nd') return { start: new Date(ayStart + 1, 0, 1, 0, 0, 0), end: new Date(ayStart + 1, 4, 31, 23, 59, 59) };
   return { start: new Date(ayStart + 1, 5, 1, 0, 0, 0), end: new Date(ayStart + 1, 6, 31, 23, 59, 59) };
 };
+// The semester before this one (used for the "vs last period" comparisons).
 const previousSemesterKey = (key) => {
   const [ayStartStr, sem] = key.split('-');
   const ayStart = Number(ayStartStr);
@@ -102,14 +121,15 @@ const previousSemesterKey = (key) => {
   return `${ayStart}-2nd`;
 };
 
-// "Last 7 Days" = today + the 6 days before it (rolling). The mobile app's
-// Peak Hours card uses exactly this window (backend: lastSevenDays in index.js),
-// so the Peak Hour KPI here matches the app when this tab is selected.
+// "Last 7 Days" = today + the 6 days before it (rolling). Admin-only view.
+// The mobile app's Peak Hours card matches the "Semester" tab instead
+// (backend: currentSemester in index.js).
 const WEEK = "Last 7 Days";
 const PERIOD_TYPES = [WEEK, "Month", "Semester", "Year"];
 
 const LAST7 = "last7";
 const PREV7 = "prev7";
+// Start/end of the last 7 days (or the 7 days before that, for comparison).
 const rollingWeekRange = (value) => {
   const now = new Date();
   const offset = value === PREV7 ? 7 : 0;
@@ -118,30 +138,36 @@ const rollingWeekRange = (value) => {
     end: new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset, 23, 59, 59),
   };
 };
+// Label like "Last 7 days • Sep 22 – Sep 28".
 const rollingWeekLabel = (value) => {
   const { start, end } = rollingWeekRange(value);
+  // Short date, e.g. "Sep 22".
   const fmt = (d) => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   return `${value === PREV7 ? 'Previous 7 days' : 'Last 7 days'} • ${fmt(start)} – ${fmt(end)}`;
 };
 
+// Which period (week/month/semester/year) a date belongs to.
 const getPeriodKeyForDate = (periodType, date) => {
   if (periodType === WEEK) return LAST7;
   if (periodType === "Month") return monthKey(date);
   if (periodType === "Year") return String(date.getFullYear());
   return semesterKey(date);
 };
+// Start and end dates of the selected period.
 const getPeriodRange = (periodType, value) => {
   if (periodType === WEEK) return rollingWeekRange(value);
   if (periodType === "Month") return monthRange(value);
   if (periodType === "Year") return yearRange(value);
   return semesterRange(value);
 };
+// Readable name of the selected period for the dropdown and titles.
 const getPeriodLabel = (periodType, value) => {
   if (periodType === WEEK) return rollingWeekLabel(value);
   if (periodType === "Month") return monthLabel(value);
   if (periodType === "Year") return `Year ${value}`;
   return semesterLabel(value);
 };
+// The period just before the selected one (for the ↑/↓ comparisons).
 const getPreviousPeriodValue = (periodType, value) => {
   if (periodType === WEEK) return PREV7;
   if (periodType === "Month") {
@@ -152,15 +178,18 @@ const getPreviousPeriodValue = (periodType, value) => {
   return previousSemesterKey(value);
 };
 
-// A handful of distinct colors for series whose category list is dynamic
-// (like programs, which vary school to school), cycled by index.
-const PALETTE = ['#16a34a', '#2563eb', '#ea580c', '#9333ea', '#db2777', '#0891b2', '#ca8a04', '#65a30d', '#e11d48', '#7c3aed'];
+// Calm colors (less "rainbow"): every ranked list uses brand green,
+// with the #1 item in dark green and the rest in a lighter green.
+const BAR_TOP = BRAND.green;
+const BAR_REST = "#9DC3A1";
+// Colors a ranked bar: first = dark green, others = light green.
+const rankColor = (item, i) => (i === 0 ? BAR_TOP : BAR_REST);
 
 const GENDER_LABELS = { male: 'Male', female: 'Female', prefer_not_to_say: 'Other' };
-const GENDER_COLORS = { male: '#2563eb', female: '#db2777', prefer_not_to_say: '#6b7280' };
+// Two-group comparisons use green + gold (brand colors), gray for "Other".
+const GENDER_COLORS = { male: BRAND.green, female: BRAND.gold, prefer_not_to_say: '#9CA3AF' };
 
 const GUEST_TYPE_LABELS = { faculty: 'Faculty', alumni: 'Alumni', walkin: 'Walk-in', student: 'Student' };
-const GUEST_TYPE_COLORS = { faculty: '#2563eb', alumni: '#ca8a04', walkin: '#16a34a', student: '#9333ea' };
 
 const KPI_TOOLTIPS = {
   totalVisits: "Counts every entry log — students and guests — with a visit date inside the selected period.",
@@ -168,12 +197,14 @@ const KPI_TOOLTIPS = {
   peakHour: "The 2-hour window with the most entries, based on time-in, across the selected period. The subtitle shows the weekday(s) with the most total visits.",
 };
 
+// The Analytics page: library usage trends, peak hours and breakdowns.
 const Analytics = () => {
   const [logs, setLogs] = useState([]);
   const [guestLogs, setGuestLogs] = useState([]);
   const [periodType, setPeriodType] = useState("Month");
   const [selectedPeriod, setSelectedPeriod] = useState(monthKey(new Date()));
 
+// Loads every student entry/exit log from the server.
   const fetchLogs = async () => {
     try {
       const response = await authFetch(`${API_URL}/api/logs/all`);
@@ -184,6 +215,7 @@ const Analytics = () => {
     }
   };
 
+// Loads every guest visit from the server.
   const fetchGuestLogs = async () => {
     try {
       const response = await authFetch(`${API_URL}/api/guests/all`);
@@ -194,6 +226,7 @@ const Analytics = () => {
     }
   };
 
+  // Loads the logs when the page opens, then refreshes them every 15 seconds.
   useEffect(() => {
     fetchLogs();
     fetchGuestLogs();
@@ -225,12 +258,14 @@ const Analytics = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodType, availablePeriods]);
 
+// Start/end dates of the period picked in the filter.
   const periodRange = useMemo(() => getPeriodRange(periodType, selectedPeriod), [periodType, selectedPeriod]);
 
   // Wording for card subtitles: "this month" / "in the last 7 days", etc.
   const periodPhrase = periodType === WEEK ? "in the last 7 days" : `this ${periodType.toLowerCase()}`;
   const periodShort = periodType === WEEK ? "last 7 days" : periodType.toLowerCase();
 
+// Student logs inside the selected period.
   const periodLogs = useMemo(() => {
     return logs.filter(l => {
       if (!l.visit_date) return false;
@@ -239,6 +274,7 @@ const Analytics = () => {
     });
   }, [logs, periodRange]);
 
+// Guest logs inside the selected period.
   const periodGuestLogs = useMemo(() => {
     return guestLogs.filter(g => {
       if (!g.visit_date) return false;
@@ -262,8 +298,11 @@ const Analytics = () => {
 
   // vs previous period trend
   const previousPeriodValue = getPreviousPeriodValue(periodType, selectedPeriod);
+// Start/end dates of the previous period (for comparisons).
   const previousPeriodRange = useMemo(() => getPeriodRange(periodType, previousPeriodValue), [periodType, previousPeriodValue]);
+// All student + guest logs in the previous period.
   const combinedPreviousPeriodEntries = useMemo(() => {
+    // True if a log's visit date is inside the previous period.
     const inRange = (l) => {
       if (!l.visit_date) return false;
       const d = new Date(l.visit_date);
@@ -314,7 +353,7 @@ const Analytics = () => {
   }, [combinedPeriodEntries]);
 
   // KPI: Avg stay duration (students + guests). Forced exits (Force Exit All
-  // button, or the 5:01 PM auto-logout) don't reflect an actual departure
+  // button, or the 5:31 PM auto-logout) don't reflect an actual departure
   // time, so they're excluded from this average.
   const exitedPeriodLogs = combinedPeriodEntries.filter(l => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedPeriodLogs.reduce((acc, l) => acc + (new Date(l.time_out) - new Date(l.time_in)), 0);
@@ -511,218 +550,234 @@ const Analytics = () => {
   const topGuestTypeEntry = [...guestTypeChartData].sort((a, b) => b.value - a.value)[0];
 
   return (
-    <div className="w-screen min-h-screen flex flex-col bg-[#F6F6F5] font-sans">
+    <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
       <Header />
       <div className="flex flex-1">
         <Sidebar />
-        <div className="flex-1 px-[50px] pt-[40px] pb-[40px] space-y-[20px]">
+        <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
+          <PageTitle
+            title="Analytics"
+            subtitle="Library usage trends, peak hours, and demographic breakdown."
+            right={
+              <>
+                <FilterTabs options={PERIOD_TYPES} value={periodType} onChange={setPeriodType} />
+                <FilterSelect value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
+                  {availablePeriods.map((p) => (
+                    <option key={p} value={p}>{getPeriodLabel(periodType, p)}</option>
+                  ))}
+                </FilterSelect>
+              </>
+            }
+          />
 
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <p className="text-[#666]">Library usage trends, peak hours, and demographic breakdown.</p>
-            <div className="flex items-center gap-3">
-              <FilterTabs options={PERIOD_TYPES} value={periodType} onChange={setPeriodType} />
-              <FilterSelect value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
-                {availablePeriods.map(p => (
-                  <option key={p} value={p}>{getPeriodLabel(periodType, p)}</option>
-                ))}
-              </FilterSelect>
+          {/* KPI CARDS */}
+          <div>
+            <SectionLabel>{getPeriodLabel(periodType, selectedPeriod)}</SectionLabel>
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+              <KpiCard
+                label={`Total Visits (${periodShort})`}
+                value={totalVisits}
+                color={BRAND.green}
+                tooltip={KPI_TOOLTIPS.totalVisits}
+                footer={
+                  <TrendPill
+                    change={visitsTrend}
+                    suffix={`${Math.abs(visitsTrend ?? 0)}% vs ${previousPeriodLabel}`}
+                    emptyText={periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`}
+                  />
+                }
+              />
+              <KpiCard
+                label="Avg. Daily Visits"
+                value={avgDailyVisits}
+                color={BRAND.deep}
+                tooltip={KPI_TOOLTIPS.avgDaily}
+                footer={<span className="text-xs text-gray-500">Weekdays and weekends</span>}
+              />
+              <KpiCard
+                label="Peak Hour"
+                value={peakLabel}
+                color={BRAND.goldText}
+                tooltip={KPI_TOOLTIPS.peakHour}
+                footer={<span className="text-xs text-gray-500">{busiestDaysLabel}</span>}
+              />
+              <KpiCard
+                label="Avg. Stay Duration"
+                value={avgStay}
+                unit="hr"
+                color={BRAND.deep}
+                tooltip={avgStayTooltip}
+                footer={
+                  <TrendPill
+                    change={avgStayPreviousPeriod === null ? null : parseFloat(avgStay) - avgStayPreviousPeriod}
+                    suffix={`vs ${avgStayPreviousPeriod?.toFixed(1)} hr ${previousPeriodLabel}`}
+                    emptyText="Based on exits"
+                  />
+                }
+              />
             </div>
           </div>
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-4 gap-[20px]">
-            <KpiTooltipCard
-              tooltip={KPI_TOOLTIPS.totalVisits}
-              title={`Total Visits (${periodShort})`}
-              value={totalVisits}
-              subtitle={visitsTrend === null ? (periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`) : `${visitsTrend >= 0 ? '↑' : '↓'} ${Math.abs(visitsTrend)}% vs ${previousPeriodLabel}`}
-              color="text-green-700"
-              border="border-green-700"
-            />
-            <KpiTooltipCard
-              tooltip={KPI_TOOLTIPS.avgDaily}
-              title="Avg. Daily Visits"
-              value={avgDailyVisits}
-              subtitle="Weekdays and weekends"
-              color="text-blue-700"
-              border="border-blue-700"
-            />
-            <KpiTooltipCard
-              tooltip={KPI_TOOLTIPS.peakHour}
-              title="Peak Hour"
-              value={peakLabel}
-              subtitle={busiestDaysLabel}
-              color="text-orange-600"
-              border="border-orange-600"
-            />
-            <KpiTooltipCard
-              tooltip={avgStayTooltip}
-              title="Avg. Stay Duration"
-              value={`${avgStay} hr`}
-              subtitle={avgStayPreviousPeriod === null ? "Based on exits" : `${parseFloat(avgStay) >= avgStayPreviousPeriod ? '↑' : '↓'} vs ${avgStayPreviousPeriod.toFixed(1)} hr ${previousPeriodLabel}`}
-              color="text-emerald-700"
-              border="border-emerald-700"
-            />
-          </div>
+          {/* Trend + Peak hours heatmap */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <Card className="p-6">
+              <CardTitle title={trendTitle.charAt(0).toUpperCase() + trendTitle.slice(1)} note="Students and guests" />
+              <div className="h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      {/* Soft green fade under the line */}
+                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={BRAND.green} stopOpacity={0.25} />
+                        <stop offset="100%" stopColor={BRAND.green} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F3F1" />
+                    <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: "#6B7280" }} />
+                    <YAxis fontSize={12} allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: "#9CA3AF" }} />
+                    <Tooltip content={<ChartTooltip unit="visits" />} />
+                    <Area type="monotone" dataKey="visits" stroke={BRAND.green} fill="url(#trendFill)" strokeWidth={2.5} name="Visitors" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
 
-          {/* Weekly/Monthly trend + Peak hours heatmap */}
-          <div className="grid grid-cols-2 gap-[20px]">
-            <div className="bg-white rounded-[10px] p-[20px] h-[320px]">
-              <p className="text-sm font-semibold text-green-700 mb-4">{trendTitle} - {getPeriodLabel(periodType, selectedPeriod)} <span className="text-gray-400 font-normal">(students + guests)</span></p>
-              <ResponsiveContainer width="100%" height="85%">
-                <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" fontSize={12} />
-                  <YAxis fontSize={12} allowDecimals={false} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="visits" stroke="#16a34a" fill="#bbf7d0" strokeWidth={2} name="Visitors" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white rounded-[10px] p-[20px] h-[320px]">
-              <p className="text-sm font-semibold text-green-700 mb-4">Peak Hours (visits/hour) <span className="text-gray-400 font-normal">(students + guests)</span></p>
-
+            <Card className="p-6">
+              <CardTitle title="Peak Hours" note="Visits per hour · students and guests" />
               <div className="grid gap-1" style={{ gridTemplateColumns: `36px repeat(${HOURS.length}, 1fr)` }}>
                 {heatmapMatrix.map((row, dayIdx) => (
                   <React.Fragment key={dayIdx}>
-                    <div className="text-[10px] text-gray-400 flex items-center" style={{ height: '22px' }}>{WEEKDAY_LABELS[dayIdx]}</div>
+                    <div className="text-[11px] text-gray-500 flex items-center" style={{ height: "24px" }}>{WEEKDAY_LABELS[dayIdx]}</div>
                     {row.map((count, hourIdx) => {
-                      const intensity = count === 0 ? 0.06 : 0.15 + (count / heatmapMax) * 0.75;
+                      // Darker green = busier hour.
+                      const intensity = count === 0 ? 0.05 : 0.15 + (count / heatmapMax) * 0.8;
                       return (
-                        <div
+                        // Styled hover bubble instead of the browser's plain tooltip
+                        <HoverTooltip
                           key={`${dayIdx}-${hourIdx}`}
-                          title={`${WEEKDAY_LABELS[dayIdx]} ${formatHour(HOURS[hourIdx])}: ${count} visits`}
-                          className="rounded"
-                          style={{ height: '22px', backgroundColor: `rgba(22, 101, 52, ${intensity})` }}
-                        />
+                          className="w-full"
+                          label={<HeatCellTip dayIdx={dayIdx} hour={HOURS[hourIdx]} count={count} />}
+                        >
+                          <div
+                            className="w-full rounded-[6px] cursor-default transition-transform hover:scale-110 hover:ring-2 hover:ring-[#1B5E20]/30"
+                            style={{ height: "24px", backgroundColor: `rgba(27, 94, 32, ${intensity})` }}
+                          />
+                        </HoverTooltip>
                       );
                     })}
                   </React.Fragment>
                 ))}
 
-                {/* Hour axis, aligned under the same 9 columns as the grid */}
+                {/* Hour labels under the grid */}
                 <div />
                 {HOURS.map((h, i) => (
-                  <div key={h} className="text-[9px] text-gray-400 text-center">
-                    {i % 2 === 0 ? formatHour(h) : ''}
+                  <div key={h} className="text-[10px] text-gray-400 text-center">
+                    {i % 2 === 0 ? formatHour(h) : ""}
                   </div>
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 mt-4 text-[10px] text-gray-400">
+              <div className="flex items-center gap-2 mt-4 text-[11px] text-gray-500">
                 <span>Low</span>
-                <div className="flex-1 h-2 rounded" style={{ background: 'linear-gradient(to right, rgba(22,101,52,0.06), rgba(22,101,52,0.9))' }} />
+                <div className="flex-1 h-2 rounded-full" style={{ background: "linear-gradient(to right, rgba(27,94,32,0.05), rgba(27,94,32,0.95))" }} />
                 <span>High</span>
               </div>
-            </div>
+            </Card>
           </div>
 
-          {/* Row 1: Visits by College & Highest Program by Visits */}
-          <div className="grid grid-cols-2 gap-[20px] items-start">
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">Visits by College <span className="text-gray-400 font-normal text-xs">— students only</span></p>
-              <p className="text-xs text-gray-400 mb-3">
-                {topCollegeName ? `${topCollegeName} leads ${periodPhrase}` : "No student visits yet"}
-              </p>
-              <StatBarList
-                data={collegeChartData}
-                colorFor={(item) => COLLEGE_COLORS[item.key] || '#9ca3af'}
-                emptyLabel={`No visits recorded ${periodPhrase}`}
+          {/* Visits by College & Programs */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <Card className="p-6">
+              <CardTitle
+                title="Visits by College"
+                note={topCollegeName ? `${topCollegeName} leads ${periodPhrase} · students only` : "No student visits yet"}
               />
-            </div>
+              <StatBarList data={collegeChartData} colorFor={rankColor} emptyLabel={`No visits recorded ${periodPhrase}`} />
+            </Card>
 
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">Highest Program by Visits <span className="text-gray-400 font-normal text-xs">— students only</span></p>
-              <p className="text-xs text-gray-400 mb-3">
-                {topProgramName ? `${topProgramName} leads ${periodPhrase}` : "No student visits yet"}
-              </p>
-              <StatBarList
-                data={programChartData}
-                colorFor={(item, i) => PALETTE[i % PALETTE.length]}
-                emptyLabel={`No visits recorded ${periodPhrase}`}
+            <Card className="p-6">
+              <CardTitle
+                title="Highest Program by Visits"
+                note={topProgramName ? `${topProgramName} leads ${periodPhrase} · students only` : "No student visits yet"}
               />
-            </div>
+              <StatBarList data={programChartData} colorFor={rankColor} emptyLabel={`No visits recorded ${periodPhrase}`} />
+            </Card>
           </div>
 
-          {/* Row 2: New vs Returning Students & Top Visiting Students */}
-          <div className="grid grid-cols-2 gap-[20px] items-start">
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">New vs Returning Students</p>
-              <p className="text-xs text-gray-400 mb-3">
-                {totalUniqueStudents > 0 ? `${returningPct}% of visiting students ${periodPhrase} are returning` : "No student visits yet"}
-              </p>
+          {/* New vs Returning & Top Visiting Students */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <Card className="p-6">
+              <CardTitle
+                title="New vs Returning Students"
+                note={totalUniqueStudents > 0 ? `${returningPct}% of visiting students ${periodPhrase} are returning` : "No student visits yet"}
+              />
               <StatBarList
                 data={newReturningData}
-                colorFor={(item) => (item.key === 'new' ? '#2563eb' : '#16a34a')}
+                colorFor={(item) => (item.key === "returning" ? BRAND.green : BRAND.gold)}
                 emptyLabel={`No visits recorded ${periodPhrase}`}
               />
-            </div>
+            </Card>
 
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px] overflow-auto">
-              <p className="text-sm font-semibold text-green-700 mb-3">Top Visiting Students <span className="text-gray-400 font-normal text-xs">— students only</span></p>
+            <Card className="p-6">
+              <CardTitle title="Top Visiting Students" note="Students only" />
               {topStudents.length === 0 ? (
-                <div className="py-6 flex items-center justify-center text-sm text-gray-400">
-                  No visits recorded {periodPhrase}
-                </div>
+                <EmptyState text={`No visits recorded ${periodPhrase}`} />
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs text-gray-400 uppercase border-b">
-                      <th className="pb-2 font-semibold">#</th>
-                      <th className="pb-2 font-semibold">Student No.</th>
-                      <th className="pb-2 font-semibold">College</th>
-                      <th className="pb-2 font-semibold">Visits</th>
-                      <th className="pb-2 font-semibold">Avg Stay</th>
+                    <tr className="text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em] border-b border-[#F1F3F1]">
+                      <th className="pb-2.5">#</th>
+                      <th className="pb-2.5">Student No.</th>
+                      <th className="pb-2.5">College</th>
+                      <th className="pb-2.5">Visits</th>
+                      <th className="pb-2.5">Avg Stay</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-[#F1F3F1]">
                     {topStudents.map((s, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="py-2 text-gray-500">{i + 1}</td>
-                        <td className="py-2 text-gray-700 font-medium">{s.studentNumber}</td>
-                        <td className="py-2 text-gray-500">{s.college}</td>
-                        <td className="py-2 text-green-700 font-semibold">{s.visits}</td>
-                        <td className="py-2 text-gray-500">{s.avgStay === "--" ? "--" : `${s.avgStay} hr`}</td>
+                      <tr key={i}>
+                        <td className="py-2.5 text-gray-400 tabular-nums">{i + 1}</td>
+                        <td className="py-2.5 font-semibold text-gray-900 tabular-nums">{s.studentNumber}</td>
+                        <td className="py-2.5 text-gray-500">{s.college}</td>
+                        <td className="py-2.5 font-bold text-[#1B5E20] tabular-nums">{s.visits}</td>
+                        <td className="py-2.5 text-gray-500 tabular-nums">{s.avgStay === "--" ? "--" : `${s.avgStay} hr`}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
-            </div>
+            </Card>
           </div>
 
-          {/* Row 3: Guest Type Comparison & Gender Comparison */}
-          <div className="grid grid-cols-2 gap-[20px] items-start">
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">Guest Type Comparison</p>
-              <p className="text-xs text-gray-400 mb-3">
-                {topGuestTypeEntry ? `${topGuestTypeEntry.name} visits the most ${periodPhrase}` : "No guest visits yet"}
-              </p>
+          {/* Guest Types & Gender */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <Card className="p-6">
+              <CardTitle
+                title="Guest Type Comparison"
+                note={topGuestTypeEntry ? `${topGuestTypeEntry.name} visits the most ${periodPhrase}` : "No guest visits yet"}
+              />
               <StatBarList
-                data={guestTypeChartData}
-                colorFor={(item) => GUEST_TYPE_COLORS[item.key] || '#9ca3af'}
+                data={[...guestTypeChartData].sort((a, b) => b.value - a.value)}
+                colorFor={rankColor}
                 emptyLabel={`No guest visits recorded ${periodPhrase}`}
               />
-            </div>
+            </Card>
 
-            <div className="bg-white rounded-[10px] p-[20px] min-h-[160px]">
-              <p className="text-sm font-semibold text-green-700 mb-1">Gender Comparison <span className="text-gray-400 font-normal text-xs">— students only</span></p>
-              <p className="text-xs text-gray-400 mb-3">
-                {topGenderEntry ? `${topGenderEntry.name} makes up the most visits ${periodPhrase}` : "No student visits yet"}
-              </p>
+            <Card className="p-6">
+              <CardTitle
+                title="Gender Comparison"
+                note={topGenderEntry ? `${topGenderEntry.name} makes up the most visits ${periodPhrase} · students only` : "No student visits yet"}
+              />
               <StatBarList
                 data={genderChartData}
-                colorFor={(item) => GENDER_COLORS[item.key] || '#9ca3af'}
+                colorFor={(item) => GENDER_COLORS[item.key] || "#9CA3AF"}
                 emptyLabel={`No visits recorded ${periodPhrase}`}
               />
-            </div>
+            </Card>
           </div>
-
-        </div>
+        </main>
       </div>
     </div>
-
   );
 };
 

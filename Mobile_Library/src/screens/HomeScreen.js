@@ -17,6 +17,7 @@ import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessMark, ScanFrame, BrandPattern } from '../components/QLessLogo';
+import { getRejectionGuide } from '../utils/rejection';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -87,7 +88,11 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding 
     // Same numbers as the web Analytics page: check-ins this month,
     // peak = the 2-hour window with the most check-ins.
     const maxCheckins = Math.max(1, ...data.hours.map((x) => x.checkins));
-    const isOpenNow = currentHour >= data.open_hour && currentHour < data.close_hour;
+    // Open from 7:00 AM until the 5:30 PM cut-off (times come from the server).
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const openMin = data.open_minutes ?? data.open_hour * 60;
+    const cutoffMin = data.cutoff_minutes ?? data.close_hour * 60;
+    const isOpenNow = nowMinutes >= openMin && nowMinutes < cutoffMin;
     const crowd = isOpenNow ? getCrowdLevel(currentOccupancy, data.peak_avg_inside) : null;
     // "Peak" label goes on the busiest bar inside the busiest window (not on an empty one).
     const peakBarHour = data.hours
@@ -109,7 +114,9 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding 
             )
           ) : (
             <View style={[styles.crowdPill, { backgroundColor: '#EFF1EF' }]}>
-              <Text style={[styles.crowdText, { color: '#8A8F8B' }]}>Library closed</Text>
+              <Text style={[styles.crowdText, { color: '#8A8F8B' }]}>
+                {nowMinutes < openMin ? 'Opens at 7:00 AM' : 'Closed · past 5:30 PM cut-off'}
+              </Text>
             </View>
           )}
         </View>
@@ -324,6 +331,10 @@ export default function HomeScreen({ navigation }) {
   const isApproved = studentData?.status === 'approved';
   const isRejected = studentData?.status === 'rejected';
   const isDeactivated = studentData?.status === 'deactivated';
+  // The semester ended: the QR pass expired; renewal opens when the next semester starts.
+  const isExpired = studentData?.status === 'expired';
+  // What to tell a rejected student, based on the admin's reason.
+  const rejectionGuide = getRejectionGuide(studentData?.status_reason, currentPeriod);
 
   // A student is due for RENEWAL if their last registration was for a
   // different (past) period than the one currently active. Only applies
@@ -434,6 +445,27 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
+        {/* SEMESTER ENDED — pass expired; nothing to do until the next semester starts */}
+        {isExpired && (
+          <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
+            <View style={styles.statusRow}>
+              <View style={styles.lockIconWrap}>
+                <Ionicons name="calendar-outline" size={24} color="#946800" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.restrictedTitle}>Semester Ended</Text>
+                <Text style={styles.pendingSubText}>
+                  Your QR pass{studentData?.registered_period ? ` for ${studentData.registered_period}` : ''} expired when the semester ended. You can renew here once the next semester starts.
+                </Text>
+                <View style={styles.pendingBadge}>
+                  <View style={styles.badgeDot} />
+                  <Text style={styles.pendingBadgeText}>Renewal opens next semester</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* PENDING APPROVAL */}
         {isPending && (
           <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
@@ -464,15 +496,18 @@ export default function HomeScreen({ navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectedTitle}>Registration Rejected</Text>
-                <Text style={styles.rejectedSubText}>
-                  {studentData?.status_reason || 'Your registration was not approved.'}
-                </Text>
+                {/* Guidance depends on the reason (see utils/rejection.js) */}
+                <Text style={styles.rejectedSubText}>{rejectionGuide.message}</Text>
+                {!!studentData?.status_reason && rejectionGuide.kind !== 'other' && (
+                  <Text style={styles.rejectedReason}>Reason: {studentData.status_reason}</Text>
+                )}
+                {/* Opens the Register form already filled with their details */}
                 <TouchableOpacity
                   style={styles.resubmitBtn}
-                  onPress={() => navigation.navigate('Register')}
+                  onPress={() => navigation.navigate('Register', { mode: 'resubmit' })}
                   activeOpacity={0.88}
                 >
-                  <Text style={styles.resubmitBtnText}>Register Again</Text>
+                  <Text style={styles.resubmitBtnText}>{rejectionGuide.buttonLabel}</Text>
                   <Ionicons name="arrow-forward" size={15} color="#fff" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               </View>
@@ -836,6 +871,7 @@ const styles = StyleSheet.create({
   },
   rejectedTitle: { color: '#B3261E', fontSize: 16.5, fontWeight: '700' },
   rejectedSubText: { fontSize: 13, color: '#8A362F', marginTop: 4, lineHeight: 19 },
+  rejectedReason: { fontSize: 11.5, color: '#A8554E', marginTop: 6, fontStyle: 'italic' },
   resubmitBtn: {
     flexDirection: 'row',
     alignItems: 'center',

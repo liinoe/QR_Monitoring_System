@@ -1,24 +1,29 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import logo from "../../assets/cvsu_logo.png";
+import { GuestLayout, Card, SectionLabel, Dialog, Icon, btn, inputClass, BRAND } from "./GuestLayout";
 
-const FacultyIcon = ({ active }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B5E20' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="4" width="20" height="13" rx="2" />
-    <line x1="8" y1="21" x2="16" y2="21" />
-    <line x1="12" y1="17" x2="12" y2="21" />
+// Visitor type icons (color follows the button's text color).
+// Faculty: teacher pointing at a board.
+const FacultyIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="10" y="3" width="12" height="9" rx="1" />
+    <circle cx="5" cy="7" r="2.5" />
+    <path d="M1.5 21v-3.5A3.5 3.5 0 0 1 5 14a3.5 3.5 0 0 1 3.5 3.5V21" />
+    <path d="M7.5 14.5L12 10" />
   </svg>
 );
 
-const AlumniIcon = ({ active }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B5E20' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+// Alumni: graduation cap icon.
+const AlumniIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 10L12 5 2 10l10 5 10-5z" />
     <path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5" />
   </svg>
 );
 
-const WalkinIcon = ({ active }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B5E20' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+// Walk-in: walking person icon.
+const WalkinIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="4.5" r="2" />
     <path d="M10 8l2 3 2-3" />
     <path d="M12 11v5" />
@@ -28,24 +33,11 @@ const WalkinIcon = ({ active }) => (
   </svg>
 );
 
-const StudentIcon = ({ active }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B5E20' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+// Student: person icon.
+const StudentIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="8" r="4" />
     <path d="M4 21v-1c0-3.3 3.6-6 8-6s8 2.7 8 6v1" />
-  </svg>
-);
-
-const ClockIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="8 12 11 15 16 9" />
   </svg>
 );
 
@@ -56,6 +48,13 @@ const VISITOR_TYPES = [
   { id: "student", label: "Student", icon: StudentIcon },
 ];
 
+// Shown only when "Student" is picked. "Other" = another school or another CvSU campus.
+const STUDENT_TYPES = [
+  { id: "JHS", label: "Junior High (JHS)", value: "Junior High School (JHS)" },
+  { id: "SHS", label: "Senior High (SHS)", value: "Senior High School (SHS)" },
+  { id: "Other", label: "Other", value: "" },
+];
+
 const PURPOSES = ["Book Reference", "Research / Thesis", "Library Visit", "General Reading", "Other"];
 
 const HOW_TO_STEPS = [
@@ -64,43 +63,65 @@ const HOW_TO_STEPS = [
   { title: "Tap \"Log Out\"", detail: "Confirm, and your visit will be closed out." },
 ];
 
+// Guest entry form: guest picks a type, enters their details and purpose, then confirms.
 const GuestEntry = () => {
   const navigate = useNavigate();
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [guestType, setGuestType] = useState("faculty");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [affiliation, setAffiliation] = useState("");
+  const [studentType, setStudentType] = useState("");   // JHS / SHS / Other (students only)
+  const [studentSchool, setStudentSchool] = useState(""); // school name when "Other" is picked
   const [purpose, setPurpose] = useState("Book Reference");
   const [otherPurpose, setOtherPurpose] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Shown after a successful entry log — replaces the old auto-vanishing
-  // toast, since "don't forget to log out" is important enough that it
-  // shouldn't be something a guest can simply miss while looking away.
+  // Welcome pop-up after a successful log, with the "don't forget to log out" reminder.
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [loggedGuestName, setLoggedGuestName] = useState("");
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
+  // Clears the form back to its starting values.
   const resetForm = () => {
     setGuestType("faculty");
     setFirstName("");
     setLastName("");
     setAffiliation("");
+    setStudentType("");
+    setStudentSchool("");
     setPurpose("Book Reference");
     setOtherPurpose("");
   };
 
+  const isStudent = guestType === "student";
+
+  // What gets saved as the guest's affiliation.
+  // Students: their type (JHS / SHS) or the school they typed under "Other".
+  // Everyone else: the Affiliation / Institution box.
+  const getAffiliation = () => {
+    if (!isStudent) return affiliation.trim();
+    if (studentType === "Other") return studentSchool.trim();
+    return STUDENT_TYPES.find((l) => l.id === studentType)?.value || "";
+  };
+
+  // "Review & Log Visit": checks the fields, then opens the confirm pop-up.
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !affiliation.trim()) {
+    if (!firstName.trim() || !lastName.trim()) {
+      setFeedback({ type: "error", message: "Please fill in all required fields." });
+      return;
+    }
+    if (isStudent && !studentType) {
+      setFeedback({ type: "error", message: "Please choose your student type (JHS, SHS, or Other)." });
+      return;
+    }
+    if (isStudent && studentType === "Other" && !studentSchool.trim()) {
+      setFeedback({ type: "error", message: "Please type the school or CvSU campus you're from." });
+      return;
+    }
+    if (!isStudent && !affiliation.trim()) {
       setFeedback({ type: "error", message: "Please fill in all required fields." });
       return;
     }
@@ -112,6 +133,7 @@ const GuestEntry = () => {
     setShowConfirm(true);
   };
 
+  // "Confirm": sends the visit to the server, then shows the welcome pop-up.
   const confirmSubmit = async () => {
     setSubmitting(true);
     setFeedback(null);
@@ -125,7 +147,7 @@ const GuestEntry = () => {
           guest_type: guestType,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          affiliation: affiliation.trim(),
+          affiliation: getAffiliation(),
           purpose,
           other_purpose: otherPurpose.trim(),
         }),
@@ -150,275 +172,273 @@ const GuestEntry = () => {
     }
   };
 
+  // "Got it, Continue": closes the welcome pop-up and returns to the landing page.
   const handleContinueToLanding = () => {
     setShowWelcomeModal(false);
     setShowHowTo(false);
     navigate("/guest-landing");
   };
 
-  const formatTime = (date) =>
-    date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const purposeText = purpose === "Other" ? otherPurpose : purpose;
 
   return (
-    <div className="min-h-screen w-screen bg-[#EAF5EA] font-sans flex flex-col">
-      {/* HEADER */}
-      <div className="guest-header bg-[#1B5E20] text-white px-6 h-[72px] flex items-center justify-between shadow-md border-b-[3px] border-[#F5C518] flex-shrink-0">
-        <div className="flex items-center gap-3.5">
-          <img src={logo} alt="CvSU Logo" className="w-12 h-12 object-contain flex-shrink-0" />
-          <div>
-            <p className="text-[17px] font-bold leading-tight">Library Patron Access and Monitoring System</p>
-            <p className="text-[11px] opacity-75 mt-0.5">Guest Entry</p>
+    <GuestLayout subtitle="Guest Log In" title="Log Your Visit" onBack={() => navigate("/guest-landing")}>
+      <form onSubmit={handleSubmit} className="w-full max-w-[720px] space-y-6">
+        {/* Error banner */}
+        {feedback && feedback.type === "error" && (
+          <div className="flex items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
+            <Icon name="alert" size={18} />
+            {feedback.message}
+          </div>
+        )}
+
+        {/* I AM A */}
+        <div>
+          <SectionLabel>I am a…</SectionLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {VISITOR_TYPES.map(({ id, label, icon: TypeIcon }) => {
+              const active = guestType === id;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  onClick={() => setGuestType(id)}
+                  className={`relative flex flex-col items-center justify-center gap-2.5 py-5 rounded-[20px] border-2 transition-all ${
+                    active
+                      ? "border-[#1B5E20] bg-white text-[#1B5E20] shadow-[0_6px_18px_rgba(27,94,32,0.15)]"
+                      : "border-transparent bg-white text-gray-400 shadow-[0_4px_16px_rgba(11,31,18,0.06)] hover:text-gray-600"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute top-2.5 right-2.5 text-[#1B5E20]">
+                      <Icon name="check" size={16} />
+                    </span>
+                  )}
+                  <span
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{ backgroundColor: active ? BRAND.mint : "#F4F5F4" }}
+                  >
+                    <TypeIcon />
+                  </span>
+                  <span className={`text-sm font-semibold ${active ? "text-[#1B5E20]" : "text-gray-600"}`}>{label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="text-[26px] font-bold font-mono tracking-wide">{formatTime(currentTime)}</div>
-      </div>
 
-      {/* BODY */}
-      <div className="flex-1 flex justify-center py-10 px-4">
-        <div className="w-full max-w-[680px] space-y-5">
-
-          {/* Error banner */}
-          {feedback && feedback.type === "error" && (
-            <div className="rounded-xl p-4 text-sm font-medium bg-red-50 text-red-700 border border-red-200">
-              {feedback.message}
+        {/* Personal Information */}
+        <div>
+          <SectionLabel>Personal information</SectionLabel>
+          <Card className="p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="First name">
+                <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required className={inputClass} />
+              </Field>
+              <Field label="Last name">
+                <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required className={inputClass} />
+              </Field>
             </div>
-          )}
-
-          {/* Form card */}
-          <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] px-6 py-4 border-b-[3px] border-[#F5C518]">
-              <h3 className="text-white font-semibold text-lg">Guest Entry Form</h3>
-            </div>
-
-            <div className="p-6 space-y-6">
-
-              {/* I AM A */}
+            {isStudent ? (
+              // Students pick their type instead of typing an affiliation.
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">I am a...</p>
-                <div className="grid grid-cols-4 gap-3">
-                  {VISITOR_TYPES.map(({ id, label, icon: Icon }) => (
-                    <button
-                      type="button"
-                      key={id}
-                      onClick={() => setGuestType(id)}
-                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-lg border-2 transition-colors ${
-                        guestType === id
-                          ? "border-[#1B5E20] bg-green-50 text-[#1B5E20]"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      <Icon active={guestType === id} />
-                      <span className="text-xs font-semibold">{label}</span>
-                    </button>
-                  ))}
+                <span className="text-[12px] font-semibold text-gray-600 mb-1.5 block">Student type</span>
+                {/* Same pill buttons as "Purpose of visit" */}
+                <div className="flex flex-wrap gap-2.5">
+                  {STUDENT_TYPES.map((t) => {
+                    const active = studentType === t.id;
+                    return (
+                      <button
+                        type="button"
+                        key={t.id}
+                        onClick={() => setStudentType(t.id)}
+                        className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                          active ? "bg-[#1B5E20] text-white" : "bg-[#F4F5F4] text-gray-600 hover:bg-[#E8F1E9] hover:text-[#1B5E20]"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
 
-              {/* Personal Information */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Personal Information</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">First Name</label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      required
-                      className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Last Name</label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      required
-                      className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <label className="text-xs text-gray-500 mb-1 block">Affiliation / Institution</label>
-                  <input
-                    type="text"
-                    value={affiliation}
-                    onChange={(e) => setAffiliation(e.target.value)}
-                    placeholder="e.g. CvSU - CEIT Dept."
-                    required
-                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
-                  />
-                </div>
-              </div>
-
-              {/* Purpose of Visit */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Purpose of Visit</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {PURPOSES.map((p) => (
-                    <label key={p} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                {/* Only shows when "Other" is picked */}
+                {studentType === "Other" && (
+                  <div className="mt-4">
+                    <Field label="School / Campus">
                       <input
-                        type="radio"
-                        name="purpose"
-                        checked={purpose === p}
-                        onChange={() => setPurpose(p)}
-                        className="accent-[#1B5E20]"
+                        type="text"
+                        value={studentSchool}
+                        onChange={(e) => setStudentSchool(e.target.value)}
+                        placeholder="e.g. CvSU Silang Campus, or your school's name"
+                        className={inputClass}
+                        autoFocus
                       />
-                      {p}
-                    </label>
-                  ))}
-                </div>
-                {purpose === "Other" && (
-                  <div className="mt-3">
-                    <label className="text-xs text-gray-500 mb-1 block">Please specify</label>
-                    <input
-                      type="text"
-                      value={otherPurpose}
-                      onChange={(e) => setOtherPurpose(e.target.value)}
-                      placeholder="Type here..."
-                      required
-                      className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
-                    />
+                    </Field>
                   </div>
                 )}
               </div>
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-60"
-              >
-                Review & Log Visit →
-              </button>
-              <p className="text-center text-[11px] text-gray-400">
-                Your information is recorded securely and used only for library access monitoring.
-              </p>
-            </div>
-          </form>
+            ) : (
+              <Field label="Affiliation / Institution">
+                <input
+                  type="text"
+                  value={affiliation}
+                  onChange={(e) => setAffiliation(e.target.value)}
+                  placeholder="e.g. CvSU - CEIT Dept."
+                  required
+                  className={inputClass}
+                />
+              </Field>
+            )}
+          </Card>
         </div>
-      </div>
 
-      {/* Confirm Info Modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-[420px] overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-            <div className="bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] px-6 py-4 border-b-[3px] border-[#F5C518]">
-              <h3 className="text-white font-semibold text-lg">Confirm Your Details</h3>
-              <p className="text-white/80 text-xs mt-0.5">Please check that everything is correct.</p>
+        {/* Purpose of Visit — pill buttons instead of radio circles */}
+        <div>
+          <SectionLabel>Purpose of visit</SectionLabel>
+          <Card className="p-6">
+            <div className="flex flex-wrap gap-2.5">
+              {PURPOSES.map((p) => {
+                const active = purpose === p;
+                return (
+                  <button
+                    type="button"
+                    key={p}
+                    onClick={() => setPurpose(p)}
+                    className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                      active ? "bg-[#1B5E20] text-white" : "bg-[#F4F5F4] text-gray-600 hover:bg-[#E8F1E9] hover:text-[#1B5E20]"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
             </div>
+            {purpose === "Other" && (
+              <div className="mt-4">
+                <Field label="Please specify">
+                  <input
+                    type="text"
+                    value={otherPurpose}
+                    onChange={(e) => setOtherPurpose(e.target.value)}
+                    placeholder="Type here..."
+                    required
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            )}
+          </Card>
+        </div>
 
-            <div className="p-6 space-y-3">
-              <div className="flex justify-between text-sm border-b pb-2">
-                <span className="text-gray-500">Visitor Type</span>
-                <span className="font-semibold text-gray-800 capitalize">
-                  {VISITOR_TYPES.find((v) => v.id === guestType)?.label || guestType}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm border-b pb-2">
-                <span className="text-gray-500">Name</span>
-                <span className="font-semibold text-gray-800">{firstName} {lastName}</span>
-              </div>
-              <div className="flex justify-between text-sm border-b pb-2 gap-4">
-                <span className="text-gray-500 flex-shrink-0">Affiliation</span>
-                <span className="font-semibold text-gray-800 text-right">{affiliation}</span>
-              </div>
-              <div className="flex justify-between text-sm gap-4">
-                <span className="text-gray-500 flex-shrink-0">Purpose</span>
-                <span className="font-semibold text-gray-800 text-right">
-                  {purpose === "Other" ? otherPurpose : purpose}
-                </span>
-              </div>
-            </div>
+        {/* Submit */}
+        <div className="pt-1">
+          <button type="submit" disabled={submitting} className={`${btn.primary} w-full text-base py-4`}>
+            Review & Log Visit
+            <Icon name="arrow" size={18} />
+          </button>
+          <p className="flex items-center justify-center gap-1.5 text-center text-[11.5px] text-gray-400 mt-3">
+            <Icon name="shield" size={13} />
+            Your information is recorded securely and used only for library access monitoring.
+          </p>
+        </div>
+      </form>
 
-            <div className="px-6 pb-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirm(false)}
-                disabled={submitting}
-                className="flex-1 border border-gray-300 text-gray-600 font-semibold py-2.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60"
-              >
-                Edit Details
-              </button>
-              <button
-                type="button"
-                onClick={confirmSubmit}
-                disabled={submitting}
-                className="flex-1 bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
-              >
-                {submitting ? "Logging..." : "Confirm"}
-              </button>
-            </div>
+      {/* Confirm details pop-up */}
+      <Dialog
+        open={showConfirm}
+        tone="info"
+        icon="people"
+        title="Confirm Your Details"
+        message="Please check that everything is correct."
+        footer={
+          <>
+            <button type="button" onClick={() => setShowConfirm(false)} disabled={submitting} className={btn.secondary}>
+              Edit Details
+            </button>
+            <button type="button" onClick={confirmSubmit} disabled={submitting} className={btn.primary}>
+              {submitting ? "Logging..." : "Confirm"}
+            </button>
+          </>
+        }
+      >
+        <div className="rounded-[16px] bg-[#F7F8F7] divide-y divide-[#ECEFEC]">
+          <DetailRow label="Visitor type" value={VISITOR_TYPES.find((v) => v.id === guestType)?.label || guestType} />
+          <DetailRow label="Name" value={`${firstName} ${lastName}`} />
+          <DetailRow label={!isStudent ? "Affiliation" : studentType === "Other" ? "School / Campus" : "Student type"} value={getAffiliation()} />
+          <DetailRow label="Purpose" value={purposeText} />
+        </div>
+      </Dialog>
+
+      {/* Welcome + "Don't forget to log out" pop-up */}
+      <Dialog
+        open={showWelcomeModal}
+        tone="success"
+        title={`Welcome, ${loggedGuestName}!`}
+        message="Your visit has been logged successfully."
+        footer={
+          <button type="button" onClick={handleContinueToLanding} className={btn.primary}>
+            Got it, Continue
+          </button>
+        }
+      >
+        {/* Gold reminder banner */}
+        <div className="flex items-start gap-3 rounded-[16px] p-4" style={{ backgroundColor: BRAND.goldSoft, color: "#946800" }}>
+          <Icon name="time" size={20} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold">Don't forget to log out!</p>
+            <p className="text-xs mt-1 leading-relaxed">
+              Before you leave the library, please log your exit so your visit record is complete.
+            </p>
           </div>
         </div>
-      )}
 
-      {/* Welcome + "Don't Forget to Log Out" Reminder Modal */}
-      {showWelcomeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-[440px] overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-            <div className="bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] px-6 py-5 border-b-[3px] border-[#F5C518] flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <CheckIcon />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold text-lg">Welcome, {loggedGuestName}!</h3>
-                <p className="text-white/80 text-xs mt-0.5">Your visit has been logged successfully.</p>
-              </div>
-            </div>
+        {/* Expandable "How do I log out?" */}
+        <button
+          type="button"
+          onClick={() => setShowHowTo((v) => !v)}
+          className="w-full flex items-center justify-between text-sm font-semibold text-[#1B5E20] mt-4 px-1"
+        >
+          <span>How do I log out?</span>
+          <span className={`transition-transform ${showHowTo ? "rotate-180" : ""}`}>
+            <Icon name="chevron" size={18} />
+          </span>
+        </button>
 
-            <div className="p-6 space-y-4">
-              {/* Reminder banner */}
-              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <ClockIcon />
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">Don't forget to log out!</p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Before you leave the library, please log your exit so your visit record is complete.
-                  </p>
+        {showHowTo && (
+          <div className="space-y-3 mt-3 rounded-[16px] bg-[#F7F8F7] p-4">
+            {HOW_TO_STEPS.map((step, i) => (
+              <div key={i} className="flex gap-3">
+                <div className="w-6 h-6 rounded-full text-[#1B5E20] text-xs font-bold flex items-center justify-center flex-shrink-0" style={{ backgroundColor: BRAND.mint }}>
+                  {i + 1}
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-gray-800">{step.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{step.detail}</p>
                 </div>
               </div>
-
-              {/* Expandable "How do I log out?" */}
-              <button
-                type="button"
-                onClick={() => setShowHowTo((v) => !v)}
-                className="w-full flex items-center justify-between text-sm font-semibold text-[#1B5E20] hover:underline"
-              >
-                <span>How do I log out?</span>
-                <span className={`transition-transform ${showHowTo ? "rotate-180" : ""}`}>▾</span>
-              </button>
-
-              {showHowTo && (
-                <div className="space-y-3 border-t pt-4">
-                  {HOW_TO_STEPS.map((step, i) => (
-                    <div key={i} className="flex gap-3">
-                      <div className="w-6 h-6 rounded-full bg-green-100 text-[#1B5E20] text-xs font-bold flex items-center justify-center flex-shrink-0">
-                        {i + 1}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">{step.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{step.detail}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleContinueToLanding}
-                className="w-full bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3 rounded-lg transition-colors"
-              >
-                Got it, Continue
-              </button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </Dialog>
+    </GuestLayout>
   );
 };
+
+// Small label above an input.
+const Field = ({ label, children }) => (
+  <label className="block">
+    <span className="text-[12px] font-semibold text-gray-600 mb-1.5 block">{label}</span>
+    {children}
+  </label>
+);
+
+// One "label ........ value" line in the confirm pop-up.
+const DetailRow = ({ label, value }) => (
+  <div className="flex justify-between gap-4 px-4 py-3 text-sm">
+    <span className="text-gray-500 flex-shrink-0">{label}</span>
+    <span className="font-semibold text-gray-800 text-right break-words">{value}</span>
+  </div>
+);
 
 export default GuestEntry;

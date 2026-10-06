@@ -1,77 +1,54 @@
 import React from "react";
+import { RegStatusPill } from "./AdminUI";
 
+// Button styles for the Action column (pill-shaped, like the rest of the system).
+const ACTION_BTN = {
+  approve: "rounded-full bg-[#1B5E20] text-white px-4 py-2 text-xs font-bold hover:bg-[#164a1a] transition-colors",
+  reject: "rounded-full bg-[#F1F3F1] text-gray-600 px-4 py-2 text-xs font-bold hover:bg-[#FBDFDB] hover:text-[#B3261E] transition-colors",
+  deactivate: "rounded-full bg-[#FBF1CE] text-[#946800] px-4 py-2 text-xs font-bold hover:bg-[#F7E3A6] transition-colors",
+  reactivate: "rounded-full bg-[#E8F1E9] text-[#1B5E20] px-4 py-2 text-xs font-bold hover:bg-[#dbe9dc] transition-colors",
+};
+
+// Small gray italic note shown instead of buttons.
+const Note = ({ children }) => <span className="text-xs text-gray-400 italic">{children}</span>;
+
+// One row in the Registrations table. Clicking the row opens the student's details;
+// the buttons on the right approve / reject / deactivate / reactivate.
 const RegistrationItem = ({
   studentNumber, name, email, college, program, period, status,
   isLatest, currentStatus, onRowClick,
   onApprove, onReject, onDeactivate, onReactivate,
 }) => {
-  const statusColor = {
-    pending: "bg-yellow-100 text-yellow-700",
-    "pending renewal": "bg-orange-100 text-orange-700",
-    "expired / unapproved": "bg-gray-200 text-gray-600",
-    approved: "bg-green-100 text-green-700",
-    rejected: "bg-red-100 text-red-700",
-    deactivated: "bg-gray-200 text-gray-600",
-  };
-
+  // Picks which buttons (or note) to show, based on the request's status.
   const renderAction = () => {
+    // An older request of a student who has a newer one: no actions here.
     if (!isLatest) {
-      return (
-        <span className="text-xs text-gray-400 italic">
-          Updated — now {currentStatus?.toUpperCase() || "updated"}
-        </span>
-      );
+      return <Note>Updated — now {currentStatus || "updated"}</Note>;
     }
 
     if (status === "pending" || status === "pending renewal") {
       // Hide buttons if academic info hasn't been submitted from mobile yet
-      if (!college || college === "—") {
-        return <span className="text-xs text-gray-400 italic">Awaiting student submission</span>;
-      }
-
+      if (!college || college === "—") return <Note>Awaiting student submission</Note>;
       return (
         <>
-          <button
-            onClick={onApprove}
-            className="rounded-full bg-[#1B651B] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#165516] active:bg-[#124612] transition-colors duration-150"
-          >
-            Approve
-          </button>
-          <button
-            onClick={onReject}
-            className="rounded-full bg-gray-100 text-gray-600 px-5 py-2 text-xs font-bold border border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors duration-150"
-          >
-            Reject
-          </button>
+          <button onClick={onApprove} className={ACTION_BTN.approve}>Approve</button>
+          <button onClick={onReject} className={ACTION_BTN.reject}>Reject</button>
         </>
       );
     }
 
     if (status === "approved") {
-      return (
-        <button
-          onClick={onDeactivate}
-          className="rounded-full bg-[#D97706] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#B45309] active:bg-[#92400E] transition-colors duration-150"
-        >
-          Deactivate
-        </button>
-      );
+      return <button onClick={onDeactivate} className={ACTION_BTN.deactivate}>Deactivate</button>;
     }
 
     if (status === "deactivated") {
-      return (
-        <button
-          onClick={onReactivate}
-          className="rounded-full bg-[#2563EB] text-white px-5 py-2 text-xs font-bold shadow-sm hover:bg-[#1D4ED8] active:bg-[#1E40AF] transition-colors duration-150"
-        >
-          Reactivate
-        </button>
-      );
+      return <button onClick={onReactivate} className={ACTION_BTN.reactivate}>Reactivate</button>;
     }
 
-    if (status === "rejected") {
-      return <span className="text-xs text-gray-400 italic">Awaiting student resubmission</span>;
-    }
+    if (status === "rejected") return <Note>Awaiting student resubmission</Note>;
+
+    // Semester ended: the student renews when the next semester starts.
+    if (status === "expired") return <Note>Renews next semester</Note>;
 
     return null;
   };
@@ -79,32 +56,30 @@ const RegistrationItem = ({
   return (
     <tr
       onClick={onRowClick}
-      className={`border-b hover:bg-gray-50 cursor-pointer transition-colors ${!isLatest ? "opacity-60" : ""}`}
+      className={`hover:bg-[#F7F8F7] cursor-pointer transition-colors ${!isLatest ? "opacity-60" : ""}`}
     >
-      <td className="p-4 text-gray-700 font-medium">{studentNumber}</td>
-      <td className="p-4">
-        <p className="text-gray-800 font-medium">{name}</p>
-        <p className="text-xs text-gray-400">{email}</p>
+      <td className="px-5 py-3.5 font-semibold text-gray-900 tabular-nums">{studentNumber}</td>
+      {/* Name in bold, email in gray */}
+      <td className="px-5 py-3.5 max-w-[240px]">
+        <p className="font-semibold text-gray-900 truncate">{name}</p>
+        <p className="text-xs text-gray-500 mt-0.5 truncate">{email}</p>
       </td>
-      <td className="p-4 text-gray-600">{college}</td>
-      <td className="p-4 text-gray-600">{program}</td>
-      <td className="p-4">
-        <div className="flex flex-col items-start gap-1">
-          <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusColor[status] || "bg-gray-100"}`}>
-            {status?.toUpperCase()}
-          </span>
-          <span className="text-[10px] text-gray-400 whitespace-nowrap">
-            {period}
-          </span>
-        </div>
+      {/* Program in bold, college in gray (same as Student Logs) */}
+      <td className="px-5 py-3.5 max-w-[280px]">
+        <p className="font-semibold text-gray-900 truncate">{program || "—"}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{college}</p>
       </td>
-      <td className="p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          {renderAction()}
-        </div>
+      {/* Status pill, with the semester in gray */}
+      <td className="px-5 py-3.5">
+        <RegStatusPill status={status} />
+        <p className="text-[11px] text-gray-400 mt-1 whitespace-nowrap">{period}</p>
+      </td>
+      {/* Buttons don't open the details pop-up */}
+      <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">{renderAction()}</div>
       </td>
     </tr>
   );
 };
 
-export default RegistrationItem; 
+export default RegistrationItem;

@@ -1,15 +1,15 @@
 import React from "react";
 
-const StatBarList = ({ data, colorFor = () => '#16a34a', emptyLabel = "No data yet" }) => {
+// List of "name ........ value" rows, each with a thin bar showing how big it is
+// compared to the largest one (like the scanner's college tiles).
+//   data      [{ key, name, value }]
+//   colorFor  function that returns a bar color for each row
+const StatBarList = ({ data, colorFor = () => "#1B5E20", emptyLabel = "No data yet" }) => {
   if (!data || data.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-gray-400">
-        {emptyLabel}
-      </div>
-    );
+    return <div className="h-full min-h-[120px] flex items-center justify-center text-sm text-gray-400">{emptyLabel}</div>;
   }
 
-  const maxVal = Math.max(...data.map(d => d.value));
+  const maxVal = Math.max(...data.map((d) => d.value));
 
   return (
     <div>
@@ -18,11 +18,11 @@ const StatBarList = ({ data, colorFor = () => '#16a34a', emptyLabel = "No data y
         return (
           <div key={item.key} className="py-2.5">
             <div className="flex items-center justify-between mb-1.5 gap-3">
-              <span className="text-sm text-gray-700 truncate">{item.name}</span>
-              <span className="text-sm font-semibold text-gray-800 flex-shrink-0">{item.value}</span>
+              <span className="text-sm font-medium text-gray-700 truncate">{item.name}</span>
+              <span className="text-sm font-bold text-gray-900 flex-shrink-0 tabular-nums">{item.value}</span>
             </div>
-            <div className="h-[4px] rounded-full bg-gray-100 overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: colorFor(item, i) }} />
+            <div className="h-1.5 rounded-full bg-[#F1F3F1] overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${share}%`, backgroundColor: colorFor(item, i) }} />
             </div>
           </div>
         );

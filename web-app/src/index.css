@@ -350,3 +350,8 @@ canvas {
 .recharts-responsive-container .recharts-wrapper {
 	max-width: 100%;
 }
+/* Small fade-in used by the live password checklist */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}

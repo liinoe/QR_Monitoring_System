@@ -33,9 +33,9 @@ function App() {
         <Route path="/student-logs" element={<ProtectedRoute><StudentLogs /></ProtectedRoute>} />
         <Route path="/guest-logs" element={<ProtectedRoute><GuestLogs /></ProtectedRoute>} />
         <Route path="/manage-students" element={<ProtectedRoute><ManageStudents /></ProtectedRoute>} />
+        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
 
         {/* Super admin only  */}
-        <Route path="/analytics" element={<SuperAdminRoute><Analytics /></SuperAdminRoute>} />
         <Route path="/settings" element={<SuperAdminRoute><Settings /></SuperAdminRoute>} />
       </Routes>
     </Router>

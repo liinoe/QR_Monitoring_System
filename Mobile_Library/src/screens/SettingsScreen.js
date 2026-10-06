@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Linking,
   useWindowDimensions,
 } from 'react-native';
@@ -18,20 +17,25 @@ import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessTile, ScanFrame } from '../components/QLessLogo';
+import { useAppDialog } from '../components/AppDialog';
 
-// ---------------------------------------------------------------------------
-// TODO: replace these placeholders with the library's real details.
-// ---------------------------------------------------------------------------
+// Library details shown in the Support section.
+// Hours follow the library's own schedule (not Google's "Always open" listing).
 const LIBRARY_INFO = {
   name: 'Ladislao N. Diwa Memorial Library',
   school: 'Cavite State University',
-  hours: 'Mon – Sat · 8:00 AM – 5:00 PM',        // TODO: confirm opening hours/days
-  location: 'CvSU Main Campus, Indang, Cavite',   // TODO: confirm building / location
-  email: '',                                      // TODO: e.g. 'library@cvsu.edu.ph'
-  facebook: '',                                   // TODO: e.g. 'https://facebook.com/...'
+  hours: '7:00 AM – 6:00 PM · cut-off 5:30 PM',
+  address: 'Don Severino de las Alas Campus, Bancod, Indang, Cavite 4122',
+  email: 'cvsulibrary@cvsu.edu.ph',
+  facebookName: 'Cavite State University - Main Campus Library',
+  // No direct page link yet, so this opens a Facebook search for the page name.
+  facebookUrl: 'https://www.facebook.com/cvsulibrary/' + encodeURIComponent('Cavite State University - Main Campus Library'),
+  youtube: 'https://www.youtube.com/@cvsulibrary',
+  website: 'https://library.cvsu.edu.ph/landing/',
 };
 const APP_VERSION = '1.0.0'; // keep in sync with app.json "version"
 
+// Returns the status pill (label, icon, colors) for the student.
 // Same status wording as the Home screen cards.
 const getStatusInfo = (student, currentPeriod) => {
   if (!student) return null;
@@ -39,12 +43,14 @@ const getStatusInfo = (student, currentPeriod) => {
   if (s === 'approved') return { label: 'Approved', icon: 'checkmark-circle', color: '#1B5E20', bg: '#E8F1E9' };
   if (s === 'rejected') return { label: 'Rejected', icon: 'close-circle', color: '#B3261E', bg: '#FBDFDB' };
   if (s === 'deactivated') return { label: 'Deactivated', icon: 'ban', color: '#B3261E', bg: '#FBDFDB' };
+  if (s === 'expired') return { label: 'Semester ended', icon: 'calendar', color: '#946800', bg: '#FBF1CE' };
   if (s === 'pending' && currentPeriod && student.registered_period && student.registered_period !== currentPeriod) {
     return { label: 'Renewal needed', icon: 'refresh-circle', color: '#946800', bg: '#FBF1CE' };
   }
   return { label: 'Pending approval', icon: 'time', color: '#946800', bg: '#FBF1CE' };
 };
 
+// Gets the student's initials for the avatar, e.g. "Juan Dela Cruz" → "JC".
 const getInitials = (student) => {
   if (!student) return '';
   if (student.first_name && student.surname) {
@@ -55,20 +61,26 @@ const getInitials = (student) => {
   return `${parts[0].charAt(0)}${parts.length > 1 ? parts[parts.length - 1].charAt(0) : ''}`.toUpperCase();
 };
 
-// "+639123456789" → "+63 912 345 6789"
+// Formats a phone number for display: "+639123456789" → "+63 912 345 6789"
 const formatPhone = (phone) => {
   const m = /^\+63(\d{3})(\d{3})(\d{4})$/.exec(phone || '');
   return m ? `+63 ${m[1]} ${m[2]} ${m[3]}` : phone || '';
 };
 
+// Settings page: profile header (with Log Out), account details,
+// password change, library contacts and app info.
 export default function SettingsScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [studentData, setStudentData] = useState(null);
   const [currentPeriod, setCurrentPeriod] = useState(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  // Styled pop-up (see components/AppDialog.js).
+  const { dialog, showDialog } = useAppDialog();
 
+  // Loads the profile and current semester when the page opens.
   useEffect(() => {
+    // Gets the student's profile (cached first, then from the server).
     const load = async () => {
       try {
         // Show the last-known profile instantly (the Home screen caches it),
@@ -85,6 +97,7 @@ export default function SettingsScreen({ navigation }) {
         console.error('Error loading profile for settings:', err);
       }
     };
+    // Gets the current semester so the pill can show "Renewal needed".
     const loadPeriod = async () => {
       try {
         const res = await fetch(`${API_URL}/api/settings/current-period`);
@@ -97,29 +110,34 @@ export default function SettingsScreen({ navigation }) {
     loadPeriod();
   }, []);
 
+  // Log Out button: asks first, then clears the saved login and goes to Login.
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await AsyncStorage.removeItem('student');
-          navigation.replace('Login');
+    showDialog({
+      tone: 'warning',
+      title: 'Log Out?',
+      message: 'You will need to log in again to use your QR pass on this phone.',
+      buttons: [
+        { text: 'Cancel', style: 'secondary' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            // Forget the student and their login pass on this phone.
+            await AsyncStorage.multiRemove(['student', 'student_token']);
+            navigation.replace('Login');
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
-  const openContact = () => {
-    const options = [];
-    if (LIBRARY_INFO.email) options.push({ text: 'Send an email', onPress: () => Linking.openURL(`mailto:${LIBRARY_INFO.email}`) });
-    if (LIBRARY_INFO.facebook) options.push({ text: 'Open Facebook page', onPress: () => Linking.openURL(LIBRARY_INFO.facebook) });
-    if (options.length === 0) {
-      Alert.alert('Contact the library', 'Please visit the library front desk for assistance.');
-      return;
+  // Opens a link (email, Facebook, YouTube, website). Shows a pop-up if it can't.
+  const openLink = async (url) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showDialog({ tone: 'error', title: "Can't Open Link", message: 'Please try again, or visit the library front desk.' });
     }
-    Alert.alert('Contact the library', LIBRARY_INFO.name, [...options, { text: 'Cancel', style: 'cancel' }]);
   };
 
   const status = getStatusInfo(studentData, currentPeriod);
@@ -142,6 +160,11 @@ export default function SettingsScreen({ navigation }) {
               <Ionicons name="arrow-back" size={20} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Settings</Text>
+            {/* Log Out sits at the top right, across from the title */}
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7} hitSlop={6}>
+              <Ionicons name="log-out-outline" size={16} color="#fff" />
+              <Text style={styles.logoutText}>Log Out</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.profileRow}>
@@ -197,15 +220,46 @@ export default function SettingsScreen({ navigation }) {
         {/* SECURITY */}
         <Text style={styles.sectionLabel}>Security</Text>
         <View style={styles.card}>
-          <SettingsRow icon="key-outline" label="Change password" onPress={() => setChangePasswordOpen(true)} />
+          <SettingsRow icon="key-outline" label="Change Password" onPress={() => setChangePasswordOpen(true)} />
         </View>
 
         {/* SUPPORT */}
         <Text style={styles.sectionLabel}>Support</Text>
         <View style={styles.card}>
-          <SettingsRow icon="time-outline" label="Library hours" value={LIBRARY_INFO.hours} divider />
-          <SettingsRow icon="location-outline" label="Location" value={LIBRARY_INFO.location} divider />
-          <SettingsRow icon="chatbubble-ellipses-outline" label="Contact the library" onPress={openContact} />
+          <SettingsRow icon="time-outline" label="Library Hours" value={LIBRARY_INFO.hours} divider />
+          <SettingsRow icon="location-outline" label="Address" value={LIBRARY_INFO.address} />
+        </View>
+
+        {/* CONTACT THE LIBRARY — each row opens the app/site */}
+        <Text style={styles.sectionLabel}>Contact the library</Text>
+        <View style={styles.card}>
+          <SettingsRow
+            icon="mail-outline"
+            label="Email"
+            value={LIBRARY_INFO.email}
+            onPress={() => openLink(`mailto:${LIBRARY_INFO.email}`)}
+            divider
+          />
+          <SettingsRow
+            icon="logo-facebook"
+            label="Facebook / Messenger"
+            value={LIBRARY_INFO.facebookName}
+            onPress={() => openLink(LIBRARY_INFO.facebookUrl)}
+            divider
+          />
+          <SettingsRow
+            icon="logo-youtube"
+            label="YouTube"
+            value="@cvsulibrary"
+            onPress={() => openLink(LIBRARY_INFO.youtube)}
+            divider
+          />
+          <SettingsRow
+            icon="globe-outline"
+            label="Website"
+            value="library.cvsu.edu.ph"
+            onPress={() => openLink(LIBRARY_INFO.website)}
+          />
         </View>
 
         {/* ABOUT */}
@@ -214,19 +268,14 @@ export default function SettingsScreen({ navigation }) {
           <QLessTile size={46} />
           <View style={{ flex: 1 }}>
             <Text style={styles.aboutName}>
-              Q<Text style={{ color: BRAND.green }}>Less</Text>
+              <Text style={{ color: BRAND.gold }}>Q</Text>
+              <Text style={{ color: BRAND.green }}>Less</Text>
               <Text style={styles.aboutVersion}>  v{APP_VERSION}</Text>
             </Text>
             <Text style={styles.aboutSub}>{LIBRARY_INFO.name}</Text>
             <Text style={styles.aboutSub}>{LIBRARY_INFO.school}</Text>
           </View>
         </View>
-
-        {/* LOG OUT — end of the page, scrolls with the content */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={18} color="#B91C1C" />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <ChangePasswordModal
@@ -234,6 +283,9 @@ export default function SettingsScreen({ navigation }) {
         onClose={() => setChangePasswordOpen(false)}
         studentNumber={studentData?.student_number}
       />
+
+      {/* Log out confirmation / link errors */}
+      {dialog}
     </View>
   );
 }
@@ -260,6 +312,7 @@ function SettingsRow({ icon, label, value, onPress, divider }) {
   );
 }
 
+// Soft shadow used by the white cards.
 const CARD_SHADOW = {
   elevation: 2,
   shadowColor: '#0B1F12',
@@ -334,18 +387,16 @@ const styles = StyleSheet.create({
   aboutVersion: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   aboutSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
+  // Small see-through pill at the top right of the green header.
   logoutBtn: {
-    alignSelf: 'center',
-    marginTop: 28,
-    height: 44,
-    paddingHorizontal: 120,
-    borderRadius: 15,
-    backgroundColor: '#FFF',
-    ...CARD_SHADOW,
+    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  logoutText: { color: '#B91C1C', fontSize: 15, fontWeight: '700' },
+  logoutText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

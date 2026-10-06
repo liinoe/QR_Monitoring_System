@@ -1,40 +1,33 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import cvsuLogo from "../assets/cvsu_logo.png";
+import QLessMark from "./QLessMark";
 
-const Header = () => {
-  const [currentTime, setCurrentTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatTime = (date) =>
-    date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  return (
-    <div className="app-header w-full h-[72px] bg-[#1B5E20] border-b-[3px] border-[#F5C518] flex items-center justify-between px-6 flex-shrink-0 shadow-md">
-      <div className="flex items-center gap-3.5">
-        <img
-          src={cvsuLogo}
-          alt="CvSU Logo"
-          className="w-12 h-12 object-contain flex-shrink-0"
-        />
-        <div>
-          <h1 className="text-[17px] font-bold text-white leading-tight tracking-[0.02em]">
-            Library Patron Access and Monitoring System
-          </h1>
-          <p className="text-[11px] text-white opacity-75 mt-0.5">
-            Ladislao N. Diwa Memorial Library - Cavite State University - Main Campus
-          </p>
-        </div>
-      </div>
-
-      <div className="text-[26px] font-bold font-mono tracking-wide text-white">
-        {formatTime(currentTime)}
+// Top bar of every admin page — same deep green as the guest kiosk, scanner and
+// mobile app header: CvSU logo + system name on the left, the QLess logo on the right.
+// (The clock stays on the kiosk pages; admins have the computer's clock.)
+// Stays at the top while the page scrolls.
+const Header = () => (
+  <header className="app-header sticky top-0 z-30 w-full h-[68px] bg-[#0E3B1F] flex items-center justify-between px-6 flex-shrink-0">
+    <div className="flex items-center gap-3 min-w-0">
+      <img src={cvsuLogo} alt="CvSU Logo" className="w-10 h-10 object-contain flex-shrink-0" />
+      <div className="min-w-0 leading-tight">
+        <h1 className="text-[15px] font-extrabold text-white tracking-wide truncate">
+          Library Patron Access and Monitoring System
+        </h1>
+        <p className="text-[11px] text-white/60 mt-0.5 truncate">
+          Ladislao N. Diwa Memorial Library · Cavite State University – Main Campus
+        </p>
       </div>
     </div>
-  );
-};
+
+    {/* QLess logo + name (gold Q, like the mobile app) */}
+    <div className="flex items-center gap-2 flex-shrink-0">
+      <QLessMark size={34} tone="dark" />
+      <span className="text-[20px] font-extrabold text-white tracking-wide">
+        <span className="text-[#F0CD5A]">Q</span>Less
+      </span>
+    </div>
+  </header>
+);
 
 export default Header;

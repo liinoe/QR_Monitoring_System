@@ -20,6 +20,12 @@ export function getAdmin() {
   return raw ? JSON.parse(raw) : null;
 }
 
+// Changes some saved fields of the signed-in admin (e.g. after changing the password).
+export function updateAdmin(patch) {
+  const admin = getAdmin();
+  if (admin) localStorage.setItem(ADMIN_KEY, JSON.stringify({ ...admin, ...patch }));
+}
+
 export function isSuperAdmin() {
   const admin = getAdmin();
   return admin?.role === 'super_admin';

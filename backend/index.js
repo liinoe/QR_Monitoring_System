@@ -21,6 +21,10 @@ app.use(express.json());
 // HTML page.
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Academic calendar: semesters with start/end dates that switch by themselves
+// (passes expire on the end date, renewal opens on the next start date).
+require('./semesters')(app, { db, verifyToken, requireSuperAdmin, cron });
+
 // Email transport for the forgot-password flow. Needs real SMTP
 // credentials in .env — EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS,
 // EMAIL_FROM (optional, defaults to EMAIL_USER). For Gmail specifically,
@@ -38,7 +42,12 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const RESET_BASE_URL = process.env.RESET_BASE_URL || `http://localhost:${PORT}`;
+// Address used in the reset-password email link.
+//   - Deployed: set RESET_BASE_URL in .env (e.g. https://qless.example.com).
+//   - Local testing: leave it empty — the link then uses the same address the
+//     app used to reach this server (e.g. http://192.168.1.64:5000), so it keeps
+//     working even when the laptop's Wi-Fi IP changes.
+const RESET_BASE_URL = (process.env.RESET_BASE_URL || '').replace(/\/$/, '');
 
 // Reads the single active academic period value.
 async function getCurrentPeriod() {
@@ -66,6 +75,72 @@ function generateResetToken() {
 }
 
 const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
+
+// Only CvSU school emails can register, e.g. juan.delacruz@cvsu.edu.ph
+const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
+
+// Student password rule: 8+ characters with an uppercase letter, a lowercase
+// letter and a number. Same rule as the mobile app's checklist.
+const PASSWORD_RULE_MESSAGE = "Password needs at least 8 characters, an uppercase letter, a lowercase letter, and a number.";
+
+// True if the password follows the rule above.
+function isStrongPassword(pw) {
+    return typeof pw === 'string' && pw.length >= 8 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /\d/.test(pw);
+}
+
+// Makes a random 10-character password for a new / reset staff account, e.g. "Kp7mXr4tQa".
+// Skips look-alike characters (0/O, 1/l/I) so it's easy to read out or write down.
+// Always has an uppercase letter, a lowercase letter and a number (passes isStrongPassword).
+function generateTempPassword() {
+    const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ', LOWER = 'abcdefghijkmnopqrstuvwxyz', DIGITS = '23456789';
+    const ALL = UPPER + LOWER + DIGITS;
+    const pick = (set) => set[crypto.randomInt(set.length)];
+    const chars = [pick(UPPER), pick(LOWER), pick(DIGITS)];
+    while (chars.length < 10) chars.push(pick(ALL));
+    // shuffle so the first three aren't always upper/lower/number
+    for (let i = chars.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(i + 1);
+        [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
+}
+
+// Adds admins.password_is_temp once (1 = still using the password the super admin gave them).
+async function ensureAdminColumns() {
+    const [cols] = await db.query("SHOW COLUMNS FROM admins LIKE 'password_is_temp'");
+    if (cols.length === 0) {
+        await db.query('ALTER TABLE admins ADD COLUMN password_is_temp TINYINT(1) NOT NULL DEFAULT 0');
+        console.log('Added admins.password_is_temp column');
+    }
+}
+ensureAdminColumns().catch((err) => console.error('ensureAdminColumns error:', err.message));
+
+// Allowed year levels. Veterinary Medicine is a 6-year program.
+const VETMED_COLLEGE = 'College of Veterinary Medicine and Biomedical Sciences';
+const BASE_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+
+// Returns true if this phone number already belongs to ANOTHER student's
+// account. Rejected accounts don't count (they're inactive and may resubmit).
+// Compares only the last 10 digits, so older records saved as "0912...",
+// "63912..." or "+63 912 345 6789" still match "+639123456789".
+async function isPhoneUsedByAnother(phone_number, student_number) {
+    const last10 = String(phone_number || '').replace(/\D/g, '').slice(-10);
+    if (last10.length !== 10) return false;
+    const [rows] = await db.query(
+        `SELECT student_number FROM students
+         WHERE RIGHT(REGEXP_REPLACE(phone_number, '[^0-9]', ''), 10) = ?
+           AND student_number <> ? AND status <> 'rejected'
+         LIMIT 1`,
+        [last10, student_number || '']
+    );
+    return rows.length > 0;
+}
+
+// True if the year level is allowed for that college (6th Year = Vet Med only).
+function isValidYearLevel(college, year_level) {
+    const allowed = college === VETMED_COLLEGE ? [...BASE_YEAR_LEVELS, '6th Year'] : BASE_YEAR_LEVELS;
+    return allowed.includes(year_level);
+}
 
 // Fields an admin is allowed to edit on an existing student account via
 // PUT /api/admin/students/:student_number. student_number and email are
@@ -123,27 +198,43 @@ app.get('/api/settings/current-period', async (req, res) => {
 app.post('/api/register', async (req, res) => {
     const {
         surname, first_name, middle_name,
-        email, phone_number, address, sex,
+        phone_number, address, sex,
         student_number, password,
         college, program, year_level
     } = req.body;
+    // Emails are compared in lowercase everywhere (login too), so save them that way.
+    const email = (req.body.email || '').trim().toLowerCase();
 
     if (!surname || !first_name || !email || !phone_number || !address || !sex ||
         !student_number || !password || !college || !program || !year_level) {
         return res.status(400).json({ message: "Please fill in all required fields." });
     }
-    if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters." });
+    if (!isStrongPassword(password)) {
+        return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
     if (!VALID_SEX_VALUES.includes(sex)) {
         return res.status(400).json({ message: "Invalid value for sex." });
+    }
+    if (!CVSU_EMAIL_REGEX.test(email)) {
+        return res.status(400).json({ message: "Please use your CvSU email ending in @cvsu.edu.ph." });
+    }
+    if (!/^\d{9}$/.test(student_number)) {
+        return res.status(400).json({ message: "Student number must be exactly 9 digits." });
+    }
+    if (!isValidYearLevel(college, year_level)) {
+        return res.status(400).json({ message: "Invalid year level for the selected college." });
     }
 
     try {
         const currentPeriod = await getCurrentPeriod();
 
+        // One active account per phone number.
+        if (await isPhoneUsedByAnother(phone_number, student_number)) {
+            return res.status(400).json({ message: "This phone number is already used by another account." });
+        }
+
         const [byNumber] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
-        const [byEmail] = await db.query('SELECT * FROM students WHERE email = ?', [email]);
+        const [byEmail] = await db.query('SELECT * FROM students WHERE LOWER(email) = ?', [email]);
 
         if (byNumber.length > 0 && byNumber[0].email !== email) {
             return res.status(400).json({
@@ -235,12 +326,218 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
+// Live check for the mobile Register screen: is this student number free?
+// Only says yes/no, a reason ("registered" / "deactivated") and a message;
+// never returns whose account it is.
+// A previously REJECTED account counts as free, since /api/register lets it resubmit.
+app.get('/api/register/check-student-number/:student_number', async (req, res) => {
+    const { student_number } = req.params;
+    if (!/^\d{9}$/.test(student_number)) {
+        return res.status(400).json({ available: false, message: "Student number must be exactly 9 digits." });
+    }
+    try {
+        const [rows] = await db.query('SELECT status FROM students WHERE student_number = ?', [student_number]);
+        if (rows.length === 0) {
+            return res.json({ available: true, message: "Student number is available." });
+        }
+        const status = rows[0].status;
+        if (status === 'rejected') {
+            return res.json({ available: true, message: "Your earlier registration was rejected — you can register again." });
+        }
+        if (status === 'deactivated') {
+            return res.json({ available: false, reason: "deactivated", message: "This account is deactivated. Please visit the library front desk." });
+        }
+        return res.json({ available: false, reason: "registered", message: "Already registered. Please log in instead." });
+    } catch (err) {
+        console.error("Student number check error:", err.message);
+        res.status(500).json({ message: "Could not check right now." });
+    }
+});
+
+// Live check for the mobile Register screen: is this CvSU email free?
+// ?student_number=... lets a student re-registering after a rejection reuse
+// their own email. Only answers yes/no; never says whose account it is.
+app.get('/api/register/check-email/:email', async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    const { student_number } = req.query;
+    if (!CVSU_EMAIL_REGEX.test(email)) {
+        return res.status(400).json({ available: false, message: "Must be a CvSU email ending in @cvsu.edu.ph" });
+    }
+    try {
+        const [rows] = await db.query(
+            'SELECT student_number, status FROM students WHERE LOWER(email) = ? LIMIT 1',
+            [email]
+        );
+        if (rows.length === 0) {
+            return res.json({ available: true, message: "Email is available." });
+        }
+        const owner = rows[0];
+        // Same student whose earlier registration was rejected: they may resubmit.
+        if (owner.student_number === student_number && owner.status === 'rejected') {
+            return res.json({ available: true, message: "Email is available." });
+        }
+        if (owner.status === 'deactivated') {
+            return res.json({ available: false, reason: "deactivated", message: "This email belongs to a deactivated account. Please visit the library front desk." });
+        }
+        return res.json({ available: false, reason: "registered", message: "This email is already registered. Please log in instead." });
+    } catch (err) {
+        console.error("Email check error:", err.message);
+        res.status(500).json({ message: "Could not check right now." });
+    }
+});
+
+// Live check for the mobile Register screen: is this phone number free?
+// ?student_number=... lets a student re-registering after a rejection reuse
+// their own phone. Only answers yes/no; never says whose number it is.
+app.get('/api/register/check-phone/:phone_number', async (req, res) => {
+    const { phone_number } = req.params;
+    const { student_number } = req.query;
+    if (!/^\+639\d{9}$/.test(phone_number)) {
+        return res.status(400).json({ available: false, message: "Please enter all 10 digits after +63." });
+    }
+    try {
+        if (await isPhoneUsedByAnother(phone_number, student_number)) {
+            return res.json({ available: false, reason: "in_use", message: "This phone number is already used by another account." });
+        }
+        res.json({ available: true, message: "Phone number is available." });
+    } catch (err) {
+        console.error("Phone check error:", err.message);
+        res.status(500).json({ message: "Could not check right now." });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// STUDENT LOGIN PASS (token)
+// At login the app gets a signed token and keeps it on the phone, so the
+// student stays logged in (even offline) until they log out. Routes that
+// change a student's own account check this token instead of a password.
+// ---------------------------------------------------------------------------
+const STUDENT_TOKEN_DAYS = 180; // about one school year
+
+// Creates the login pass for a student.
+function issueStudentToken(student_number) {
+    return jwt.sign({ student_number, type: 'student' }, process.env.JWT_SECRET, { expiresIn: `${STUDENT_TOKEN_DAYS}d` });
+}
+
+// Middleware: only lets the request through if it has a valid student login pass.
+// Puts the student's number in req.student for the route to use.
+function verifyStudentToken(req, res, next) {
+    const header = req.headers['authorization'] || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ message: "Please log in again." });
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded.type !== 'student') throw new Error('not a student token');
+        req.student = decoded;
+        next();
+    } catch {
+        return res.status(401).json({ message: "Your login has expired. Please log in again." });
+    }
+}
+
+// RESUBMIT A REJECTED REGISTRATION (PUT = replace the whole registration).
+// The mobile app sends the full, corrected form with the student's login pass,
+// so only the logged-in account owner can resubmit (no password needed).
+// Only rejected accounts can use this; the account goes back to "pending".
+app.put('/api/registration/:student_number', verifyStudentToken, async (req, res) => {
+    const { student_number } = req.params;
+    // The login pass must belong to this same student.
+    if (req.student.student_number !== student_number) {
+        return res.status(403).json({ message: "You can only resubmit your own registration." });
+    }
+    const {
+        surname, first_name, middle_name,
+        phone_number, address, sex,
+        college, program, year_level,
+    } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+
+    // Same checks as a new registration.
+    if (!surname || !first_name || !email || !phone_number || !address || !sex ||
+        !college || !program || !year_level) {
+        return res.status(400).json({ message: "Please fill in all required fields." });
+    }
+    if (!VALID_SEX_VALUES.includes(sex)) {
+        return res.status(400).json({ message: "Invalid value for sex." });
+    }
+    if (!CVSU_EMAIL_REGEX.test(email)) {
+        return res.status(400).json({ message: "Please use your CvSU email ending in @cvsu.edu.ph." });
+    }
+    if (!/^\+639\d{9}$/.test(phone_number)) {
+        return res.status(400).json({ message: "Please enter all 10 digits after +63." });
+    }
+    if (!isValidYearLevel(college, year_level)) {
+        return res.status(400).json({ message: "Invalid year level for the selected college." });
+    }
+
+    try {
+        const [rows] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No account found for this student number." });
+        }
+        const student = rows[0];
+
+        if (student.status !== 'rejected') {
+            return res.status(409).json({ message: "Only rejected registrations can be resubmitted." });
+        }
+
+        // Email and phone must not belong to someone else.
+        const [emailOwner] = await db.query(
+            'SELECT student_number FROM students WHERE LOWER(email) = ? AND student_number <> ? LIMIT 1',
+            [email, student_number]
+        );
+        if (emailOwner.length > 0) {
+            return res.status(400).json({ message: "This email is already registered to another account." });
+        }
+        if (await isPhoneUsedByAnother(phone_number, student_number)) {
+            return res.status(400).json({ message: "This phone number is already used by another account." });
+        }
+
+        const currentPeriod = await getCurrentPeriod();
+        const full_name = buildFullName(first_name, middle_name, surname);
+
+        // Replace the student's details and send them back to "pending".
+        await db.query(
+            `UPDATE students SET
+                full_name = ?, surname = ?, first_name = ?, middle_name = ?,
+                email = ?, phone_number = ?, address = ?, sex = ?,
+                college = ?, program = ?, year_level = ?,
+                status = "pending", status_reason = NULL, qr_code = NULL, registered_period = ?
+             WHERE student_number = ?`,
+            [full_name, surname, first_name, middle_name || null,
+             email, phone_number, address, sex,
+             college, program, year_level, currentPeriod, student_number]
+        );
+
+        // New request row so it shows up as Pending on the admin Registrations page.
+        await db.query(
+            `INSERT INTO registration_requests (
+                full_name, surname, first_name, middle_name,
+                email, phone_number, address, sex,
+                student_number, college, program, year_level, period,
+                approval_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+            [full_name, surname, first_name, middle_name || null,
+             email, phone_number, address, sex,
+             student_number, college, program, year_level, currentPeriod]
+        );
+
+        res.json({ success: true, message: "Registration resubmitted! Please wait for admin approval." });
+    } catch (err) {
+        console.error("Resubmit error:", err.message);
+        res.status(500).json({ message: "Could not resubmit right now. Please try again." });
+    }
+});
+
 // RENEWAL — academic info only. Deliberately cannot touch name, email,
 // phone, address, sex, or password: those simply aren't in this payload.
 app.post('/api/renew', async (req, res) => {
     const { student_number, college, program, year_level } = req.body;
     if (!student_number || !college || !program || !year_level) {
         return res.status(400).json({ message: "Please complete all academic info fields." });
+    }
+    if (!isValidYearLevel(college, year_level)) {
+        return res.status(400).json({ message: "Invalid year level for the selected college." });
     }
 
     try {
@@ -249,6 +546,10 @@ app.post('/api/renew', async (req, res) => {
             return res.status(404).json({ message: "No account found for this student number." });
         }
         const student = existing[0];
+        // Semester ended and the next one hasn't started yet: renewal isn't open.
+        if (student.status === 'expired') {
+            return res.status(403).json({ message: "Your pass expired when the semester ended. Renewal opens when the next semester starts." });
+        }
         const currentPeriod = await getCurrentPeriod();
 
         await db.query(
@@ -298,8 +599,8 @@ app.post('/api/student/change-password', async (req, res) => {
     if (!student_number || !current_password || !new_password) {
         return res.status(400).json({ message: "All fields are required." });
     }
-    if (new_password.length < 8) {
-        return res.status(400).json({ message: "New password must be at least 8 characters." });
+    if (!isStrongPassword(new_password)) {
+        return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
 
     try {
@@ -317,6 +618,10 @@ app.post('/api/student/change-password', async (req, res) => {
         if (!match) {
             return res.status(401).json({ message: "Current password is incorrect." });
         }
+        // The new password must actually be new.
+        if (await bcrypt.compare(new_password, student.password)) {
+            return res.status(400).json({ message: "Your new password must be different from your current one." });
+        }
 
         const newHashed = await bcrypt.hash(new_password, 10);
         await db.query('UPDATE students SET password = ? WHERE student_number = ?', [newHashed, student_number]);
@@ -328,9 +633,17 @@ app.post('/api/student/change-password', async (req, res) => {
     }
 });
 
+// Limits for reset emails, per student: one email every 2 minutes, at most 5 a day.
+// Stops someone from spamming a student's inbox (or using up the Gmail sending limit).
+const RESET_COOLDOWN_SECONDS = 120;
+const RESET_DAILY_LIMIT = 5;
+
 // FORGOT PASSWORD — step 1: request a reset link. Always responds with
 // the same generic message whether or not the email is registered, so
 // this endpoint can't be used to check which emails are real accounts.
+// If the student is still in the cooldown (or hit today's limit), no new
+// email is sent, but the reply looks the same, so it still can't be used
+// to find out which emails are registered.
 app.post('/api/student/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email || !email.trim()) {
@@ -339,7 +652,8 @@ app.post('/api/student/forgot-password', async (req, res) => {
 
     const genericResponse = {
         success: true,
-        message: "If that email is registered, a password reset link has been sent."
+        message: "If that email is registered, a password reset link has been sent.",
+        retry_after_seconds: RESET_COOLDOWN_SECONDS, // the app waits this long before allowing "Resend"
     };
 
     try {
@@ -354,11 +668,23 @@ app.post('/api/student/forgot-password', async (req, res) => {
 
         const student_number = students[0].student_number;
 
-        // Invalidate any earlier unused link for this student first, so
-        // only the most recently requested email can ever work — avoids a
-        // confusing situation where two old emails are both still "live".
+        // Cooldown + daily limit: count this student's reset requests.
+        const [[recent]] = await db.query(
+            `SELECT COUNT(*) AS today_count,
+                    COALESCE(MAX(created_at) > NOW() - INTERVAL ? SECOND, 0) AS too_soon
+             FROM password_reset_tokens
+             WHERE student_number = ? AND created_at > NOW() - INTERVAL 1 DAY`,
+            [RESET_COOLDOWN_SECONDS, student_number]
+        );
+        if (Number(recent.too_soon) === 1 || Number(recent.today_count) >= RESET_DAILY_LIMIT) {
+            return res.json(genericResponse); // same reply, but no email sent
+        }
+
+        // Cancel any earlier unused link for this student first, so only the
+        // most recently requested email can ever work. (Marked as used instead
+        // of deleted, so it still counts toward the daily limit.)
         await db.query(
-            'DELETE FROM password_reset_tokens WHERE student_number = ? AND used_at IS NULL',
+            'UPDATE password_reset_tokens SET used_at = NOW() WHERE student_number = ? AND used_at IS NULL',
             [student_number]
         );
 
@@ -368,18 +694,14 @@ app.post('/api/student/forgot-password', async (req, res) => {
             [student_number, tokenHash, expiresAt]
         );
 
-        const resetLink = `${RESET_BASE_URL}/reset-password.html?token=${token}`;
+        const baseUrl = RESET_BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
 
         await transporter.sendMail({
             from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
             to: email.trim().toLowerCase(),
             subject: 'Reset your QLess Library password',
-            html: `
-                <p>We received a request to reset your QLess Library password.</p>
-                <p><a href="${resetLink}">Click here to reset your password</a></p>
-                <p>This link is valid for 30 minutes and can only be used once.
-                If you didn't request this, you can safely ignore this email.</p>
-            `,
+            html: buildResetEmail(resetLink),
         });
 
         res.json(genericResponse);
@@ -392,6 +714,63 @@ app.post('/api/student/forgot-password', async (req, res) => {
     }
 });
 
+// Email sent with the reset link — styled like the app (deep green header, gold Q,
+// big green button). Uses simple tables + inline styles so it looks right in Gmail/Outlook.
+function buildResetEmail(resetLink) {
+    return `
+    <div style="background:#F7F8F7;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;">
+        <tr>
+          <td style="background:#0E3B1F;padding:28px 28px 24px;text-align:center;">
+            <div style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">
+              <span style="color:#F0CD5A;">Q</span>Less
+            </div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:4px;">Ladislao N. Diwa Memorial Library</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px;">
+            <h1 style="margin:0 0 8px;font-size:20px;color:#111827;">Reset your password</h1>
+            <p style="margin:0 0 22px;font-size:14px;line-height:21px;color:#4B5563;">
+              We received a request to reset the password of your QLess Library account.
+              Tap the button below to choose a new one.
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td align="center" style="background:#1B5E20;border-radius:14px;">
+                  <a href="${resetLink}" style="display:block;padding:15px 20px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">Reset Password</a>
+                </td>
+              </tr>
+            </table>
+            <div style="margin-top:22px;padding:14px 16px;background:#FBF3DC;border-radius:14px;font-size:13px;line-height:19px;color:#946800;">
+              This link works <b>once</b> and expires in <b>30 minutes</b>.
+            </div>
+            <p style="margin:20px 0 0;font-size:12px;line-height:18px;color:#9CA3AF;">
+              Didn't ask for this? You can ignore this email — your password stays the same.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>`;
+}
+
+// Lets the reset page check the link BEFORE the student types a new password,
+// so an expired or used link shows a clear message right away.
+app.get('/api/student/reset-password/check', async (req, res) => {
+    const token = String(req.query.token || '');
+    if (!token) return res.json({ valid: false });
+    try {
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const [rows] = await db.query(
+            'SELECT token_id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()',
+            [tokenHash]
+        );
+        res.json({ valid: rows.length > 0 });
+    } catch (err) {
+        res.json({ valid: false });
+    }
+});
+
 // FORGOT PASSWORD — step 2: the reset-password.html page (opened from the
 // email link) posts here with the raw token + new password. Token must be
 // unused and unexpired; it's marked used immediately after a successful
@@ -401,8 +780,8 @@ app.post('/api/student/reset-password', async (req, res) => {
     if (!token || !new_password) {
         return res.status(400).json({ message: "Missing token or new password." });
     }
-    if (new_password.length < 8) {
-        return res.status(400).json({ message: "New password must be at least 8 characters." });
+    if (!isStrongPassword(new_password)) {
+        return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
 
     try {
@@ -429,7 +808,8 @@ app.post('/api/student/reset-password', async (req, res) => {
     }
 });
 
-// ADMIN DASHBOARD ROUTE
+// Lists only the PENDING registration requests, newest first
+// (used by the Dashboard's "Pending Registrations" card).
 app.get('/api/admin/pending', verifyToken, async (req, res) => {
      try {
           const [rows] = await db.query('SELECT * FROM registration_requests WHERE approval_status = "pending" ORDER BY created_at DESC');
@@ -450,6 +830,35 @@ app.get('/api/admin/all', verifyToken, async (req, res) => {
      }
 });
 
+// Tiny "did anything change?" check for the admin Registrations page.
+// Instead of downloading every request every few seconds, the page calls this.
+// The "signature" changes when a request is added (new registration), renewed
+// (created_at is updated), or its status changes (approve/reject/etc.).
+// The page reloads the full list only when the signature is different.
+app.get('/api/admin/registrations/summary', verifyToken, async (req, res) => {
+    try {
+        const [[row]] = await db.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(approval_status = 'pending'), 0)     AS pending,
+                    COALESCE(SUM(approval_status = 'approved'), 0)    AS approved,
+                    COALESCE(SUM(approval_status = 'rejected'), 0)    AS rejected,
+                    COALESCE(SUM(approval_status = 'deactivated'), 0) AS deactivated,
+                    MAX(created_at) AS latest
+             FROM registration_requests`
+        );
+        const latest = row.latest ? new Date(row.latest).getTime() : 0;
+        res.json({
+            total: Number(row.total),
+            pending: Number(row.pending),
+            signature: [row.total, row.pending, row.approved, row.rejected, row.deactivated, latest].join('|'),
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Approves a registration: marks the student "approved" and gives them a new
+// random QR code (their library pass). Also records which admin approved it.
 app.post('/api/admin/approve', verifyToken, async (req, res) => {
     const { request_id } = req.body;
     const admin_id = req.admin.admin_id; // trust the token, not the request body
@@ -537,6 +946,8 @@ app.post('/api/admin/deactivate', verifyToken, async (req, res) => {
     }
 });
 
+// Turns a deactivated account back on and issues a brand-new QR code
+// (the old QR stays invalid).
 app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
     const { student_number, request_id } = req.body;
     if (!student_number || !request_id) {
@@ -589,6 +1000,8 @@ app.post('/api/logs/scan', async (req, res) => {
     }
 });
 
+// Every student entry/exit log joined with the student's info, newest first
+// (used by Student Logs, Dashboard and Analytics on the website).
 app.get('/api/logs/all', verifyToken, async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -618,16 +1031,28 @@ app.patch('/api/logs/force-exit-all', verifyToken, async (req, res) => {
     }
 });
 
-// STUDENT LOGIN — mobile app, separate from admin login
+// STUDENT LOGIN — mobile app, separate from admin login.
+// Students can log in with their CvSU email OR their 9-digit student number.
+// ("email" is still accepted too, so older app versions keep working.)
 app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required.' });
+  const identifier = String(req.body.identifier || req.body.email || '').trim().toLowerCase();
+  const { password } = req.body;
+  if (!identifier || !password) {
+    return res.status(400).json({ message: 'Please enter your email or student number and your password.' });
   }
   try {
-    const [students] = await db.query('SELECT * FROM students WHERE email = ?', [email.trim().toLowerCase()]);
+    // 9 digits = student number; anything else is treated as an email.
+    const isStudentNumber = /^\d{9}$/.test(identifier);
+    const [students] = isStudentNumber
+      ? await db.query('SELECT * FROM students WHERE student_number = ?', [identifier])
+      : await db.query('SELECT * FROM students WHERE LOWER(email) = ?', [identifier]);
+
     if (!students || students.length === 0) {
-      return res.status(404).json({ message: 'School email not registered.' });
+      return res.status(404).json({
+        message: isStudentNumber
+          ? 'No account found for this student number.'
+          : 'No account found for this email.',
+      });
     }
 
     const student = students[0];
@@ -641,8 +1066,13 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ message: 'Incorrect password.' });
     }
 
+    // Send the student's info (never the password) plus their login pass.
     const { password: _omit, ...safeStudent } = student;
-    return res.status(200).json({ message: 'Login successful', student: safeStudent });
+    return res.status(200).json({
+        message: 'Login successful',
+        student: safeStudent,
+        token: issueStudentToken(student.student_number),
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
@@ -702,12 +1132,18 @@ app.post('/api/admin/bootstrap', async (req, res) => {
 const ACTIVE_WINDOW_SECONDS = 120;
 const APPROVAL_TIMEOUT_SECONDS = 60;
 
+// Reads the browser name (user agent) and IP address from a request,
+// to show in the "New sign-in request" pop-up.
 const clientInfo = (req) => ({
     userAgent: (req.headers['user-agent'] || '').slice(0, 255),
     ip: (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim().slice(0, 64),
 });
 
-const publicAdmin = (admin) => ({ admin_id: admin.admin_id, name: admin.name, email: admin.email, role: admin.role });
+// Keeps only the safe admin fields to send to the website (never the password).
+const publicAdmin = (admin) => ({
+    admin_id: admin.admin_id, name: admin.name, email: admin.email, role: admin.role,
+    password_is_temp: !!admin.password_is_temp, // true = show the "change your password?" prompt
+});
 
 // Creates a session row for this browser and returns a token bound to it.
 async function issueAdminSession(admin, info) {
@@ -724,6 +1160,8 @@ async function issueAdminSession(admin, info) {
     return { token, admin: publicAdmin(admin) };
 }
 
+// Admin sign-in: checks email + password, then either signs in right away
+// or (if the account is open in another browser) creates an approval request.
 app.post('/api/admin/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -878,30 +1316,99 @@ app.post('/api/admin/logout', verifyToken, async (req, res) => {
     }
 });
 
-// CREATE STAFF ACCOUNT — super_admin only, done from inside the dashboard
+// CREATE STAFF ACCOUNT — super_admin only, done from inside the dashboard.
+// The server makes the password and sends it back ONCE so the super admin can
+// copy it and give it to the staff member (it is saved hashed and can't be viewed again).
 app.post('/api/admin/create', verifyToken, requireSuperAdmin, async (req, res) => {
-    const { name, email, password, role } = req.body;
-    if (!name || !email || !password || !role) {
+    const { name, email, role } = req.body;
+    if (!name || !email || !role) {
         return res.status(400).json({ message: "Please fill in all fields." });
     }
     if (!['admin', 'super_admin'].includes(role)) {
         return res.status(400).json({ message: "Invalid role." });
     }
     try {
-        const [existing] = await db.query('SELECT admin_id FROM admins WHERE email = ?', [email.trim().toLowerCase()]);
+        const cleanEmail = email.trim().toLowerCase();
+        const [existing] = await db.query('SELECT admin_id FROM admins WHERE email = ?', [cleanEmail]);
         if (existing.length > 0) {
             return res.status(400).json({ message: "An account with this email already exists." });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const tempPassword = generateTempPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
         await db.query(
-            'INSERT INTO admins (name, email, password, role) VALUES (?, ?, ?, ?)',
-            [name, email.trim().toLowerCase(), hashedPassword, role]
+            'INSERT INTO admins (name, email, password, role, password_is_temp) VALUES (?, ?, ?, ?, 1)',
+            [name.trim(), cleanEmail, hashedPassword, role]
         );
 
-        res.status(201).json({ success: true, message: "Account created successfully." });
+        res.status(201).json({ success: true, message: "Account created successfully.", email: cleanEmail, temp_password: tempPassword });
     } catch (err) {
         console.error("Create admin error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// RESET A STAFF PASSWORD — super_admin only (for staff who forgot theirs).
+// Makes a new password, shows it once, and signs that account out everywhere.
+app.post('/api/admin/staff/:admin_id/reset-password', verifyToken, requireSuperAdmin, async (req, res) => {
+    const adminId = Number(req.params.admin_id);
+    if (adminId === req.admin.admin_id) {
+        return res.status(400).json({ message: "Use Change Password for your own account." });
+    }
+    try {
+        const [rows] = await db.query('SELECT admin_id, email FROM admins WHERE admin_id = ?', [adminId]);
+        if (rows.length === 0) return res.status(404).json({ message: "Account not found." });
+
+        const tempPassword = generateTempPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+        await db.query('UPDATE admins SET password = ?, password_is_temp = 1 WHERE admin_id = ?', [hashedPassword, adminId]);
+        await db.query('DELETE FROM admin_sessions WHERE admin_id = ?', [adminId]); // old password's sessions end
+
+        res.json({ success: true, email: rows[0].email, temp_password: tempPassword });
+    } catch (err) {
+        console.error("Reset staff password error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// CHANGE MY PASSWORD — any signed-in admin. Needs the current password.
+app.post('/api/admin/change-password', verifyToken, async (req, res) => {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+        return res.status(400).json({ message: "Please fill in all fields." });
+    }
+    if (!isStrongPassword(new_password)) {
+        return res.status(400).json({ message: "Password must be 8+ characters with an uppercase letter, a lowercase letter and a number." });
+    }
+    try {
+        const [rows] = await db.query('SELECT password FROM admins WHERE admin_id = ?', [req.admin.admin_id]);
+        if (rows.length === 0) return res.status(404).json({ message: "Account not found." });
+
+        const match = await bcrypt.compare(current_password, rows[0].password);
+        if (!match) return res.status(401).json({ message: "Your current password is incorrect." });
+        if (current_password === new_password) {
+            return res.status(400).json({ message: "Choose a password different from your current one." });
+        }
+
+        const hashedPassword = await bcrypt.hash(new_password, 10);
+        await db.query('UPDATE admins SET password = ?, password_is_temp = 0 WHERE admin_id = ?', [hashedPassword, req.admin.admin_id]);
+        // Sign out the account's OTHER browsers; this one stays signed in.
+        await db.query('DELETE FROM admin_sessions WHERE admin_id = ? AND session_id <> ?', [req.admin.admin_id, req.sessionId]);
+
+        res.json({ success: true, message: "Password changed." });
+    } catch (err) {
+        console.error("Change password error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// "Keep my password": the staff member chose to keep the password they were given,
+// so the "change your password?" prompt stops showing.
+app.post('/api/admin/keep-password', verifyToken, async (req, res) => {
+    try {
+        await db.query('UPDATE admins SET password_is_temp = 0 WHERE admin_id = ?', [req.admin.admin_id]);
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
@@ -909,7 +1416,7 @@ app.post('/api/admin/create', verifyToken, requireSuperAdmin, async (req, res) =
 // List all staff accounts, for the "Manage Staff Accounts" table.
 app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT admin_id, name, email, role, created_at FROM admins ORDER BY created_at DESC');
+        const [rows] = await db.query('SELECT admin_id, name, email, role, password_is_temp, created_at FROM admins ORDER BY created_at DESC');
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -953,6 +1460,12 @@ app.put('/api/admin/students/:student_number', verifyToken, async (req, res) => 
             return res.status(404).json({ message: "Student not found." });
         }
         const existing = existingRows[0];
+
+        // Same one-account-per-phone rule when an admin changes the phone number.
+        if (updates.phone_number && updates.phone_number !== existing.phone_number &&
+            await isPhoneUsedByAnother(updates.phone_number, student_number)) {
+            return res.status(400).json({ message: "This phone number is already used by another account." });
+        }
 
         // Keep full_name in sync if any name part changed.
         const surname = updates.surname ?? existing.surname;
@@ -1001,6 +1514,9 @@ app.get('/api/admin/semester-status', verifyToken, requireSuperAdmin, async (req
     }
 });
 
+// Starts a new semester: saves the new period name, sets every approved
+// student back to "pending" (their QR stops working), and creates a renewal
+// request for each so they can renew from the mobile app.
 app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async (req, res) => {
     const { new_period, is_custom } = req.body;
     if (!new_period || !new_period.trim()) {
@@ -1061,6 +1577,7 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
     }
 });
 
+// Returns one student's profile for the mobile app (without the password).
 app.get('/api/student/profile/:student_number', async (req, res) => {
     const { student_number } = req.params;
 
@@ -1078,6 +1595,7 @@ app.get('/api/student/profile/:student_number', async (req, res) => {
     }
 });
 
+// How many students are inside right now, grouped by college (public live board).
 app.get('/api/logs/live-board', async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -1131,6 +1649,7 @@ app.post('/api/guests/log', async (req, res) => {
     }
 });
 
+// Every guest visit joined with the guest's info, newest first (Guest Logs page).
 app.get('/api/guests/all', verifyToken, async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -1200,6 +1719,7 @@ app.patch('/api/guests/force-exit-all', verifyToken, async (req, res) => {
     }
 });
 
+// Number of guests inside right now.
 app.get('/api/guests/live-count', async (req, res) => {
     try {
         const [[{ count }]] = await db.query(
@@ -1220,6 +1740,8 @@ app.get('/api/guests/live-count', async (req, res) => {
 // ---------------------------------------------------------------------------
 const SEM_SHORT_NAMES = { '1st': '1st Sem', '2nd': '2nd Sem', 'Summer': 'Midyear' };
 
+// Returns the semester a date falls in: its start date, the day after it
+// ends, and a label like "1st Sem · AY 2026–2027".
 function currentSemester(date = new Date()) {
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
@@ -1325,10 +1847,16 @@ app.get('/api/student/analytics/:student_number', async (req, res) => {
 //   * data     = every student + guest entry log in that period
 //   * counted  = check-ins, bucketed by the HOUR of time_in
 //   * peak     = the 2-hour window with the most check-ins (earliest wins a tie)
-//   * hours    = 8 AM–5 PM, the same columns as the web heatmap
+//   * hours    = 7 AM–6 PM (library hours), the same columns as the web heatmap
 // If you change the rule on one side, change it on the other too.
-const PEAK_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+// Library hours: opens 7:00 AM, closes 6:00 PM, cut-off 5:30 PM.
+const LIBRARY_OPEN_MINUTES = 7 * 60;          // 7:00 AM
+const LIBRARY_CUTOFF_MINUTES = 17 * 60 + 30;  // 5:30 PM (patrons should be out)
+const LIBRARY_CLOSE_MINUTES = 18 * 60;        // 6:00 PM
+// One chart column per hour the library is open: 7 AM ... 5 PM (the 5–6 PM slot).
+const PEAK_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
+// See the explanation above: peak and quiet hours for the mobile Home screen.
 app.get('/api/library/peak-hours', async (req, res) => {
     try {
         const now = new Date();
@@ -1431,6 +1959,10 @@ app.get('/api/library/peak-hours', async (req, res) => {
             total_checkins: entries.length,
             open_hour: PEAK_HOURS[0],
             close_hour: PEAK_HOURS[PEAK_HOURS.length - 1] + 1,
+            // Used by the app's "Right now" pill: open from 7:00 AM until the 5:30 PM cut-off.
+            open_minutes: LIBRARY_OPEN_MINUTES,
+            cutoff_minutes: LIBRARY_CUTOFF_MINUTES,
+            close_minutes: LIBRARY_CLOSE_MINUTES,
         });
     } catch (err) {
         console.error("SQL ERROR during peak hours:", err.message);
@@ -1438,15 +1970,18 @@ app.get('/api/library/peak-hours', async (req, res) => {
     }
 });
 
-// AUTO LOGOUT AT LIBRARY CLOSING TIME (5:01 PM, every day)
+// AUTO LOGOUT RIGHT AFTER THE 5:30 PM CUT-OFF (5:31 PM, every day)
 // Safety net for entries an admin forgot to force-exit before leaving.
 // This runs the exact same SQL as the manual "Force Exit All" buttons, but
 // on a schedule — it does NOT replace those buttons. Admins should still use
 // "Force Exit All" for early closures, holidays, or any other situation this
 // scheduled job wasn't designed to foresee.
 const CLOSING_HOUR = 17;
-const CLOSING_MINUTE = 1;
+const CLOSING_MINUTE = 31; // 5:31 PM
 
+// Marks everyone still "inside" (students and guests) as exited, flagged as a
+// forced exit (so it's left out of average-stay stats). Used by the 5:31 PM
+// schedule and the startup catch-up below.
 const runAutoLogout = async (reason) => {
     try {
         const [studentResult] = await db.query(
@@ -1463,16 +1998,18 @@ const runAutoLogout = async (reason) => {
     }
 };
 
-cron.schedule('1 17 * * *', () => runAutoLogout('scheduled 5:01 PM'), {
+// Runs the auto logout every day at 5:31 PM Philippine time.
+cron.schedule('31 17 * * *', () => runAutoLogout('scheduled 5:31 PM'), {
     timezone: 'Asia/Manila',
 });
 
 // CATCH-UP CHECK: node-cron only fires forward from whenever the server
-// process starts — if the server is restarted any time after 5:01 PM
+// process starts — if the server is restarted any time after 5:31 PM
 // (a deploy, a crash, a manual restart), that day's scheduled run is
 // already missed and won't fire again until tomorrow. This runs the same
 // cleanup once immediately on boot if it's already past closing time today,
 // so a late restart doesn't leave "inside" entries stuck until the next day.
+// True if it's already past 5:31 PM today in the Philippines.
 const isPastClosingTimeToday = () => {
     const manilaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const minutesNow = manilaNow.getHours() * 60 + manilaNow.getMinutes();
@@ -1483,4 +2020,5 @@ if (isPastClosingTimeToday()) {
     runAutoLogout('startup catch-up');
 }
 
+// Starts the server. '0.0.0.0' lets phones on the same Wi-Fi reach it.
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

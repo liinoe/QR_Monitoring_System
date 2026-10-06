@@ -13,18 +13,42 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
 import { getResponsive } from '../theme/responsive';
 import { QLessMark, QLessTile, ScanFrame, BrandPattern, TILE_RADIUS_RATIO } from '../components/QLessLogo';
 
+/**
+ * SplashScreen — animated intro that turns into the Welcome slides.
+ *
+ *  1. Intro (deep green, full screen): the logo builds itself —
+ *     scan brackets lock on → magnifier ring draws → handle extends →
+ *     book appears → a scan line sweeps the lens → "QLess" wordmark.
+ *     A "Get Started" button then rises in at the bottom and waits.
+ *     While waiting, the scan line sweeps the lens again every few seconds.
+ *  2. Morph (on Get Started): the text and button fade away, then the green screen
+ *     shrinks into the rounded app-icon tile (as one big rounded square, so it
+ *     already looks like the icon) and lands exactly on the tile at the top of the
+ *     Welcome slide. The tile gives a small "landed" bounce and the welcome text
+ *     rises in one line after another.
+ *     Everything in the morph moves with transforms on the native driver, so it
+ *     stays smooth even on slow phones.
+ *  3. Welcome slides (unchanged flow): QR tap-in, live headcount, then
+ *     Create Account / Log In.
+ *
+ * Tapping anywhere during the intro finishes the drawing instantly and shows
+ * the Get Started button. Navigation targets
+ * ('Register' / 'Login') are unchanged.
+ */
+
 const CVSU_LOGO = require('../../assets/cvsu_logo.png');
 const APP_NAME = 'QLess';
 const WELCOME_TILE = 104;
 
 const EASE = Easing.bezier(0.4, 0, 0.2, 1);
-const EASE_IN_OUT = Easing.bezier(0.65, 0, 0.35, 1);
+const EASE_MORPH = Easing.bezier(0.76, 0, 0.24, 1); // slow start, fast middle, soft landing
 
 const SLIDES = [
   {
@@ -48,6 +72,7 @@ const SLIDES = [
 ];
 
 export default function SplashScreen({ navigation }) {
+  const isFocused = useIsFocused(); // true while this screen is the one on top
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [index, setIndex] = useState(0);
@@ -70,8 +95,13 @@ export default function SplashScreen({ navigation }) {
     scan: new Animated.Value(0),
   }).current;
   const wordmark = useRef(new Animated.Value(0)).current;
-  const morph = useRef(new Animated.Value(0)).current;
-  const fadeOut = useRef(new Animated.Value(1)).current; // fallback if measuring fails
+  const morph = useRef(new Animated.Value(0)).current; // 0 = full screen, 1 = on the welcome tile (native)
+  const fadeOut = useRef(new Animated.Value(1)).current; // fallback if measuring fails (native)
+  const chrome = useRef(new Animated.Value(1)).current; // wordmark + button, faded out before the morph (native)
+  const reveal = useRef(new Animated.Value(0)).current; // welcome text rising in after the morph (native)
+  const tilePop = useRef(new Animated.Value(1)).current; // small bounce when the logo lands (native)
+  const idleScan = useRef(null); // repeating scan line while waiting for Get Started
+  const [morphing, setMorphing] = useState(false);
   const introRef = useRef(null);
   const cta = useRef(new Animated.Value(0)).current; // Get Started button
   const ctaShown = useRef(false);
@@ -91,20 +121,50 @@ export default function SplashScreen({ navigation }) {
       });
     });
 
+  // Welcome text rises in, line by line (title → description → chip → buttons).
+  const playReveal = (delay = 0) =>
+    Animated.timing(reveal, { toValue: 1, duration: 620, delay, easing: EASE, useNativeDriver: true }).start();
+
+  // The logo "lands" on the tile: quick grow, then springs back to normal size.
+  const playLanding = () =>
+    Animated.sequence([
+      Animated.timing(tilePop, { toValue: 1.07, duration: 120, easing: EASE, useNativeDriver: true }),
+      Animated.spring(tilePop, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+    ]).start();
+
+  // "Get Started": fade the text/button, then shrink the green screen into the welcome tile.
   const startMorph = async () => {
     if (morphStarted.current) return;
     morphStarted.current = true;
+    idleScan.current?.stop();
+    draw.scan.setValue(0);
     const t = await measureTile();
-    const finish = () => setIntroDone(true);
+    setMorphing(true);
+
+    const fadeChrome = Animated.timing(chrome, { toValue: 0, duration: 200, easing: EASE, useNativeDriver: true });
 
     if (!t) {
-      Animated.timing(fadeOut, { toValue: 0, duration: 400, easing: EASE, useNativeDriver: false }).start(finish);
+      // couldn't find the tile — just fade the intro away
+      Animated.sequence([
+        fadeChrome,
+        Animated.timing(fadeOut, { toValue: 0, duration: 400, easing: EASE, useNativeDriver: true }),
+      ]).start(() => setIntroDone(true));
+      playReveal(250);
       return;
     }
+
     setTarget(t);
-    Animated.timing(morph, { toValue: 1, duration: 780, easing: EASE_IN_OUT, useNativeDriver: false }).start(finish);
+    Animated.sequence([
+      fadeChrome,
+      Animated.timing(morph, { toValue: 1, duration: 760, easing: EASE_MORPH, useNativeDriver: true }),
+    ]).start(() => {
+      setIntroDone(true);
+      playLanding();
+    });
+    playReveal(200 + 760 * 0.55); // text starts rising while the tile is still settling
   };
 
+  // Plays the logo drawing once when the screen opens.
   useEffect(() => {
     const step = (v, duration, delay, easing = EASE) =>
       Animated.timing(v, { toValue: 1, duration, delay, easing, useNativeDriver: false });
@@ -120,13 +180,26 @@ export default function SplashScreen({ navigation }) {
     introRef.current.start(({ finished }) => {
       if (finished) showCta();
     });
-    return () => introRef.current?.stop();
+    return () => {
+      introRef.current?.stop();
+      idleScan.current?.stop();
+    };
   }, []);
 
+  // Shows the Get Started button, then keeps the logo "alive" with a scan sweep every few seconds.
   const showCta = () => {
     if (ctaShown.current) return;
     ctaShown.current = true;
     Animated.timing(cta, { toValue: 1, duration: 420, delay: 120, easing: EASE, useNativeDriver: false }).start();
+    draw.scan.setValue(0);
+    idleScan.current = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1600),
+        Animated.timing(draw.scan, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(draw.scan, { toValue: 0, duration: 0, useNativeDriver: false }),
+      ])
+    );
+    idleScan.current.start();
   };
 
   // Tap during the intro → jump to the finished logo + button (doesn't leave the splash).
@@ -150,29 +223,44 @@ export default function SplashScreen({ navigation }) {
   const onMomentumScrollEnd = (e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
 
   // ---- intro overlay geometry ----
+  // The green background is one big rounded square (same corner ratio as the app icon)
+  // centred on the screen and big enough to cover it. Shrinking it with scale +
+  // translate keeps it a perfect icon shape the whole way down to the welcome tile.
+  const W = rootSize.w;
+  const H = rootSize.h;
+  const BG = Math.hypot(W, H);
+  const markCenterY = H / 2 - 30; // the logo sits a little above centre
   const lerp = (from, to) => morph.interpolate({ inputRange: [0, 1], outputRange: [from, to] });
-  const overlayStyle = target
-    ? {
-        left: lerp(0, target.x),
-        top: lerp(0, target.y),
-        width: lerp(rootSize.w, target.size),
-        height: lerp(rootSize.h, target.size),
-        borderRadius: lerp(0, target.size * TILE_RADIUS_RATIO),
-      }
-    : { left: 0, top: 0, width: rootSize.w, height: rootSize.h, opacity: fadeOut };
-  const overlayMarkSize = target ? lerp(introMarkSize, target.size) : introMarkSize;
-  const markLift = target ? lerp(-30, 0) : -30;
-  const wordmarkOpacity = Animated.multiply(
-    wordmark,
-    morph.interpolate({ inputRange: [0, 0.25], outputRange: [1, 0], extrapolate: 'clamp' })
-  );
+  const tcx = target ? target.x + target.size / 2 : W / 2; // welcome tile centre
+  const tcy = target ? target.y + target.size / 2 : markCenterY;
+
+  const bgStyle = {
+    left: W / 2 - BG / 2,
+    top: H / 2 - BG / 2,
+    width: BG,
+    height: BG,
+    borderRadius: BG * TILE_RADIUS_RATIO,
+    transform: target
+      ? [{ translateX: lerp(0, tcx - W / 2) }, { translateY: lerp(0, tcy - H / 2) }, { scale: lerp(1, target.size / BG) }]
+      : [],
+  };
+  const markStyle = {
+    left: W / 2 - introMarkSize / 2,
+    top: markCenterY - introMarkSize / 2,
+    transform: target
+      ? [{ translateX: lerp(0, tcx - W / 2) }, { translateY: lerp(0, tcy - markCenterY) }, { scale: lerp(1, target.size / introMarkSize) }]
+      : [],
+  };
+
   const wordmarkRise = wordmark.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
-  const ctaOpacity = Animated.multiply(
-    cta,
-    morph.interpolate({ inputRange: [0, 0.2], outputRange: [1, 0], extrapolate: 'clamp' })
-  );
+  const chromeDrop = chrome.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
   const ctaRise = cta.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
-  const patternOpacity = morph.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
+
+  // One welcome line: fades in and rises 16px, starting a bit later than the line above it.
+  const riseIn = (from, to) => ({
+    opacity: reveal.interpolate({ inputRange: [0, from, to, 1], outputRange: [0, 0, 1, 1] }),
+    transform: [{ translateY: reveal.interpolate({ inputRange: [0, from, to, 1], outputRange: [16, 16, 0, 0] }) }],
+  });
 
   return (
     <View
@@ -181,15 +269,19 @@ export default function SplashScreen({ navigation }) {
       style={styles.root}
       onLayout={(e) => setRootSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
     >
-      <StatusBar style={introDone ? 'dark' : 'light'} />
+      {/* Dark clock/battery only on the white Welcome slides, and only while this
+          screen is showing. Every other screen keeps the white ones from App.js. */}
+      <StatusBar style={isFocused && (morphing || introDone) ? 'dark' : 'light'} />
       <BrandPattern size={260} color={BRAND.deep} opacity={0.045} style={{ top: -40, right: -70 }} />
       <BrandPattern size={200} color={BRAND.deep} opacity={0.035} style={{ bottom: 120, left: -80 }} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
         {!isLast && (
-          <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} hitSlop={10}>
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
+          <Animated.View style={[styles.skipBtn, riseIn(0.4, 1)]}>
+            <TouchableOpacity onPress={handleSkip} hitSlop={10} style={{ padding: 8 }}>
+              <Text style={styles.skipText}>Skip</Text>
+            </TouchableOpacity>
+          </Animated.View>
         )}
 
         <FlatList
@@ -214,9 +306,11 @@ export default function SplashScreen({ navigation }) {
                 {item.isBrand ? (
                   // The intro morph lands exactly on this tile.
                   <Animated.View style={[styles.brandTileWrap, { opacity, transform: [{ scale }] }]}>
-                    <View ref={tileRef} collapsable={false}>
-                      <QLessTile size={WELCOME_TILE} />
-                    </View>
+                    <Animated.View style={{ transform: [{ scale: tilePop }] }}>
+                      <View ref={tileRef} collapsable={false}>
+                        <QLessTile size={WELCOME_TILE} />
+                      </View>
+                    </Animated.View>
                   </Animated.View>
                 ) : (
                   <Animated.View style={[styles.featureWrap, { transform: [{ scale }], opacity }]}>
@@ -229,13 +323,17 @@ export default function SplashScreen({ navigation }) {
                 )}
 
                 <Animated.View style={{ opacity }}>
-                  <Text style={styles.slideTitle}>{item.title}</Text>
-                  <Text style={styles.slideDescription}>{item.description}</Text>
+                  <Animated.View style={item.isBrand ? riseIn(0, 0.55) : null}>
+                    <Text style={styles.slideTitle}>{item.title}</Text>
+                  </Animated.View>
+                  <Animated.View style={item.isBrand ? riseIn(0.15, 0.7) : null}>
+                    <Text style={styles.slideDescription}>{item.description}</Text>
+                  </Animated.View>
                   {item.isBrand && (
-                    <View style={styles.cvsuChip}>
+                    <Animated.View style={[styles.cvsuChip, riseIn(0.3, 0.85)]}>
                       <Image source={CVSU_LOGO} style={styles.cvsuLogo} resizeMode="contain" />
-                      <Text style={styles.cvsuChipText}>Cavite State University - Main Campus</Text>
-                    </View>
+                      <Text style={styles.cvsuChipText}>Cavite State University</Text>
+                    </Animated.View>
                   )}
                 </Animated.View>
               </View>
@@ -243,16 +341,16 @@ export default function SplashScreen({ navigation }) {
           }}
         />
 
-        <View style={styles.dotsRow}>
+        <Animated.View style={[styles.dotsRow, riseIn(0.4, 1)]}>
           {SLIDES.map((_, i) => {
             const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
             const dotWidth = scrollX.interpolate({ inputRange, outputRange: [8, 22, 8], extrapolate: 'clamp' });
             const dotOpacity = scrollX.interpolate({ inputRange, outputRange: [0.3, 1, 0.3], extrapolate: 'clamp' });
             return <Animated.View key={i} style={[styles.dot, { width: dotWidth, opacity: dotOpacity }]} />;
           })}
-        </View>
+        </Animated.View>
 
-        <View style={[styles.footer, { paddingHorizontal: layout.horizontalPadding }]}>
+        <Animated.View style={[styles.footer, { paddingHorizontal: layout.horizontalPadding }, riseIn(0.45, 1)]}>
           {isLast ? (
             <>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Register')} activeOpacity={0.88}>
@@ -270,50 +368,53 @@ export default function SplashScreen({ navigation }) {
               <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
       </SafeAreaView>
 
-      {/* INTRO OVERLAY — full-screen green that shrinks into the welcome tile */}
+      {/* INTRO OVERLAY — big green rounded square that shrinks into the welcome tile */}
       {!introDone && (
         <TouchableWithoutFeedback onPress={skipIntro}>
-          <Animated.View style={[styles.intro, overlayStyle]}>
-            <Animated.View style={{ opacity: patternOpacity, ...StyleSheet.absoluteFillObject }}>
-              <BrandPattern size={rootSize.w * 0.9} opacity={0.05} style={{ top: -rootSize.w * 0.2, right: -rootSize.w * 0.35 }} />
-              <BrandPattern size={rootSize.w * 0.7} opacity={0.04} style={{ bottom: -rootSize.w * 0.1, left: -rootSize.w * 0.3 }} />
+          <Animated.View style={[StyleSheet.absoluteFill, styles.introLayer, { opacity: fadeOut }]}>
+            <Animated.View style={[styles.introBg, bgStyle]} />
+
+            {/* the logo flies with the square and ends at the tile's size */}
+            <Animated.View style={[styles.introMark, markStyle]}>
+              <QLessMark size={introMarkSize} tone="dark" anim={draw} />
             </Animated.View>
 
-            <Animated.View style={{ transform: [{ translateY: markLift }] }}>
-              <QLessMark size={overlayMarkSize} tone="dark" anim={draw} />
-            </Animated.View>
-
+            {/* wordmark + Get Started: fade out first when the morph starts */}
             <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.wordmarkWrap,
-                {
-                  top: rootSize.h / 2 - 30 + introMarkSize / 2 + 18,
-                  opacity: wordmarkOpacity,
-                  transform: [{ translateY: wordmarkRise }],
-                },
-              ]}
+              pointerEvents="box-none"
+              style={[StyleSheet.absoluteFill, { opacity: chrome, transform: [{ translateY: chromeDrop }] }]}
             >
-              <Text style={styles.wordmark}>
-                Q<Text style={styles.wordmarkLess}>Less</Text>
-              </Text>
-              <Text style={styles.tagline}>Scan in. Skip the line.</Text>
-            </Animated.View>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.wordmarkWrap,
+                  {
+                    top: markCenterY + introMarkSize / 2 + 18,
+                    opacity: wordmark,
+                    transform: [{ translateY: wordmarkRise }],
+                  },
+                ]}
+              >
+                <Text style={styles.wordmark}>
+                  Q<Text style={styles.wordmarkLess}>Less</Text>
+                </Text>
+                <Text style={styles.tagline}>Scan in. Skip the line.</Text>
+              </Animated.View>
 
-            {/* GET STARTED — pressing it morphs the splash into the Welcome screen */}
-            <Animated.View
-              style={[
-                styles.ctaWrap,
-                { bottom: insets.bottom + 36, opacity: ctaOpacity, transform: [{ translateY: ctaRise }] },
-              ]}
-            >
-              <TouchableOpacity style={styles.ctaBtn} onPress={handleGetStarted} activeOpacity={0.88}>
-                <Text style={styles.ctaText}>Get Started</Text>
-                <Ionicons name="arrow-forward" size={18} color={BRAND.deep} style={{ marginLeft: 8 }} />
-              </TouchableOpacity>
+              <Animated.View
+                style={[
+                  styles.ctaWrap,
+                  { bottom: insets.bottom + 36, opacity: cta, transform: [{ translateY: ctaRise }] },
+                ]}
+              >
+                <TouchableOpacity style={styles.ctaBtn} onPress={handleGetStarted} activeOpacity={0.88}>
+                  <Text style={styles.ctaText}>Get Started</Text>
+                  <Ionicons name="arrow-forward" size={18} color={BRAND.deep} style={{ marginLeft: 8 }} />
+                </TouchableOpacity>
+              </Animated.View>
             </Animated.View>
           </Animated.View>
         </TouchableWithoutFeedback>
@@ -325,15 +426,9 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
 
-  intro: {
-    position: 'absolute',
-    backgroundColor: BRAND.deep,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    zIndex: 50,
-    elevation: 50,
-  },
+  introLayer: { zIndex: 50, elevation: 50 },
+  introBg: { position: 'absolute', backgroundColor: BRAND.deep },
+  introMark: { position: 'absolute' },
   wordmarkWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   wordmark: { color: '#fff', fontSize: 34, fontWeight: '800', letterSpacing: 0.5 },
   wordmarkLess: { color: BRAND.goldLight },
@@ -349,7 +444,7 @@ const styles = StyleSheet.create({
   ctaText: { color: BRAND.deep, fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
   tagline: { color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 6, letterSpacing: 1.2 },
 
-  skipBtn: { position: 'absolute', top: 12, right: 20, zIndex: 10, padding: 8 },
+  skipBtn: { position: 'absolute', top: 12, right: 12, zIndex: 10 },
   skipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
 
   slide: { alignItems: 'center', justifyContent: 'center' },

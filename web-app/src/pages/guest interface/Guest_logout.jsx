@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import logo from "../../assets/cvsu_logo.png";
+import { GuestLayout, Card, SectionLabel, Dialog, Icon, btn, inputClass, BRAND } from "./GuestLayout";
 
+// For privacy, names on this public screen are partly hidden:
+// "John Snow" → "Jo*** Sn***". Every word keeps its first 2 letters and the
+// rest becomes "***" (always 3 stars, so the name's length isn't shown either).
+const maskName = (name) =>
+  (name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word.length <= 2 ? `${word[0]}*` : `${word.slice(0, 2)}***`))
+    .join(" ") || "Guest";
+
+// First name only, for the "Goodbye" message (e.g. "John Snow" → "John").
+const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "Guest";
+
+// Guest log out page: guest types their name, finds their (masked) entry and taps "Log Out".
 const GuestLogout = () => {
   const navigate = useNavigate();
   const [guests, setGuests] = useState([]);
@@ -9,10 +24,12 @@ const GuestLogout = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loggingOutId, setLoggingOutId] = useState(null);
   const [feedback, setFeedback] = useState(null);
-  
-  // New state for the confirmation modal
+  // Guest waiting for "Yes, Log Out" in the confirm pop-up.
   const [guestToConfirm, setGuestToConfirm] = useState(null);
+  // Name shown in the "Goodbye" pop-up after a successful log out.
+  const [loggedOutName, setLoggedOutName] = useState("");
 
+  // Loads the guests who are still inside the library.
   const fetchInsideGuests = async () => {
     try {
       const res = await fetch("http://localhost:5000/api/guests/inside");
@@ -25,25 +42,27 @@ const GuestLogout = () => {
     }
   };
 
+  // Load the list once when the page opens.
   useEffect(() => { fetchInsideGuests(); }, []);
 
+  // "Yes, Log Out": ends the visit, shows "Goodbye", then returns to the landing page.
   const handleLogout = async () => {
     if (!guestToConfirm) return;
-    
-    const guest_log_id = guestToConfirm.guest_log_id;
+
+    const { guest_log_id, full_name } = guestToConfirm;
     setLoggingOutId(guest_log_id);
-    setGuestToConfirm(null); // Close the modal immediately
+    setGuestToConfirm(null);
     setFeedback(null);
-    
+
     try {
       const res = await fetch(`http://localhost:5000/api/guests/self-exit/${guest_log_id}`, {
         method: "PATCH",
       });
       const data = await res.json();
       if (res.ok) {
-        setFeedback({ type: "success", message: data.message || "Logged out successfully!" });
         setGuests((prev) => prev.filter((g) => g.guest_log_id !== guest_log_id));
-        setTimeout(() => navigate("/guest-landing"), 1800);
+        setLoggedOutName(firstName(full_name));
+        setTimeout(() => navigate("/guest-landing"), 2200);
       } else {
         setFeedback({ type: "error", message: data.message || "Could not log out. Please try again." });
         fetchInsideGuests();
@@ -55,135 +74,149 @@ const GuestLogout = () => {
     }
   };
 
+  // Search still matches the REAL full name, so guests can find themselves
+  // by typing their name, but the list only ever shows the masked version.
   const filteredGuests = guests.filter((g) =>
     (g.full_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // The guest's purpose (uses their typed reason when they picked "Other").
   const displayReason = (g) =>
     g.purpose === "Other" && g.other_purpose ? g.other_purpose : g.purpose || "—";
 
+  // Initials for the avatar circle, e.g. "Juan Dela Cruz" → "JC".
+  const getInitials = (name) => {
+    const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "?";
+    return `${parts[0][0]}${parts.length > 1 ? parts[parts.length - 1][0] : ""}`.toUpperCase();
+  };
+
   return (
-    <div className="min-h-screen w-screen bg-[#EAF5EA] font-sans flex flex-col relative">
-      {/* HEADER */}
-      <div className="bg-[#1B5E20] text-white px-6 h-[72px] flex items-center justify-between shadow-md border-b-[3px] border-[#F5C518] flex-shrink-0">
-        <div className="flex items-center gap-3.5">
-          <img src={logo} alt="CvSU Logo" className="w-12 h-12 object-contain flex-shrink-0" />
-          <div>
-            <p className="text-[17px] font-bold leading-tight">Library Patron Access and Monitoring System</p>
-            <p className="text-[11px] opacity-75 mt-0.5">Guest Logout</p>
+    <GuestLayout subtitle="Guest Log Out" title="Find Your Name" onBack={() => navigate("/guest-landing")}>
+      <div className="w-full max-w-[720px] space-y-6">
+        {/* Search box */}
+        <div>
+          <SectionLabel>Search</SectionLabel>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+              <Icon name="search" size={19} />
+            </span>
+            <input
+              type="text"
+              placeholder="Type your full name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={`${inputClass} pl-12 py-4 shadow-[0_4px_16px_rgba(11,31,18,0.06)] border-transparent`}
+              autoFocus
+            />
           </div>
+          <p className="flex items-center gap-1.5 text-[11.5px] text-gray-400 mt-2 ml-1">
+            <Icon name="shield" size={13} />
+            For your privacy, names are partly hidden (e.g. Jo*** Sn***).
+          </p>
         </div>
-        <button
-          onClick={() => navigate("/guest-landing")}
-          className="text-white text-sm font-medium hover:underline"
-        >
-          ← Back
-        </button>
-      </div>
 
-      {/* BODY */}
-      <div className="flex-1 flex justify-center py-10 px-4">
-        <div className="w-full max-w-[680px] space-y-5">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-1">Find Your Name</h2>
-            <p className="text-sm text-gray-500">
-              Search for your name below and tap "Log Out" to end your visit.
-            </p>
+        {/* Error banner */}
+        {feedback && (
+          <div className="flex items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
+            <Icon name="alert" size={18} />
+            {feedback.message}
+          </div>
+        )}
+
+        {/* Guests still inside */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <SectionLabel>Currently inside</SectionLabel>
+            {!loading && (
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full mb-2" style={{ backgroundColor: BRAND.mint, color: BRAND.green }}>
+                {guests.length} {guests.length === 1 ? "guest" : "guests"}
+              </span>
+            )}
           </div>
 
-          {feedback && (
-            <div
-              className={`rounded-xl p-4 text-sm font-medium ${
-                feedback.type === "success"
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {feedback.message}
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 border-b">
-              <input
-                type="text"
-                placeholder="Type your name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-green-600"
+          <Card className="overflow-hidden">
+            {loading ? (
+              <EmptyState icon="time" text="Loading..." />
+            ) : filteredGuests.length === 0 ? (
+              <EmptyState
+                icon={guests.length === 0 ? "people" : "search"}
+                text={guests.length === 0 ? "No guests currently inside." : "No match found. Check the spelling of your name."}
               />
-            </div>
-
-            <table className="w-full text-sm">
-              <thead className="bg-[#F3FAF3] text-[#1B651B]">
-                <tr>
-                  <th className="p-3 text-left font-semibold">Name</th>
-                  <th className="p-3 text-left font-semibold">Reason for Visit</th>
-                  <th className="p-3 text-left font-semibold"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={3} className="p-6 text-center text-gray-400">Loading...</td></tr>
-                ) : filteredGuests.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="p-6 text-center text-gray-400">
-                      {guests.length === 0 ? "No guests currently inside." : "No match found."}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredGuests.map((g) => (
-                    <tr key={g.guest_log_id} className="border-t">
-                      <td className="p-3 text-gray-800">{g.full_name}</td>
-                      <td className="p-3 text-gray-600">{displayReason(g)}</td>
-                      <td className="p-3 text-right">
-                        <button
-                          onClick={() => setGuestToConfirm(g)}
-                          disabled={loggingOutId === g.guest_log_id}
-                          className="bg-[#1B5E20] hover:bg-[#164a1a] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
-                        >
-                          {loggingOutId === g.guest_log_id ? "Logging out..." : "Log Out"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+            ) : (
+              <ul className="divide-y divide-[#F1F3F1]">
+                {filteredGuests.map((g) => (
+                  <li key={g.guest_log_id} className="flex items-center gap-4 px-5 py-4">
+                    <div
+                      className="w-11 h-11 rounded-[14px] flex items-center justify-center text-sm font-extrabold flex-shrink-0"
+                      style={{ backgroundColor: BRAND.mint, color: BRAND.green }}
+                    >
+                      {getInitials(g.full_name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-semibold text-gray-900 truncate tracking-wide">{maskName(g.full_name)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{displayReason(g)}</p>
+                    </div>
+                    <button
+                      onClick={() => setGuestToConfirm(g)}
+                      disabled={loggingOutId === g.guest_log_id}
+                      className="inline-flex items-center gap-2 bg-[#1B5E20] hover:bg-[#164a1a] text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors disabled:opacity-60 flex-shrink-0"
+                    >
+                      <Icon name="logout" size={16} />
+                      {loggingOutId === g.guest_log_id ? "Logging out..." : "Log Out"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       </div>
 
-      {/* CONFIRMATION MODAL */}
-      {guestToConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full transform transition-all">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Confirm Logout</h3>
-            <p className="text-gray-600 text-sm mb-6">
-              Are you sure you want to log out{" "}
-              <span className="font-semibold text-gray-900">
-                {guestToConfirm.full_name}
-              </span>?
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setGuestToConfirm(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-white bg-[#1B5E20] hover:bg-[#164a1a] rounded-lg transition-colors"
-              >
-                Yes, Log Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {/* Confirm pop-up */}
+      <Dialog
+        open={!!guestToConfirm}
+        tone="warning"
+        icon="logout"
+        title="Log Out?"
+        message={
+          <>
+            You're about to log out <span className="font-semibold text-gray-900">{maskName(guestToConfirm?.full_name)}</span>.
+          </>
+        }
+        maxWidth={400}
+        footer={
+          <>
+            <button onClick={() => setGuestToConfirm(null)} className={btn.secondary}>
+              Cancel
+            </button>
+            <button onClick={handleLogout} className={btn.primary}>
+              Yes, Log Out
+            </button>
+          </>
+        }
+      />
+
+      {/* Goodbye pop-up (closes by itself and goes back to the landing page) */}
+      <Dialog
+        open={!!loggedOutName}
+        tone="success"
+        title={`Goodbye, ${loggedOutName}!`}
+        message="Your visit has been logged out. Thank you for visiting the library."
+        maxWidth={400}
+      />
+    </GuestLayout>
   );
 };
+
+// Centered icon + message shown when the list is loading or empty.
+const EmptyState = ({ icon, text }) => (
+  <div className="flex flex-col items-center justify-center gap-3 py-12 text-gray-400">
+    <div className="w-12 h-12 rounded-full bg-[#F4F5F4] flex items-center justify-center">
+      <Icon name={icon} size={22} />
+    </div>
+    <p className="text-sm">{text}</p>
+  </div>
+);
 
 export default GuestLogout;

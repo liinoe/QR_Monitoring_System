@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, forwardRef } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,10 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Modal,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,13 +21,53 @@ import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels, sexOptions } from '../data/options';
 import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
+import { BRAND, HEADER_RADIUS } from '../theme/brand';
+import { useAppDialog } from '../components/AppDialog';
+import { getRejectionGuide } from '../utils/rejection';
 
+// Maps what the student picks ("Male") to what the database stores ("male").
 const sexLabelToValue = {
   'Male': 'male',
   'Female': 'female',
   'Prefer not to say': 'prefer_not_to_say',
 };
 
+// Only CvSU school emails are accepted, e.g. juan.delacruz@cvsu.edu.ph
+const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
+
+// Veterinary Medicine is a 6-year program, so it gets a "6th Year" option.
+const VETMED_COLLEGE = 'College of Veterinary Medicine and Biomedical Sciences';
+
+// Returns the year levels allowed for the chosen college.
+function yearLevelsFor(college) {
+  return college === VETMED_COLLEGE ? [...yearLevels, '6th Year'] : yearLevels;
+}
+
+// Checks the email as the student types and returns the message to show under the field.
+function getEmailFeedback(email) {
+  const value = email.trim();
+  if (!value) return { state: 'hint', text: 'Use your CvSU email (name@cvsu.edu.ph)' };
+  if (/\s/.test(value)) return { state: 'error', text: 'Email cannot contain spaces' };
+  if (!value.includes('@')) return { state: 'error', text: 'Missing "@" — it should end with @cvsu.edu.ph' };
+  if (!CVSU_EMAIL_REGEX.test(value)) return { state: 'error', text: 'Must be a CvSU email ending in @cvsu.edu.ph' };
+  return { state: 'ok', text: 'Valid CvSU email' };
+}
+
+// Password rules. Each has a label (shown to the student) and a test.
+export const PASSWORD_RULES = [
+  { label: 'At least 8 characters', test: (pw) => pw.length >= 8 },
+  { label: 'One uppercase letter (A–Z)', test: (pw) => /[A-Z]/.test(pw) },
+  { label: 'One lowercase letter (a–z)', test: (pw) => /[a-z]/.test(pw) },
+  { label: 'One number (0–9)', test: (pw) => /\d/.test(pw) },
+];
+
+// True only if the password passes every rule above.
+export function isStrongPassword(pw) {
+  return PASSWORD_RULES.every((rule) => rule.test(pw));
+}
+
+// Cleans what the student types in the phone box and keeps only the 10
+// digits after +63 (accepts "09...", "63..." or "9...").
 function normalizePhoneDigits(value) {
   const digits = value.replace(/\D/g, '');
   const localDigits = digits.startsWith('09')
@@ -38,6 +78,7 @@ function normalizePhoneDigits(value) {
   return localDigits.slice(0, 10);
 }
 
+// Shows the saved "+639123456789" as "912 345 6789" in the input box.
 function formatPhoneDigits(phoneNumber) {
   const digits = phoneNumber.replace(/^\+63/, '').slice(0, 10);
   return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)]
@@ -45,14 +86,45 @@ function formatPhoneDigits(phoneNumber) {
     .join(' ');
 }
 
+// Live "is this already used?" check. Give it a server URL (or null to stay quiet).
+// Waits 0.5s after the student stops typing, then asks the server.
+// Returns { state, message, reason } where state is
+// 'idle' | 'checking' | 'available' | 'taken' | 'unknown'.
+function useAvailabilityCheck(url) {
+  const [check, setCheck] = useState({ state: 'idle', message: '', reason: null });
+
+  useEffect(() => {
+    if (!url) {
+      setCheck({ state: 'idle', message: '', reason: null });
+      return;
+    }
+    setCheck({ state: 'checking', message: 'Checking…', reason: null });
+    let cancelled = false; // ignore old answers if the student keeps typing
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok && res.status !== 400) throw new Error();
+        setCheck({ state: data.available ? 'available' : 'taken', message: data.message, reason: data.reason || null });
+      } catch {
+        // Server unreachable: don't block the student; the server re-checks on submit.
+        if (!cancelled) setCheck({ state: 'unknown', message: "Couldn't check right now — we'll verify when you submit.", reason: null });
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [url]);
+
+  return check;
+}
+
 export default function RegisterScreen({ navigation, route }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
-  // Renewal mode is passed explicitly via navigation params (from HomeScreen's
-  // "Renew Registration" button) — NOT inferred from whatever happens to be
-  // in AsyncStorage, since that could be stale in edge cases (e.g. a
-  // student's record got deleted after they last logged in).
+  // Renewal mode comes from the Home screen's "Renew Registration" button.
   const isRenewal = route?.params?.mode === 'renewal';
+  // Resubmit mode comes from the Home screen's "Register Again" button (rejected accounts).
+  const isResubmit = route?.params?.mode === 'resubmit';
 
   const [form, setForm] = useState({
     surname: '',
@@ -73,8 +145,40 @@ export default function RegisterScreen({ navigation, route }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
-  const [renewalStudent, setRenewalStudent] = useState(null); // display-only, for the renewal confirmation modal
+  const [renewalStudent, setRenewalStudent] = useState(null); // shown in the renewal banner only
+  const [rejectionReason, setRejectionReason] = useState(''); // shown at the top in resubmit mode
+  const [loadingProfile, setLoadingProfile] = useState(isResubmit);
+  // Styled pop-up used instead of the phone's plain alert (see components/AppDialog.js).
+  const { dialog, showDialog } = useAppDialog();
 
+  // Used by "Edit Number" to scroll back up to the Student Number field.
+  const scrollRef = useRef(null);
+  const studentNumberRef = useRef(null);
+  const academicRowY = useRef(0);   // where the Academic Info card starts in the scroll area
+  const studentFieldY = useRef(0);  // where the Student Number field sits inside that card
+  const phoneRef = useRef(null);
+  const personalRowY = useRef(0);   // where the Personal Info card starts
+  const phoneFieldY = useRef(0);    // where the Phone field sits inside that card
+  const emailRef = useRef(null);
+  const accountRowY = useRef(0);    // where the Account card starts
+  const emailFieldY = useRef(0);    // where the Email field sits inside that card
+
+  // Scrolls up to a field (card position + field position), then puts the cursor in it.
+  const focusField = (cardY, fieldY, inputRef) => {
+    const y = cardY.current + fieldY.current - 16;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+    setTimeout(() => inputRef.current?.focus(), 350); // after the scroll finishes
+  };
+
+  // "Edit Number": jump back to the Student Number field.
+  const focusStudentNumber = () => focusField(academicRowY, studentFieldY, studentNumberRef);
+  // "Edit Email": jump back to the CvSU Email field.
+  const focusEmail = () => focusField(accountRowY, emailFieldY, emailRef);
+  // "Edit Phone": jump back to the Phone Number field.
+  const focusPhone = () => focusField(personalRowY, phoneFieldY, phoneRef);
+
+
+  // Loads the active semester so the header can say what they're registering for.
   useEffect(() => {
     fetch(`${API_URL}/api/settings/current-period`)
       .then((res) => res.json())
@@ -82,9 +186,8 @@ export default function RegisterScreen({ navigation, route }) {
       .catch(() => {});
   }, []);
 
-  // RENEWAL: load just enough stored info to identify the account and show
-  // it for confirmation — never into the (hidden, non-existent-in-this-mode)
-  // personal info fields, since those aren't rendered at all in renewal mode.
+  // RENEWAL: loads the saved student so we know whose account to renew.
+  // Personal info and account fields aren't shown in this mode.
   useEffect(() => {
     if (!isRenewal) return;
     AsyncStorage.getItem('student')
@@ -103,60 +206,184 @@ export default function RegisterScreen({ navigation, route }) {
       .catch(() => {});
   }, [isRenewal]);
 
+  // RESUBMIT: fills the whole form with the student's saved details (from the
+  // server), so they only fix what was wrong. Also loads the rejection reason.
+  useEffect(() => {
+    if (!isResubmit) return;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('student');
+        if (!stored) return;
+        const { student_number } = JSON.parse(stored);
+        const res = await fetch(`${API_URL}/api/student/profile/${student_number}`);
+        if (!res.ok) throw new Error();
+        const p = await res.json();
+        const sexLabel = Object.keys(sexLabelToValue).find((label) => sexLabelToValue[label] === p.sex) || '';
+        setForm((f) => ({
+          ...f,
+          surname: p.surname || '',
+          first_name: p.first_name || '',
+          middle_name: p.middle_name || '',
+          email: p.email || '',
+          phone_number: /^\+639\d{9}$/.test(p.phone_number || '')
+            ? p.phone_number
+            : p.phone_number ? `+63${normalizePhoneDigits(p.phone_number)}` : '',
+          address: p.address || '',
+          sexLabel,
+          student_number: p.student_number || student_number,
+          college: p.college || '',
+          program: p.program || '',
+          year_level: p.year_level || '',
+        }));
+        setRejectionReason(p.status_reason || '');
+      } catch {
+        showDialog({ tone: 'error', title: "Couldn't Load Your Details", message: 'Check your connection and try again.' });
+      } finally {
+        setLoadingProfile(false);
+      }
+    })();
+  }, [isResubmit]);
+
+  // Live check: is this student number already registered? (runs once all 9 digits are typed)
+  const numberCheck = useAvailabilityCheck(
+    !isRenewal && !isResubmit && form.student_number.length === 9
+      ? `${API_URL}/api/register/check-student-number/${form.student_number}`
+      : null
+  );
+
+  // Live check: is this CvSU email already registered? (runs once the format is correct)
+  const emailCheck = useAvailabilityCheck(
+    !isRenewal && CVSU_EMAIL_REGEX.test(form.email.trim())
+      ? `${API_URL}/api/register/check-email/${encodeURIComponent(form.email.trim().toLowerCase())}?student_number=${form.student_number}`
+      : null
+  );
+
+  // Live check: is this phone number already used by another account? (runs once complete)
+  // The student number is sent too, so a student re-registering after a rejection
+  // isn't blocked by their own old record.
+  const phoneCheck = useAvailabilityCheck(
+    !isRenewal && /^\+639\d{9}$/.test(form.phone_number)
+      ? `${API_URL}/api/register/check-phone/${encodeURIComponent(form.phone_number)}?student_number=${form.student_number}`
+      : null
+  );
+
+  // Updates one field in the form.
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Changing college clears the program (programs depend on the college) and
+  // clears "6th Year" if the new college doesn't have it.
   const updateCollege = (college) => {
-    setForm((f) => ({ ...f, college, program: '' }));
+    setForm((f) => ({
+      ...f,
+      college,
+      program: '',
+      year_level: yearLevelsFor(college).includes(f.year_level) ? f.year_level : '',
+    }));
   };
 
   const availablePrograms = form.college ? (programsByCollege[form.college] || []) : [];
+  const availableYearLevels = yearLevelsFor(form.college);
+  const emailFeedback = getEmailFeedback(form.email);
 
+  // Checks every field for a new registration. Shows an alert for the first
+  // problem found and returns false; returns true if everything is valid.
   const validatePersonalAndAcademic = () => {
-    if (!form.surname || !form.first_name || !form.email || !form.student_number) {
-      Alert.alert('Missing info', 'Please fill in all required personal info fields.');
-      return false;
-    }
-    if (form.student_number.length !== 9 || !/^\d{9}$/.test(form.student_number)) {
-      Alert.alert('Invalid Student Number', 'Student number must be exactly 9 digits.');
+    // Step 1: Personal info
+    if (!form.surname || !form.first_name) {
+      showDialog({ tone: 'warning', title: 'Missing info', message: 'Please enter your surname and first name.' });
       return false;
     }
     if (!/^\+639\d{9}$/.test(form.phone_number)) {
-      Alert.alert('Invalid Phone Number', 'Please enter all 10 digits after +63.');
+      showDialog({ tone: 'error', title: 'Invalid Phone Number', message: 'Please enter all 10 digits after +63.' });
+      return false;
+    }
+    if (phoneCheck.state === 'taken') {
+      showDialog({
+        tone: 'warning',
+        title: 'Phone Number In Use',
+        message: phoneCheck.message,
+        buttons: [{ text: 'Edit Phone', style: 'primary', onPress: focusPhone }],
+      });
       return false;
     }
     if (!form.address) {
-      Alert.alert('Missing info', 'Please enter your address.');
+      showDialog({ tone: 'warning', title: 'Missing info', message: 'Please enter your address.' });
       return false;
     }
     if (!form.sexLabel) {
-      Alert.alert('Missing info', 'Please select your sex.');
+      showDialog({ tone: 'warning', title: 'Missing info', message: 'Please select your sex.' });
       return false;
     }
-    if (!form.password || form.password.length < 8) {
-      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+    // Step 2: Academic info
+    if (!/^\d{9}$/.test(form.student_number)) {
+      showDialog({ tone: 'error', title: 'Invalid Student Number', message: 'Student number must be exactly 9 digits.' });
+      return false;
+    }
+    if (numberCheck.state === 'taken') {
+      if (numberCheck.reason === 'registered') {
+        // They probably already have an account — offer Login, but let them fix a typo instead.
+        showDialog({
+          tone: 'warning',
+          title: 'Already Registered',
+          message: 'This student number already has an account. Log in instead?',
+          buttons: [
+            { text: 'Edit Number', style: 'secondary', onPress: focusStudentNumber },
+            { text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') },
+          ],
+        });
+      } else {
+        showDialog({ tone: 'error', title: 'Student Number Unavailable', message: numberCheck.message });
+      }
+      return false;
+    }
+    if (!form.college || !form.program || !form.year_level) {
+      showDialog({ tone: 'warning', title: 'Missing info', message: 'Please complete all academic info fields.' });
+      return false;
+    }
+    // Step 3: Account
+    if (!CVSU_EMAIL_REGEX.test(form.email.trim())) {
+      showDialog({ tone: 'error', title: 'Invalid Email', message: 'Please use your CvSU email ending in @cvsu.edu.ph.' });
+      return false;
+    }
+    if (emailCheck.state === 'taken') {
+      showDialog(
+        emailCheck.reason === 'registered'
+          ? {
+              tone: 'warning',
+              title: 'Email Already Registered',
+              message: 'This CvSU email already has an account. Log in instead?',
+              buttons: [
+                { text: 'Edit Email', style: 'secondary', onPress: focusEmail },
+                { text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') },
+              ],
+            }
+          : { tone: 'error', title: 'Email Unavailable', message: emailCheck.message, buttons: [{ text: 'Edit Email', style: 'primary', onPress: focusEmail }] }
+      );
+      return false;
+    }
+    // Resubmit: they're already logged in, so no password is needed here.
+    if (isResubmit) return true;
+    if (!isStrongPassword(form.password)) {
+      showDialog({ tone: 'error', title: 'Weak Password', message: 'Password needs at least 8 characters, an uppercase letter, a lowercase letter, and a number.' });
       return false;
     }
     if (form.password !== form.confirmPassword) {
-      Alert.alert('Password Mismatch', 'Password and confirm password do not match.');
-      return false;
-    }
-    if (!form.college || !form.program || !form.year_level) {
-      Alert.alert('Missing info', 'Please complete all academic info fields.');
+      showDialog({ tone: 'error', title: 'Password Mismatch', message: 'Password and confirm password do not match.' });
       return false;
     }
     return true;
   };
 
+  // Renewal only needs the academic fields.
   const validateRenewalOnly = () => {
     if (!form.college || !form.program || !form.year_level) {
-      Alert.alert('Missing info', 'Please complete all academic info fields.');
+      showDialog({ tone: 'warning', title: 'Missing info', message: 'Please complete all academic info fields.' });
       return false;
     }
     return true;
   };
 
-  // "Confirm" now opens the review modal instead of submitting directly —
-  // actual submission happens from inside the modal.
+  // "Continue" button: validates, then opens the review pop-up (not submitted yet).
   const handleReview = () => {
     const valid = isRenewal ? validateRenewalOnly() : validatePersonalAndAcademic();
     if (!valid) return;
@@ -165,6 +392,7 @@ export default function RegisterScreen({ navigation, route }) {
 
   const phoneNumberIsValid = /^\+639\d{9}$/.test(form.phone_number);
 
+  // Clears the whole form after a successful registration.
   const resetForm = () => {
     setForm({
       surname: '', first_name: '', middle_name: '',
@@ -174,15 +402,23 @@ export default function RegisterScreen({ navigation, route }) {
     });
   };
 
+  // Closes the review pop-up first, then shows the message. (On iPhone, two
+  // full-screen pop-ups can't open at the same moment.)
+  const showAfterReview = (options) => {
+    setConfirmModalVisible(false);
+    setTimeout(() => showDialog(options), 400);
+  };
+
+  // Sends a NEW registration to the server, then goes back to Login.
   const submitRegistration = async () => {
     try {
       const payload = {
-        surname: form.surname,
-        first_name: form.first_name,
-        middle_name: form.middle_name,
-        email: form.email,
+        surname: form.surname.trim(),
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim(),
+        email: form.email.trim().toLowerCase(),
         phone_number: form.phone_number,
-        address: form.address,
+        address: form.address.trim(),
         sex: sexLabelToValue[form.sexLabel],
         student_number: form.student_number,
         password: form.password,
@@ -201,19 +437,34 @@ export default function RegisterScreen({ navigation, route }) {
       setConfirmModalVisible(false);
 
       if (response.ok) {
-        Alert.alert('Registration Submitted', result.message || 'Please wait for admin approval.', [
-          { text: 'OK', onPress: () => { resetForm(); navigation.replace('Login'); } },
-        ]);
+        showAfterReview({
+          tone: 'success',
+          title: 'Registration Submitted',
+          message: result.message || 'Please wait for admin approval.',
+          buttons: [{ text: 'Go to Login', style: 'primary', onPress: () => { resetForm(); navigation.replace('Login'); } }],
+        });
+      } else if (response.status === 400 && /already exists/i.test(result.message || '')) {
+        // Server says the account exists (e.g. the live check couldn't run): offer Login.
+        showAfterReview({
+          tone: 'warning',
+          title: 'Already Registered',
+          message: result.message,
+          buttons: [
+            { text: 'Edit Number', style: 'secondary', onPress: focusStudentNumber },
+            { text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') },
+          ],
+        });
       } else {
-        Alert.alert('Registration Error', result.message || 'Submission failed');
+        showAfterReview({ tone: 'error', title: 'Registration Error', message: result.message || 'Submission failed' });
       }
     } catch (error) {
       console.error("Fetch Error:", error);
       setConfirmModalVisible(false);
-      Alert.alert('Connection Error', 'Check if server is running and on the same Wi-Fi.');
+      showAfterReview({ tone: 'error', title: 'Connection Error', message: 'Check if server is running and on the same Wi-Fi.' });
     }
   };
 
+  // Sends a RENEWAL (academic info only) to the server, then goes back to Login.
   const submitRenewal = async () => {
     try {
       const payload = {
@@ -233,32 +484,109 @@ export default function RegisterScreen({ navigation, route }) {
       setConfirmModalVisible(false);
 
       if (response.ok) {
-        Alert.alert('Renewal Submitted', result.message || 'Please wait for admin approval.', [
-          { text: 'OK', onPress: () => navigation.replace('Login') },
-        ]);
+        showAfterReview({
+          tone: 'success',
+          title: 'Renewal Submitted',
+          message: result.message || 'Please wait for admin approval.',
+          buttons: [{ text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') }],
+        });
       } else {
-        Alert.alert('Renewal Error', result.message || 'Submission failed');
+        showAfterReview({ tone: 'error', title: 'Renewal Error', message: result.message || 'Submission failed' });
       }
     } catch (error) {
       console.error("Fetch Error:", error);
       setConfirmModalVisible(false);
-      Alert.alert('Connection Error', 'Check if server is running and on the same Wi-Fi.');
+      showAfterReview({ tone: 'error', title: 'Connection Error', message: 'Check if server is running and on the same Wi-Fi.' });
     }
   };
 
+  // Sends the corrected form for a REJECTED registration (PUT = replace it),
+  // confirmed with the student's current password, then goes back to Login.
+  const submitResubmit = async () => {
+    try {
+      const payload = {
+        surname: form.surname.trim(),
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone_number: form.phone_number,
+        address: form.address.trim(),
+        sex: sexLabelToValue[form.sexLabel],
+        college: form.college,
+        program: form.program,
+        year_level: form.year_level,
+      };
+      // The login pass saved at login proves to the server it's really this student.
+      const token = await AsyncStorage.getItem('student_token');
+      const response = await fetch(`${API_URL}/api/registration/${form.student_number}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+
+      if (response.ok) {
+        showAfterReview({
+          tone: 'success',
+          title: 'Registration Resubmitted',
+          message: result.message || 'Please wait for admin approval.',
+          buttons: [{ text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') }],
+        });
+      } else if (response.status === 401 || response.status === 403) {
+        // No/expired login pass (e.g. logged in before this update): log in once more.
+        showAfterReview({
+          tone: 'warning',
+          title: 'Please Log In Again',
+          message: 'For your security, please log in again, then resubmit. Your details will be filled in for you.',
+          buttons: [{
+            text: 'Go to Login',
+            style: 'primary',
+            onPress: async () => {
+              await AsyncStorage.multiRemove(['student', 'student_token']);
+              navigation.replace('Login');
+            },
+          }],
+        });
+      } else {
+        showAfterReview({ tone: 'error', title: 'Resubmission Failed', message: result.message || 'Please try again.' });
+      }
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      showAfterReview({ tone: 'error', title: 'Connection Error', message: 'Check if server is running and on the same Wi-Fi.' });
+    }
+  };
+
+  // "Submit" in the review pop-up: sends a renewal, a resubmission, or a new registration.
   const handleFinalSubmit = () => {
     if (isRenewal) submitRenewal();
+    else if (isResubmit) submitResubmit();
     else submitRegistration();
   };
 
+  // "Cancel" button: goes back to the Login screen.
   const cancel = () => navigation?.navigate?.('Login');
+
+  // Step numbers: new registration = Personal 1, Academic 2, Account 3, Review 4.
+  // Renewal = Academic 1, Review 2.
+  const academicStep = isRenewal ? 1 : 2;
+  const reviewStep = isRenewal ? 2 : 4;
 
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
-        <Text style={styles.headerTitle}>{isRenewal ? 'Renew Registration' : 'Student Registration'}</Text>
+        <Text style={styles.headerTitle}>
+          {isRenewal ? 'Renew Registration' : isResubmit ? 'Resubmit Registration' : 'Student Registration'}
+        </Text>
         <Text style={styles.headerSub}>
-          {isRenewal ? 'Confirm your academic info for this semester.' : 'Fill in all required fields.'}
+          {isRenewal
+            ? 'Confirm your academic info for this semester.'
+            : isResubmit
+              ? 'Your details are filled in. Fix what was wrong, then submit again.'
+              : 'Fill in all required fields.'}
         </Text>
         {currentPeriod ? (
           <Text style={styles.headerPeriod}>{isRenewal ? 'Renewing for' : 'Registering for'}: {currentPeriod}</Text>
@@ -271,12 +599,12 @@ export default function RegisterScreen({ navigation, route }) {
         style={{ flex: 1 }}
       >
         <ScrollView
+          ref={scrollRef}
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' }]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* RENEWAL: personal info is completely hidden — credentials
-              stay exactly as they are, only academic info is shown. */}
+          {/* RENEWAL: shows whose account is being renewed */}
           {isRenewal && renewalStudent && (
             <View style={[styles.renewalBanner, { width: layout.contentWidth }]}>
               <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
@@ -286,8 +614,28 @@ export default function RegisterScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* RESUBMIT: why the admin rejected it (saved when they rejected) */}
+          {isResubmit && (
+            <View style={[styles.rejectBanner, { width: layout.contentWidth }]}>
+              <Ionicons name="alert-circle" size={20} color="#B3261E" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rejectBannerTitle}>Why your registration was rejected</Text>
+                <Text style={styles.rejectBannerText}>
+                  {loadingProfile ? 'Loading…' : getRejectionGuide(rejectionReason, currentPeriod).message}
+                </Text>
+                {!loadingProfile && getRejectionGuide(rejectionReason, currentPeriod).noEditsNeeded && (
+                  <Text style={styles.rejectBannerHint}>Just review your details below and tap Continue.</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* STEP 1 — PERSONAL INFO (new registration only) */}
           {!isRenewal && (
-            <View style={[styles.stepRow, { width: layout.contentWidth }]}>
+            <View
+              style={[styles.stepRow, { width: layout.contentWidth }]}
+              onLayout={(e) => { personalRowY.current = e.nativeEvent.layout.y; }}
+            >
               <StepIndicator number={1} active />
               <View style={styles.card}>
                 <Text style={styles.stepHeading}>Personal Info</Text>
@@ -310,15 +658,16 @@ export default function RegisterScreen({ navigation, route }) {
                   onChangeText={(v) => update('middle_name', v)}
                   placeholder="Santos"
                 />
-                <Field
-                  label="CvSU Email Address"
-                  value={form.email}
-                  onChangeText={(v) => update('email', v)}
-                  placeholder="name@cvsu.edu.ph"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <PhoneNumberField value={form.phone_number} onChange={(v) => update('phone_number', v)} />
+                <View onLayout={(e) => { phoneFieldY.current = e.nativeEvent.layout.y; }}>
+                  <PhoneNumberField
+                    ref={phoneRef}
+                    value={form.phone_number}
+                    onChange={(v) => update('phone_number', v)}
+                    taken={phoneCheck.state === 'taken'}
+                    hasMessage={phoneCheck.state !== 'idle'}
+                  />
+                  <LiveCheck check={phoneCheck} />
+                </View>
                 <Field
                   label="Address"
                   value={form.address}
@@ -332,46 +681,37 @@ export default function RegisterScreen({ navigation, route }) {
                   options={sexOptions}
                   placeholder="Select"
                 />
-                <Field
-                  label="Student Number (9)"
-                  value={form.student_number}
-                  onChangeText={(v) => update('student_number', v)}
-                  placeholder="202300001"
-                  keyboardType="numeric"
-                  maxLength={9}
-                />
-
-                <PasswordField
-                  label="Password"
-                  value={form.password}
-                  onChangeText={(v) => update('password', v)}
-                  placeholder="At least 8 characters"
-                  visible={showPassword}
-                  onToggle={() => setShowPassword(!showPassword)}
-                />
-                {form.password.length > 0 && (
-                  <PasswordLengthCheck met={form.password.length >= 8} />
-                )}
-                <PasswordField
-                  label="Confirm Password"
-                  value={form.confirmPassword}
-                  onChangeText={(v) => update('confirmPassword', v)}
-                  placeholder="Re-enter your password"
-                  visible={showConfirmPassword}
-                  onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
-                />
-                {form.confirmPassword.length > 0 && (
-                  <PasswordMatchCheck matches={form.confirmPassword === form.password} />
-                )}
               </View>
             </View>
           )}
 
-          {/* ACADEMIC INFO — always shown, the only step in renewal mode */}
-          <View style={[styles.stepRow, { width: layout.contentWidth }]}>
-            <StepIndicator number={isRenewal ? 1 : 2} active={isRenewal} />
+          {/* STEP 2 — ACADEMIC INFO (the only step in renewal mode) */}
+          <View
+            style={[styles.stepRow, { width: layout.contentWidth }]}
+            onLayout={(e) => { academicRowY.current = e.nativeEvent.layout.y; }}
+          >
+            <StepIndicator number={academicStep} active={isRenewal} />
             <View style={styles.card}>
               <Text style={styles.stepHeading}>Academic Info</Text>
+              {/* Student number can't change on renewal (it's shown in the banner above). */}
+              {!isRenewal && (
+                <View onLayout={(e) => { studentFieldY.current = e.nativeEvent.layout.y; }}>
+                <Field
+                  ref={studentNumberRef}
+                  selectTextOnFocus
+                  editable={!isResubmit}
+                  label={isResubmit ? 'Student Number (can’t be changed)' : 'Student Number (9 digits)'}
+                  value={form.student_number}
+                  onChangeText={(v) => update('student_number', v.replace(/\D/g, ''))}
+                  placeholder="202300001"
+                  keyboardType="numeric"
+                  maxLength={9}
+                  invalid={numberCheck.state === 'taken'}
+                  style={numberCheck.state !== 'idle' ? { marginBottom: 6 } : undefined}
+                />
+                <LiveCheck check={numberCheck} />
+                </View>
+              )}
               <DropdownField
                 label="College"
                 value={form.college}
@@ -391,15 +731,76 @@ export default function RegisterScreen({ navigation, route }) {
                 label="Year Level"
                 value={form.year_level}
                 onChange={(v) => update('year_level', v)}
-                options={yearLevels}
+                options={availableYearLevels}
                 placeholder="Select year level"
               />
             </View>
           </View>
 
-          {/* REVIEW */}
+          {/* STEP 3 — ACCOUNT (new registration only): what they log in with */}
+          {!isRenewal && (
+            <View
+              style={[styles.stepRow, { width: layout.contentWidth }]}
+              onLayout={(e) => { accountRowY.current = e.nativeEvent.layout.y; }}
+            >
+              <StepIndicator number={3} />
+              <View style={styles.card}>
+                <Text style={styles.stepHeading}>Account</Text>
+
+                <View onLayout={(e) => { emailFieldY.current = e.nativeEvent.layout.y; }}>
+                  <Field
+                    ref={emailRef}
+                    label="CvSU Email Address"
+                    value={form.email}
+                    onChangeText={(v) => update('email', v)}
+                    placeholder="name@cvsu.edu.ph"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    invalid={emailFeedback.state === 'error' || emailCheck.state === 'taken'}
+                    style={{ marginBottom: 6 }}
+                  />
+                  {/* Wrong format → format tip. Correct format → is it already registered? */}
+                  {emailFeedback.state === 'ok'
+                    ? <LiveCheck check={emailCheck} />
+                    : <EmailCheck feedback={emailFeedback} />}
+                </View>
+
+                {isResubmit ? (
+                  // Resubmit: they're already logged in; their password stays the same.
+                  <Text style={styles.fieldHint}>Your password stays the same.</Text>
+                ) : (
+                  <>
+                    <PasswordField
+                      label="Password"
+                      value={form.password}
+                      onChangeText={(v) => update('password', v)}
+                      placeholder="8+ characters, A–Z, a–z, 0–9"
+                      visible={showPassword}
+                      onToggle={() => setShowPassword(!showPassword)}
+                    />
+                    {/* Checklist appears once they start typing; each rule turns green when met */}
+                    {form.password.length > 0 && <PasswordRulesCheck password={form.password} />}
+                    <PasswordField
+                      label="Confirm Password"
+                      value={form.confirmPassword}
+                      onChangeText={(v) => update('confirmPassword', v)}
+                      placeholder="Re-enter your password"
+                      visible={showConfirmPassword}
+                      onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
+                    />
+                    {form.confirmPassword.length > 0 && (
+                      <PasswordMatchCheck matches={form.confirmPassword === form.password} />
+                    )}
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* LAST STEP — REVIEW */}
           <View style={[styles.stepRow, { width: layout.contentWidth }]}>
-            <StepIndicator number={isRenewal ? 2 : 3} isLast />
+            <StepIndicator number={reviewStep} isLast />
             <View style={styles.confirmActions}>
               <TouchableOpacity
                 style={[styles.btn, styles.confirmBtn, !isRenewal && !phoneNumberIsValid && styles.disabledBtn]}
@@ -413,25 +814,20 @@ export default function RegisterScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           </View>
-
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={{ marginTop: 8, width: layout.contentWidth }}>
-            <Text style={{ textAlign: 'center', color: colors.primary, fontWeight: '600', fontSize: 15 }}>
-              Already have an account? Back to Login
-            </Text>
-          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* CONFIRMATION MODAL — last review before actually submitting */}
+      {/* REVIEW POP-UP — last check before actually submitting */}
       <Modal visible={confirmModalVisible} transparent animationType="fade" onRequestClose={() => setConfirmModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>{isRenewal ? 'Confirm Renewal' : 'Confirm Your Info'}</Text>
+            <Text style={styles.modalTitle}>
+              {isRenewal ? 'Confirm Renewal' : isResubmit ? 'Confirm Resubmission' : 'Confirm Your Info'}
+            </Text>
             <ScrollView style={{ maxHeight: 340 }}>
               {!isRenewal && (
                 <>
                   <SummaryRow label="Name" value={`${form.first_name} ${form.middle_name ? form.middle_name + ' ' : ''}${form.surname}`.trim()} />
-                  <SummaryRow label="Email" value={form.email} />
                   <SummaryRow label="Phone Number" value={form.phone_number} />
                   <SummaryRow label="Address" value={form.address} />
                   <SummaryRow label="Sex" value={form.sexLabel} />
@@ -441,6 +837,7 @@ export default function RegisterScreen({ navigation, route }) {
               <SummaryRow label="College" value={form.college} />
               <SummaryRow label="Program" value={form.program} />
               <SummaryRow label="Year Level" value={form.year_level} />
+              {!isRenewal && <SummaryRow label="CvSU Email" value={form.email.trim().toLowerCase()} />}
               {isRenewal && currentPeriod && <SummaryRow label="Semester" value={currentPeriod} />}
             </ScrollView>
 
@@ -461,21 +858,27 @@ export default function RegisterScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* Styled pop-up (errors, warnings, success) — drawn on top of everything */}
+      {dialog}
     </View>
   );
 }
 
-function PhoneNumberField({ value, onChange }) {
+// Phone input with a fixed "+63" in front. Turns red while it's incomplete
+// or when the number is already used by another account.
+const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange, taken, hasMessage }, ref) {
   const phoneDigits = value.replace(/^\+63/, '');
   const isComplete = /^9\d{9}$/.test(phoneDigits);
   const hasInput = phoneDigits.length > 0;
 
   return (
-    <View style={styles.phoneFieldWrap}>
+    <View style={[styles.phoneFieldWrap, hasMessage && { marginBottom: 6 }]}>
       <Text style={styles.fieldLabel}>Phone Number</Text>
-      <View style={[styles.phoneInput, hasInput && !isComplete && styles.phoneInputInvalid]}>
+      <View style={[styles.phoneInput, ((hasInput && !isComplete) || taken) && styles.phoneInputInvalid]}>
         <Text style={styles.countryCode}>+63</Text>
         <TextInput
+          ref={ref}
           style={styles.phoneNumberInput}
           value={formatPhoneDigits(value)}
           onChangeText={(input) => onChange(`+63${normalizePhoneDigits(input)}`)}
@@ -485,21 +888,68 @@ function PhoneNumberField({ value, onChange }) {
           maxLength={12}
         />
       </View>
-      <Text>
-      </Text>
     </View>
   );
-}
+});
 
-function Field({ label, ...rest }) {
+// A labeled text input. Pass invalid={true} to show a red border.
+// forwardRef lets a screen grab the input (e.g. to focus it from code).
+// editable={false} shows it grayed out (locked).
+const Field = forwardRef(function Field({ label, invalid, style, ...rest }, ref) {
   return (
-    <View style={{ marginBottom: 16 }}>
+    <View style={[{ marginBottom: 16 }, style]}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput style={styles.input} placeholderTextColor={colors.gray} {...rest} />
+      <TextInput
+        ref={ref}
+        style={[styles.input, invalid && styles.inputInvalid, rest.editable === false && styles.inputLocked]}
+        placeholderTextColor={colors.gray}
+        {...rest}
+      />
+    </View>
+  );
+});
+
+// Live message under a field (student number, phone): nothing while typing,
+// then "Checking…", then available (green) / already used (red).
+function LiveCheck({ check }) {
+  if (check.state === 'idle') return null; // nothing to show until all 9 digits are typed
+  if (check.state === 'checking') {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 2 }}>
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginLeft: 6 }}>Checking…</Text>
+      </View>
+    );
+  }
+  const look = {
+    available: { icon: 'checkmark-circle', color: colors.primary, text: check.message },
+    taken: { icon: 'close-circle', color: '#DC2626', text: check.message },
+    unknown: { icon: 'alert-circle-outline', color: '#946800', text: check.message },
+  }[check.state];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 2 }}>
+      <Ionicons name={look.icon} size={14} color={look.color} />
+      <Text style={{ fontSize: 12, color: look.color, marginLeft: 6, flexShrink: 1 }}>{look.text}</Text>
     </View>
   );
 }
 
+// Live message under the email field: gray hint, red error, or green "valid".
+function EmailCheck({ feedback }) {
+  const look = {
+    hint: { icon: 'information-circle-outline', color: colors.textSecondary },
+    error: { icon: 'close-circle', color: '#DC2626' },
+    ok: { icon: 'checkmark-circle', color: colors.primary },
+  }[feedback.state];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 2 }}>
+      <Ionicons name={look.icon} size={14} color={look.color} />
+      <Text style={{ fontSize: 12, color: look.color, marginLeft: 6, flexShrink: 1 }}>{feedback.text}</Text>
+    </View>
+  );
+}
+
+// Password input with a show/hide eye button.
 function PasswordField({ label, visible, onToggle, ...rest }) {
   return (
     <View style={{ marginBottom: 8 }}>
@@ -520,9 +970,32 @@ function PasswordField({ label, visible, onToggle, ...rest }) {
   );
 }
 
-// Live feedback as the password is typed — checks just the one rule that's
-// actually enforced (8+ characters), no extra requirements.
-// Exported so ChangePasswordModal.js can reuse the same UI.
+// Live checklist under the password: each rule turns green once it's met.
+// Exported so ChangePasswordModal.js can reuse it.
+export function PasswordRulesCheck({ password }) {
+  return (
+    <View style={{ marginTop: -2, marginBottom: 14, marginLeft: 2 }}>
+      {PASSWORD_RULES.map((rule) => {
+        const met = rule.test(password);
+        return (
+          <View key={rule.label} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons
+              name={met ? 'checkmark-circle' : 'ellipse-outline'}
+              size={14}
+              color={met ? colors.primary : colors.gray}
+            />
+            <Text style={{ fontSize: 12, color: met ? colors.primary : colors.textSecondary, marginLeft: 6 }}>
+              {rule.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// Older single-rule check (8+ characters). Kept because ChangePasswordModal.js
+// may still import it; new screens should use PasswordRulesCheck instead.
 export function PasswordLengthCheck({ met }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -8, marginBottom: 16, marginLeft: 2 }}>
@@ -538,9 +1011,8 @@ export function PasswordLengthCheck({ met }) {
   );
 }
 
-// Live feedback while typing Confirm Password — shows a match/no-match
-// indicator instead of only finding out on submit.
-// Exported so ChangePasswordModal.js can reuse it too.
+// Live check while typing Confirm Password: does it match?
+// Exported so ChangePasswordModal.js can reuse it.
 export function PasswordMatchCheck({ matches }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -8, marginBottom: 16, marginLeft: 2 }}>
@@ -556,6 +1028,7 @@ export function PasswordMatchCheck({ matches }) {
   );
 }
 
+// One "Label ........ Value" line in the review pop-up.
 function SummaryRow({ label, value }) {
   return (
     <View style={styles.summaryRow}>
@@ -567,15 +1040,15 @@ function SummaryRow({ label, value }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  headerWrap: { backgroundColor: colors.primary, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  headerWrap: { backgroundColor: BRAND.deep, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: HEADER_RADIUS, borderBottomRightRadius: HEADER_RADIUS, overflow: 'hidden' },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   headerSub: { color: '#BFD9C2', fontSize: 13, marginTop: 4 },
-  headerPeriod: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 6 },
+  headerPeriod: { color: BRAND.goldLight, fontSize: 12, fontWeight: '700', marginTop: 6 },
   scroll: { flex: 1, marginTop: -16 },
   scrollContent: { padding: 16, paddingBottom: 32 },
 
   renewalBanner: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: BRAND.mint,
     borderRadius: 14, padding: 14, marginBottom: 16, gap: 8,
   },
   renewalBannerText: { fontSize: 13, color: colors.primaryDark || colors.primary, fontWeight: '600', flex: 1 },
@@ -597,6 +1070,17 @@ const styles = StyleSheet.create({
   stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
+  inputInvalid: { borderColor: '#DC2626' },
+  inputLocked: { backgroundColor: '#F1F3F1', color: colors.textSecondary },
+  fieldHint: { fontSize: 12, color: colors.textSecondary, marginTop: -2, marginBottom: 16, marginLeft: 2 },
+  rejectBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#FDF3F2', borderWidth: 1, borderColor: '#F5CFC9',
+    borderRadius: 14, padding: 14, marginBottom: 16,
+  },
+  rejectBannerTitle: { fontSize: 13, fontWeight: '700', color: '#B3261E' },
+  rejectBannerText: { fontSize: 13, color: '#8A362F', marginTop: 3, lineHeight: 18 },
+  rejectBannerHint: { fontSize: 12, color: '#8A362F', marginTop: 6, fontWeight: '600' },
   phoneFieldWrap: { marginBottom: 16 },
   phoneInput: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border,
@@ -607,8 +1091,6 @@ const styles = StyleSheet.create({
   phoneInputInvalid: { borderColor: '#DC2626' },
   countryCode: { color: colors.primary, fontSize: 14, fontWeight: '600', paddingRight: 12, borderRightWidth: 1, borderRightColor: colors.border },
   phoneNumberInput: { flex: 1, color: colors.textPrimary, fontSize: 14, paddingHorizontal: 12, paddingVertical: 12 },
-  phoneHint: { color: colors.textSecondary, fontSize: 11, marginTop: 6 },
-  phoneHintInvalid: { color: '#DC2626' },
 
   passwordInputRow: {
     flexDirection: 'row',

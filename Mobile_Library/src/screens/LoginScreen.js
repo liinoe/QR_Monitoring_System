@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Platform,
   ActivityIndicator,
   Animated,
@@ -23,8 +22,23 @@ import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
 import { BRAND } from '../theme/brand';
 import { QLessMark, BrandPattern } from '../components/QLessLogo';
+import { useAppDialog } from '../components/AppDialog';
+
+/**
+ * LoginScreen — students log in with their CvSU email OR 9-digit student
+ * number, plus the password they set when registering.
+ *
+ *   - Errors use the QLess pop-up (AppDialog) instead of the phone's plain alert,
+ *     with helpful next steps (Create Account, Forgot Password, Try Again).
+ *   - A small side-to-side "shake" of the card also marks an error.
+ *   - The white card isn't scrollable: when the keyboard opens it slides up over
+ *     the green area, and slides back down when the keyboard closes.
+ *   - Entrance animation: the green area, card, logo and fields fade/rise in, in order.
+ */
 
 const EASE = Easing.bezier(0.4, 0, 0.2, 1); // standard "material" ease-out
+
+// Shortcut for a simple timed animation of one value.
 const timing = (value, toValue, duration, easing = EASE, native = true) =>
   Animated.timing(value, { toValue, duration, easing, useNativeDriver: native });
 
@@ -40,16 +54,36 @@ const settle = (value, toValue) =>
     useNativeDriver: true,
   });
 
+// Login accepts either a CvSU email or a 9-digit student number.
+const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
+const STUDENT_NUMBER_REGEX = /^\d{9}$/;
+
+// CvSU emails never start with a number, so if the first character is a
+// digit, treat it as a student number: keep only digits, max 9.
+// Anything starting with a letter is an email and has no limit.
+const limitStudentNumber = (value) =>
+  /^\d/.test(value) ? value.replace(/\D/g, '').slice(0, 9) : value;
+
+// True if what was typed looks like a CvSU email or a student number.
+const isValidIdentifier = (value) => CVSU_EMAIL_REGEX.test(value) || STUDENT_NUMBER_REGEX.test(value);
+
+// The Login screen itself.
 export default function LoginScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // CvSU email OR student number
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // Styled pop-up used for every login error (see components/AppDialog.js).
+  const { dialog, showDialog } = useAppDialog();
+  // Lets us put the cursor back in a field after an error.
+  const identifierRef = useRef(null);
+  const passwordRef = useRef(null);
 
   // ---- Keyboard slide-up ----
   // keyboardY is how far (negative = up) the card is lifted while typing.
@@ -64,8 +98,6 @@ export default function LoginScreen({ navigation }) {
   const badgeScale = useRef(new Animated.Value(0.85)).current;
   const badgeOpacity = useRef(new Animated.Value(0)).current;
 
-  const brandOpacity = useRef(new Animated.Value(0)).current;
-  const brandTranslateY = useRef(new Animated.Value(6)).current;
 
   const tabsOpacity = useRef(new Animated.Value(0)).current;
   const tabsTranslateY = useRef(new Animated.Value(6)).current;
@@ -87,6 +119,7 @@ export default function LoginScreen({ navigation }) {
   // Small, restrained horizontal correction used for validation / login errors.
   const cardShift = useRef(new Animated.Value(0)).current;
 
+  // Plays the entrance animation once when the screen opens.
   useEffect(() => {
     const entrance = Animated.parallel([
       timing(heroOpacity, 1, 420),
@@ -104,7 +137,6 @@ export default function LoginScreen({ navigation }) {
         Animated.parallel([timing(badgeOpacity, 1, 320), settle(badgeScale, 1)])
       ),
 
-      at(300, Animated.parallel([timing(brandOpacity, 1, 320), timing(brandTranslateY, 0, 340)])),
       at(370, Animated.parallel([timing(tabsOpacity, 1, 300), timing(tabsTranslateY, 0, 320)])),
       at(
         450,
@@ -131,11 +163,14 @@ export default function LoginScreen({ navigation }) {
     return () => entrance.stop();
   }, []);
 
+  // Slides the card up when the keyboard opens (so the fields stay visible)
+  // and back down when it closes.
   useEffect(() => {
     const cardTop = layout.heroHeight - layout.cardOverlap; // card's resting y
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
+    // Animates the card to a new height.
     const slide = (toValue, duration) =>
       Animated.timing(keyboardY, {
         toValue,
@@ -144,6 +179,7 @@ export default function LoginScreen({ navigation }) {
         useNativeDriver: true,
       }).start();
 
+    // Keyboard opened: lift the card.
     const onShow = (e) => {
       // 1) cover the green hero: move the card's top up to the status bar
       const coverHero = Math.max(0, cardTop - insets.top);
@@ -153,6 +189,7 @@ export default function LoginScreen({ navigation }) {
       const extra = Math.max(0, buttonBottomAfterCover - keyboardTop);
       slide(-(coverHero + extra), e.duration);
     };
+    // Keyboard closed: put the card back.
     const onHide = (e) => slide(0, e?.duration);
 
     const s1 = Keyboard.addListener(showEvt, onShow);
@@ -170,6 +207,7 @@ export default function LoginScreen({ navigation }) {
     extrapolate: 'clamp',
   });
 
+  // Small side-to-side shake of the card to show something went wrong.
   const runErrorCue = () => {
     cardShift.setValue(0);
     Animated.sequence([
@@ -179,18 +217,22 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   };
 
+  // Highlights the email/student-number box while it's being typed in.
   const handleEmailFocus = () => {
     setEmailFocused(true);
     timing(emailFocusAnim, 1, 180).start();
   };
+  // Removes the highlight when the box loses focus.
   const handleEmailBlur = () => {
     setEmailFocused(false);
     timing(emailFocusAnim, 0, 180).start();
   };
+  // Highlights the password box while it's being typed in.
   const handlePasswordFocus = () => {
     setPasswordFocused(true);
     timing(passwordFocusAnim, 1, 180).start();
   };
+  // Removes the password highlight.
   const handlePasswordBlur = () => {
     setPasswordFocused(false);
     timing(passwordFocusAnim, 0, 180).start();
@@ -213,6 +255,7 @@ export default function LoginScreen({ navigation }) {
     outputRange: [colors.surfaceMuted || '#F7F8F7', '#FFFFFF'],
   });
 
+  // Button shrinks a tiny bit while pressed...
   const handleButtonPressIn = () => {
     Animated.timing(buttonPressScale, {
       toValue: 0.985,
@@ -221,6 +264,7 @@ export default function LoginScreen({ navigation }) {
       useNativeDriver: true,
     }).start();
   };
+  // ...and returns to normal size when released.
   const handleButtonPressOut = () => {
     Animated.timing(buttonPressScale, {
       toValue: 1,
@@ -230,15 +274,46 @@ export default function LoginScreen({ navigation }) {
     }).start();
   };
 
+  // Puts the cursor back in the email/student number box.
+  const focusIdentifier = () => identifierRef.current?.focus();
+  // Clears the password and puts the cursor back in it.
+  const retryPassword = () => {
+    setPassword('');
+    passwordRef.current?.focus();
+  };
+
+  // "Log In" button: checks the inputs, asks the server, then opens Home.
   const handleLogin = async () => {
-    if (!email.trim()) {
+    const id = identifier.trim();
+
+    if (!id) {
       runErrorCue();
-      Alert.alert('Error', 'Please enter your school email');
+      showDialog({
+        tone: 'warning',
+        title: 'Enter Your Login',
+        message: 'Please enter your CvSU email or student number.',
+        buttons: [{ text: 'OK', style: 'primary', onPress: focusIdentifier }],
+      });
+      return;
+    }
+    if (!isValidIdentifier(id)) {
+      runErrorCue();
+      showDialog({
+        tone: 'error',
+        title: 'Check Your Login',
+        message: 'Use your CvSU email (name@cvsu.edu.ph) or your 9-digit student number.',
+        buttons: [{ text: 'Edit', style: 'primary', onPress: focusIdentifier }],
+      });
       return;
     }
     if (!password) {
       runErrorCue();
-      Alert.alert('Error', 'Please enter your password');
+      showDialog({
+        tone: 'warning',
+        title: 'Enter Your Password',
+        message: 'Please enter your password.',
+        buttons: [{ text: 'OK', style: 'primary', onPress: () => passwordRef.current?.focus() }],
+      });
       return;
     }
 
@@ -248,25 +323,54 @@ export default function LoginScreen({ navigation }) {
       const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({ identifier: id.toLowerCase(), password }),
       });
-
       const data = await response.json();
-      console.log('LOGIN RESPONSE:', response.status, data);
 
       if (!response.ok) {
         runErrorCue();
-        Alert.alert('Login Failed', data.message);
+        if (response.status === 404) {
+          // No account with that email / student number.
+          showDialog({
+            tone: 'warning',
+            title: 'Account Not Found',
+            message: data.message || 'No account matches that email or student number.',
+            buttons: [
+              { text: 'Try Again', style: 'secondary', onPress: focusIdentifier },
+              { text: 'Create Account', style: 'primary', onPress: () => navigation.navigate('Register') },
+            ],
+          });
+        } else if (response.status === 401) {
+          // Right account, wrong password.
+          showDialog({
+            tone: 'error',
+            title: 'Incorrect Password',
+            message: 'The password you entered is incorrect.',
+            buttons: [
+              { text: 'Forgot Password', style: 'secondary', onPress: () => navigation.navigate('ForgotPassword') },
+              { text: 'Try Again', style: 'primary', onPress: retryPassword },
+            ],
+          });
+        } else {
+          showDialog({ tone: 'error', title: 'Login Failed', message: data.message || 'Something went wrong. Please try again.' });
+        }
         return;
       }
 
+      // Save the student and their login pass (token) on the phone, then open Home.
+      // They stay logged in (even offline) until they log out.
       await AsyncStorage.setItem('student', JSON.stringify(data.student));
+      if (data.token) await AsyncStorage.setItem('student_token', data.token);
       navigation.replace('HomeScreen');
 
     } catch (error) {
       console.error('Network Error:', error);
       runErrorCue();
-      Alert.alert('Connection Error', 'Ensure phone and laptop are on the same Wi-Fi.');
+      showDialog({
+        tone: 'error',
+        title: "Can't Reach the Server",
+        message: 'Check that your phone and the server are on the same Wi-Fi, then try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -298,10 +402,15 @@ export default function LoginScreen({ navigation }) {
               },
             ]}
           >
+            {/* Logo with the app name and library under it */}
             <QLessMark
               tone="dark"
-              size={Math.min(LOGO_SIZE, Math.max(56, (layout.heroHeight - layout.cardOverlap - insets.top) * 0.62))}
+              size={Math.min(LOGO_SIZE, Math.max(44, layout.heroHeight - layout.cardOverlap - insets.top - 78))}
             />
+            <Text style={styles.heroTitle}>
+              <Text style={{ color: BRAND.goldLight }}>Q</Text>Less
+            </Text>
+            <Text style={styles.heroCaption}>Ladislao N. Diwa Memorial Library</Text>
           </Animated.View>
         </Animated.View>
 
@@ -318,19 +427,6 @@ export default function LoginScreen({ navigation }) {
           }}
         >
           <View style={[styles.card, styles.cardContent, { paddingHorizontal: layout.cardPadding }]}>
-            <Animated.View
-              style={[
-                styles.brandBlock,
-                { opacity: brandOpacity, transform: [{ translateY: brandTranslateY }] },
-              ]}
-            >
-              <Text style={styles.title}>
-                <Text style={{ color: BRAND.gold }}>Q</Text>
-                <Text style={{ color: BRAND.green }}>Less</Text>
-              </Text>
-              <Text style={styles.subtitle}>Library App</Text>
-            </Animated.View>
-
             {/* TAB SWITCHER */}
             <Animated.View
               style={[
@@ -359,7 +455,7 @@ export default function LoginScreen({ navigation }) {
                   transform: [{ translateY: emailFieldTranslateY }],
                 }}
               >
-                <Text style={styles.fieldLabel}>E-mail Address</Text>
+                <Text style={styles.fieldLabel}>Email or Student Number</Text>
                 <Animated.View
                   style={[
                     styles.inputRow,
@@ -367,19 +463,22 @@ export default function LoginScreen({ navigation }) {
                   ]}
                 >
                   <Ionicons
-                    name="mail-outline"
+                    name="person-outline"
                     size={17}
                     color={emailFocused ? colors.primary : colors.textSecondary}
                     style={styles.inputIcon}
                   />
                   <TextInput
+                    ref={identifierRef}
                     style={styles.input}
-                    placeholder="name@cvsu.edu.ph"
+                    placeholder="name@cvsu.edu.ph or 202300001"
                     placeholderTextColor={colors.gray}
-                    keyboardType="email-address"
                     autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    value={identifier}
+                    onChangeText={(v) => setIdentifier(limitStudentNumber(v))}
                     onFocus={handleEmailFocus}
                     onBlur={handleEmailBlur}
                   />
@@ -408,6 +507,9 @@ export default function LoginScreen({ navigation }) {
                     style={styles.inputIcon}
                   />
                   <TextInput
+                    ref={passwordRef}
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
                     style={styles.input}
                     placeholder="••••••••"
                     placeholderTextColor={colors.gray}
@@ -468,11 +570,14 @@ export default function LoginScreen({ navigation }) {
       </View>
       </TouchableWithoutFeedback>
 
+
+      {/* Styled pop-up for login errors */}
+      {dialog}
     </View>
   );
 }
 
-const LOGO_SIZE = 80;
+const LOGO_SIZE = 76; // biggest the logo gets in the green header
 
 const styles = StyleSheet.create({
   // White root so nothing grey peeks out below the card while it's lifted.
@@ -492,6 +597,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // "QLess" and the library name under the logo (in the green header)
+  heroTitle: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: 0.5, marginTop: 8 },
+  heroCaption: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 3 },
+
   heroLogoWrap: {
     position: 'absolute',
     left: 0,
@@ -500,7 +609,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  brandBlock: { alignItems: 'center', marginBottom: 30 },
   title: {
     fontSize: 24,
     fontWeight: '700',

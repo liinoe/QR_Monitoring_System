@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from "react";
 
-const ReasonModal = ({ visible, title, actionLabel, actionColor, presetReasons, onConfirm, onCancel }) => {
+// Colors per pop-up type: "red" for Reject, "gold" for Deactivate.
+const TONES = {
+  red: { fg: "#B3261E", bg: "#FBDFDB", btn: "bg-[#B3261E] hover:bg-[#9a2019]" },
+  gold: { fg: "#946800", bg: "#FBF1CE", btn: "bg-[#946800] hover:bg-[#7a5600]" },
+};
+
+// Pop-up where the admin picks (or types) a reason for rejecting or deactivating.
+// The reason is shown to the student in the mobile app.
+//   tone           "red" | "gold"
+//   presetReasons  list of ready-made reasons; "Other (specify below)" clears the box
+//   onConfirm(reason) / onCancel()
+const ReasonModal = ({ visible, title, actionLabel, tone = "red", presetReasons, onConfirm, onCancel }) => {
   const [selectedPreset, setSelectedPreset] = useState("");
   const [reasonText, setReasonText] = useState("");
+  const t = TONES[tone] || TONES.red;
 
-  // Reset every time the modal opens for a new item
+  // Starts fresh every time the pop-up opens for a new student.
   useEffect(() => {
     if (visible) {
       setSelectedPreset("");
@@ -14,45 +26,58 @@ const ReasonModal = ({ visible, title, actionLabel, actionColor, presetReasons, 
 
   if (!visible) return null;
 
+  // Picking a preset fills the box (still editable); "Other" empties it for typing.
   const handlePresetSelect = (preset) => {
     setSelectedPreset(preset);
-    // "Other" clears the box for custom typing; any real preset pre-fills
-    // it but stays editable, per the requirement that admins can pick a
-    // reason OR type their own.
     setReasonText(preset === "Other (specify below)" ? "" : preset);
   };
 
+  // "Confirm": only works when there's a reason.
   const handleConfirm = () => {
     if (!reasonText.trim()) return;
     onConfirm(reasonText.trim());
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-[14px] w-full max-w-[480px] p-6 shadow-xl">
-        <h2 className="text-lg font-bold text-gray-800 mb-1">{title}</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          This reason will be shown to the student in their app.
-        </p>
-
-        <div className="space-y-2 mb-4">
-          {presetReasons.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => handlePresetSelect(preset)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
-                selectedPreset === preset
-                  ? "bg-[#F3FAF3] border-[#1B651B] text-[#1B651B] font-medium"
-                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {preset}
-            </button>
-          ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-[#071A0F]/40 backdrop-blur-sm">
+      <div className="w-full max-w-[480px] bg-white rounded-[24px] shadow-2xl p-7">
+        {/* Icon + title */}
+        <div className="flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: t.bg, color: t.fg }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <h2 className="text-[19px] font-bold text-gray-900">{title}</h2>
+          <p className="text-sm text-gray-500 mt-1.5">This reason will be shown to the student in their app.</p>
         </div>
 
-        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+        {/* Ready-made reasons (radio-style) */}
+        <div className="space-y-2 mt-5">
+          {presetReasons.map((preset) => {
+            const active = selectedPreset === preset;
+            return (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => handlePresetSelect(preset)}
+                className={`w-full flex items-center gap-3 text-left px-4 py-3 rounded-[14px] text-sm border-2 transition-colors ${
+                  active ? "border-[#1B5E20] bg-[#E8F1E9] text-[#1B5E20] font-semibold" : "border-[#ECEFEC] text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${active ? "border-[#1B5E20]" : "border-gray-300"}`}>
+                  {active && <span className="w-2 h-2 rounded-full bg-[#1B5E20]" />}
+                </span>
+                {preset}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Editable reason */}
+        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] mt-5 mb-1.5 ml-1">
           Reason (editable)
         </label>
         <textarea
@@ -60,22 +85,23 @@ const ReasonModal = ({ visible, title, actionLabel, actionColor, presetReasons, 
           onChange={(e) => setReasonText(e.target.value)}
           rows={3}
           placeholder="Type or edit the reason here..."
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="w-full bg-white border border-[#E3E7E3] rounded-[14px] px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 resize-none outline-none focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10"
         />
 
-        <div className="flex gap-2 mt-5">
+        {/* Buttons */}
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onCancel}
+            className="flex-1 bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] py-3 rounded-[12px] text-sm font-semibold transition-colors"
+          >
+            Cancel
+          </button>
           <button
             onClick={handleConfirm}
             disabled={!reasonText.trim()}
-            className={`flex-1 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${actionColor}`}
+            className={`flex-1 text-white py-3 rounded-[12px] text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${t.btn}`}
           >
             {actionLabel}
-          </button>
-          <button
-            onClick={onCancel}
-            className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200"
-          >
-            Cancel
           </button>
         </div>
       </div>
