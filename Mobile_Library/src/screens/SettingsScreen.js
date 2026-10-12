@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { API_URL } from '../config';
+import { authHeaders } from '../utils/studentAuth';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessTile, ScanFrame } from '../components/QLessLogo';
@@ -91,7 +92,7 @@ export default function SettingsScreen({ navigation }) {
         const stored = await AsyncStorage.getItem('student');
         if (!stored) return;
         const student = JSON.parse(stored);
-        const res = await fetch(`${API_URL}/api/student/profile/${student.student_number}`);
+        const res = await fetch(`${API_URL}/api/student/profile/${student.student_number}`, { headers: await authHeaders() });
         if (res.ok) setStudentData(await res.json());
       } catch (err) {
         console.error('Error loading profile for settings:', err);

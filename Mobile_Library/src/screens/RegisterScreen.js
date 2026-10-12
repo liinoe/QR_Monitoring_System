@@ -20,6 +20,7 @@ import StepIndicator from '../components/StepIndicator';
 import DropdownField from '../components/DropdownField';
 import { colleges, programsByCollege, yearLevels, sexOptions } from '../data/options';
 import { API_URL } from '../config';
+import { authHeaders } from '../utils/studentAuth';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { useAppDialog } from '../components/AppDialog';
@@ -215,7 +216,7 @@ export default function RegisterScreen({ navigation, route }) {
         const stored = await AsyncStorage.getItem('student');
         if (!stored) return;
         const { student_number } = JSON.parse(stored);
-        const res = await fetch(`${API_URL}/api/student/profile/${student_number}`);
+        const res = await fetch(`${API_URL}/api/student/profile/${student_number}`, { headers: await authHeaders() });
         if (!res.ok) throw new Error();
         const p = await res.json();
         const sexLabel = Object.keys(sexLabelToValue).find((label) => sexLabelToValue[label] === p.sex) || '';
@@ -464,7 +465,8 @@ export default function RegisterScreen({ navigation, route }) {
     }
   };
 
-  // Sends a RENEWAL (academic info only) to the server, then goes back to Login.
+  // Sends a RENEWAL (academic info only) to the server, then goes back to Home
+  // (the student stays logged in and sees their new "pending" status).
   const submitRenewal = async () => {
     try {
       const payload = {
@@ -488,7 +490,7 @@ export default function RegisterScreen({ navigation, route }) {
           tone: 'success',
           title: 'Renewal Submitted',
           message: result.message || 'Please wait for admin approval.',
-          buttons: [{ text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') }],
+          buttons: [{ text: 'Back to Home', style: 'primary', onPress: () => navigation.navigate('HomeScreen') }],
         });
       } else {
         showAfterReview({ tone: 'error', title: 'Renewal Error', message: result.message || 'Submission failed' });
@@ -501,7 +503,7 @@ export default function RegisterScreen({ navigation, route }) {
   };
 
   // Sends the corrected form for a REJECTED registration (PUT = replace it),
-  // confirmed with the student's current password, then goes back to Login.
+  // sent with the student's login pass, then goes back to Home (still logged in).
   const submitResubmit = async () => {
     try {
       const payload = {
@@ -534,7 +536,7 @@ export default function RegisterScreen({ navigation, route }) {
           tone: 'success',
           title: 'Registration Resubmitted',
           message: result.message || 'Please wait for admin approval.',
-          buttons: [{ text: 'Go to Login', style: 'primary', onPress: () => navigation.replace('Login') }],
+          buttons: [{ text: 'Back to Home', style: 'primary', onPress: () => navigation.navigate('HomeScreen') }],
         });
       } else if (response.status === 401 || response.status === 403) {
         // No/expired login pass (e.g. logged in before this update): log in once more.
@@ -567,8 +569,12 @@ export default function RegisterScreen({ navigation, route }) {
     else submitRegistration();
   };
 
-  // "Cancel" button: goes back to the Login screen.
-  const cancel = () => navigation?.navigate?.('Login');
+  // "Cancel" button: renewal / resubmit go back to Home (still logged in);
+  // a new registration goes back to the Login screen.
+  const cancel = () => {
+    if ((isRenewal || isResubmit) && navigation?.canGoBack?.()) navigation.goBack();
+    else navigation?.navigate?.('Login');
+  };
 
   // Step numbers: new registration = Personal 1, Academic 2, Account 3, Review 4.
   // Renewal = Academic 1, Review 2.

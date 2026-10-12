@@ -47,6 +47,9 @@ const RegistrationItem = ({
 
     if (status === "rejected") return <Note>Awaiting student resubmission</Note>;
 
+    // Pending from an earlier semester that nobody answered.
+    if (status === "not reviewed") return <Note>From an earlier semester</Note>;
+
     // Semester ended: the student renews when the next semester starts.
     if (status === "expired") return <Note>Renews next semester</Note>;
 

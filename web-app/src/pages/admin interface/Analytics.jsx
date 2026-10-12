@@ -121,9 +121,38 @@ const previousSemesterKey = (key) => {
   return `${ayStart}-2nd`;
 };
 
+// ---- Academic calendar (Settings) ----
+// Once the Super Admin has added semesters, the "Semester" filter uses their REAL
+// dates (same as the mobile app). Keys look like "cal-12" (semester_id 12).
+// If no semester has been added yet, the fixed months above are used instead.
+const CAL_TERM_NAMES = { '1st': '1st Semester', '2nd': '2nd Semester', Midyear: 'Midyear' };
+// "2026-10-12" → Date at local midnight.
+const ymdDate = (s) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+// First moment and last moment of a calendar semester.
+const calRange = (s) => {
+  const end = ymdDate(s.end_date);
+  end.setHours(23, 59, 59);
+  return { start: ymdDate(s.start_date), end };
+};
+// Calendar semesters that have already started, newest first (the dropdown choices).
+const startedSemesters = (sems) =>
+  sems.filter((s) => ymdDate(s.start_date) <= new Date()).sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
+// The calendar semester a date falls in (null if it's during a break).
+const calSemesterForDate = (sems, date) =>
+  sems.find((s) => {
+    const r = calRange(s);
+    return date >= r.start && date <= r.end;
+  }) || null;
+// Finds a calendar semester by its key ("cal-12").
+const findCal = (sems, key) => sems.find((s) => `cal-${s.semester_id}` === key);
+// A range with no days (used when there is no previous semester to compare with).
+const EMPTY_RANGE = { start: new Date(0), end: new Date(0) };
+
 // "Last 7 Days" = today + the 6 days before it (rolling). Admin-only view.
-// The mobile app's Peak Hours card matches the "Semester" tab instead
-// (backend: currentSemester in index.js).
+// The mobile app's stats match the "Semester" tab (backend: reportingSemester in index.js).
 const WEEK = "Last 7 Days";
 const PERIOD_TYPES = [WEEK, "Month", "Semester", "Year"];
 
@@ -147,28 +176,50 @@ const rollingWeekLabel = (value) => {
 };
 
 // Which period (week/month/semester/year) a date belongs to.
-const getPeriodKeyForDate = (periodType, date) => {
+//   sems = semesters from the academic calendar (may be empty)
+const getPeriodKeyForDate = (periodType, date, sems = []) => {
   if (periodType === WEEK) return LAST7;
   if (periodType === "Month") return monthKey(date);
   if (periodType === "Year") return String(date.getFullYear());
+  if (sems.length > 0) {
+    const s = calSemesterForDate(sems, date);
+    return s ? `cal-${s.semester_id}` : null;
+  }
   return semesterKey(date);
 };
 // Start and end dates of the selected period.
-const getPeriodRange = (periodType, value) => {
+const getPeriodRange = (periodType, value, sems = []) => {
+  if (!value) return EMPTY_RANGE;
+  if (value.startsWith("cal-")) {
+    const s = findCal(sems, value);
+    return s ? calRange(s) : EMPTY_RANGE;
+  }
   if (periodType === WEEK) return rollingWeekRange(value);
   if (periodType === "Month") return monthRange(value);
   if (periodType === "Year") return yearRange(value);
   return semesterRange(value);
 };
 // Readable name of the selected period for the dropdown and titles.
-const getPeriodLabel = (periodType, value) => {
+const getPeriodLabel = (periodType, value, sems = []) => {
+  if (!value) return "—";
+  if (value.startsWith("cal-")) {
+    const s = findCal(sems, value);
+    return s ? `AY ${s.ay_start}-${s.ay_start + 1} • ${CAL_TERM_NAMES[s.term] || s.term}` : "—";
+  }
   if (periodType === WEEK) return rollingWeekLabel(value);
   if (periodType === "Month") return monthLabel(value);
   if (periodType === "Year") return `Year ${value}`;
   return semesterLabel(value);
 };
 // The period just before the selected one (for the ↑/↓ comparisons).
-const getPreviousPeriodValue = (periodType, value) => {
+const getPreviousPeriodValue = (periodType, value, sems = []) => {
+  if (!value) return null;
+  if (value.startsWith("cal-")) {
+    // The calendar semester that started just before this one (null if none).
+    const ordered = [...sems].sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+    const i = ordered.findIndex((s) => `cal-${s.semester_id}` === value);
+    return i > 0 ? `cal-${ordered[i - 1].semester_id}` : null;
+  }
   if (periodType === WEEK) return PREV7;
   if (periodType === "Month") {
     const [y, m] = value.split('-').map(Number);
@@ -203,6 +254,15 @@ const Analytics = () => {
   const [guestLogs, setGuestLogs] = useState([]);
   const [periodType, setPeriodType] = useState("Month");
   const [selectedPeriod, setSelectedPeriod] = useState(monthKey(new Date()));
+  const [semesters, setSemesters] = useState([]); // academic calendar from Settings
+
+  // Loads the academic calendar once (for the "Semester" filter).
+  useEffect(() => {
+    authFetch(`${API_URL}/api/semesters`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setSemesters(Array.isArray(data) ? data : []))
+      .catch(() => setSemesters([])); // offline → fixed-month semesters
+  }, []);
 
 // Loads every student entry/exit log from the server.
   const fetchLogs = async () => {
@@ -241,6 +301,11 @@ const Analytics = () => {
   // plus the current one so it's always selectable even before any visits.
   const availablePeriods = useMemo(() => {
     if (periodType === WEEK) return [LAST7];
+    // Semester with a calendar: every semester that has started, newest first
+    // (so the current one is always first and selected by default).
+    if (periodType === "Semester" && startedSemesters(semesters).length > 0) {
+      return startedSemesters(semesters).map((s) => `cal-${s.semester_id}`);
+    }
     const set = new Set([getPeriodKeyForDate(periodType, new Date())]);
     [...logs, ...guestLogs].forEach(l => {
       if (!l.visit_date) return;
@@ -249,7 +314,7 @@ const Analytics = () => {
       set.add(getPeriodKeyForDate(periodType, d));
     });
     return Array.from(set).sort().reverse();
-  }, [logs, guestLogs, periodType]);
+  }, [logs, guestLogs, periodType, semesters]);
 
   // Snap to the most recent available period whenever the period TYPE changes
   // (e.g. switching from Month to Semester shouldn't keep a month-shaped value).
@@ -259,7 +324,7 @@ const Analytics = () => {
   }, [periodType, availablePeriods]);
 
 // Start/end dates of the period picked in the filter.
-  const periodRange = useMemo(() => getPeriodRange(periodType, selectedPeriod), [periodType, selectedPeriod]);
+  const periodRange = useMemo(() => getPeriodRange(periodType, selectedPeriod, semesters), [periodType, selectedPeriod, semesters]);
 
   // Wording for card subtitles: "this month" / "in the last 7 days", etc.
   const periodPhrase = periodType === WEEK ? "in the last 7 days" : `this ${periodType.toLowerCase()}`;
@@ -297,9 +362,9 @@ const Analytics = () => {
   const avgDailyVisits = daysElapsed > 0 ? (totalVisits / daysElapsed).toFixed(1) : "0.0";
 
   // vs previous period trend
-  const previousPeriodValue = getPreviousPeriodValue(periodType, selectedPeriod);
+  const previousPeriodValue = getPreviousPeriodValue(periodType, selectedPeriod, semesters);
 // Start/end dates of the previous period (for comparisons).
-  const previousPeriodRange = useMemo(() => getPeriodRange(periodType, previousPeriodValue), [periodType, previousPeriodValue]);
+  const previousPeriodRange = useMemo(() => getPeriodRange(periodType, previousPeriodValue, semesters), [periodType, previousPeriodValue, semesters]);
 // All student + guest logs in the previous period.
   const combinedPreviousPeriodEntries = useMemo(() => {
     // True if a log's visit date is inside the previous period.
@@ -314,7 +379,10 @@ const Analytics = () => {
     ? Math.round(((totalVisits - combinedPreviousPeriodEntries.length) / combinedPreviousPeriodEntries.length) * 100)
     : null;
 
-  const previousPeriodLabel = getPeriodLabel(periodType, previousPeriodValue).split(' • ')[0];
+  // Short name of the previous period for "vs …" (calendar semesters: "1st Semester", since
+  // two semesters can share the same academic year; others: the part before "•").
+  const previousPeriodParts = getPeriodLabel(periodType, previousPeriodValue, semesters).split(' • ');
+  const previousPeriodLabel = previousPeriodValue?.startsWith("cal-") ? previousPeriodParts[1] : previousPeriodParts[0];
 
   // KPI: Peak hour (best 2-hour window) & busiest weekdays (students + guests)
   const { peakLabel, busiestDaysLabel } = useMemo(() => {
@@ -563,7 +631,7 @@ const Analytics = () => {
                 <FilterTabs options={PERIOD_TYPES} value={periodType} onChange={setPeriodType} />
                 <FilterSelect value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
                   {availablePeriods.map((p) => (
-                    <option key={p} value={p}>{getPeriodLabel(periodType, p)}</option>
+                    <option key={p} value={p}>{getPeriodLabel(periodType, p, semesters)}</option>
                   ))}
                 </FilterSelect>
               </>
@@ -572,7 +640,7 @@ const Analytics = () => {
 
           {/* KPI CARDS */}
           <div>
-            <SectionLabel>{getPeriodLabel(periodType, selectedPeriod)}</SectionLabel>
+            <SectionLabel>{getPeriodLabel(periodType, selectedPeriod, semesters)}</SectionLabel>
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
               <KpiCard
                 label={`Total Visits (${periodShort})`}

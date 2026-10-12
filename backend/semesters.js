@@ -139,6 +139,45 @@ module.exports = function registerSemesterRoutes(app, { db, verifyToken, require
                 // the semester that's running now), nobody has to renew.
                 const isSamePeriod = previousPeriod === due.name;
 
+                // Students approved (or who registered) DURING the break were filed under the
+                // old semester's name, because no new semester existed yet. Move them to this
+                // semester so they aren't asked to renew right after being approved.
+                if (!isSamePeriod) {
+                    const [[gap]] = await conn.query(
+                        `SELECT DATE_FORMAT(MAX(end_date), '%Y-%m-%d') AS last_end
+                         FROM semesters WHERE status = 'ended' AND end_date < ?`,
+                        [due.start_date]
+                    );
+                    if (gap && gap.last_end) {
+                        const breakStart = `${gap.last_end} 23:59:59`; // end of the last semester's final day
+                        // Approved during the break → count them for this semester.
+                        await conn.query(
+                            `UPDATE students s SET s.registered_period = ?
+                             WHERE s.status = 'approved' AND EXISTS (
+                                 SELECT 1 FROM registration_requests r
+                                 WHERE r.student_number = s.student_number
+                                   AND r.approval_status = 'approved' AND r.approved_at > ?)`,
+                            [due.name, breakStart]
+                        );
+                        await conn.query(
+                            `UPDATE registration_requests SET period = ? WHERE approval_status = 'approved' AND approved_at > ?`,
+                            [due.name, breakStart]
+                        );
+                        // Sent during the break and still waiting for review → this semester's queue.
+                        await conn.query(
+                            `UPDATE registration_requests SET period = ? WHERE approval_status = 'pending' AND created_at > ?`,
+                            [due.name, breakStart]
+                        );
+                        await conn.query(
+                            `UPDATE students SET registered_period = ?
+                             WHERE status = 'pending' AND student_number IN (
+                                 SELECT student_number FROM registration_requests
+                                 WHERE approval_status = 'pending' AND period = ?)`,
+                            [due.name, due.name]
+                        );
+                    }
+                }
+
                 // Students from an earlier period (expired, or still approved if there was
                 // no gap) now need to renew for this semester.
                 const [toRenew] = isSamePeriod ? [[]] : await conn.query(
@@ -244,6 +283,17 @@ module.exports = function registerSemesterRoutes(app, { db, verifyToken, require
                 undo: await findUndoableEnd(),
                 semesters,
             });
+        } catch (err) {
+            res.status(500).json({ message: err.message });
+        }
+    });
+
+    // GET /api/semesters → the academic calendar (read-only) for any signed-in admin.
+    // Used by the Analytics "Semester" filter, so staff (not only the super admin) see real semester dates.
+    app.get('/api/semesters', verifyToken, async (req, res) => {
+        try {
+            const [semesters] = await db.query(`SELECT ${SEMESTER_COLUMNS} FROM semesters ORDER BY start_date`);
+            res.json(semesters);
         } catch (err) {
             res.status(500).json({ message: err.message });
         }

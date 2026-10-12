@@ -20,8 +20,10 @@ const CHANGE_CHECK_MS = 5000;
 
 const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 
-// "Expired" = approved last semester, pass ended with the semester (renews next semester).
-const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected", "Expired", "Deactivated"];
+// Status tabs. Students whose pass ended with the semester ("Semester Ended") and old
+// requests nobody answered ("Not Reviewed") have no action to take, so they only
+// appear under "All".
+const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected", "Deactivated"];
 
 // Reasons the admin can pick when rejecting. The chosen text is shown to the
 // student in the mobile app, so keep them short and clear.
@@ -47,7 +49,7 @@ const Registrations = () => {
   const [loading, setLoading] = useState(true);
   const [currentPeriod, setCurrentPeriod] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Pending");
+  const [statusFilter, setStatusFilter] = useState("Pending"); // Pending is always the opening tab
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -274,8 +276,26 @@ const Registrations = () => {
         (r.approval_status === "approved" || r.approval_status === "expired")
     );
 
+  // The status we show and filter by. Adds states the database doesn't store:
+  //   "not reviewed"     pending from an earlier semester (nobody answered it)
+  //   "pending renewal"  renewal for this semester (Approve / Reject show once the student submits)
+  //   "pending"          new registration
+  const statusOf = (req) => {
+    if (!req || req.approval_status !== "pending") return req?.approval_status;
+    if (req.period !== currentPeriod) return "not reviewed";
+    return isRenewalRequest(req) ? "pending renewal" : "pending";
+  };
+
+  // How many are waiting in each tab (the small numbers on the tabs).
+  const actionCounts = {
+    Pending: latestRequestsList.filter((r) => statusOf(r) === "pending").length,
+    "Pending Renewal": latestRequestsList.filter((r) => statusOf(r) === "pending renewal").length,
+  };
+
+
   // Applies the search box, status tab and college filter, then sorts
-  // first-come-first-served (oldest submission first), like a registrar queue.
+  // first-come-first-served (oldest submission first), like a registrar queue,
+  // with renewals still waiting for the student at the bottom.
   const filteredRequests = latestRequestsList
     .filter((req) => {
       const term = searchTerm.toLowerCase();
@@ -283,8 +303,7 @@ const Registrations = () => {
         (req.full_name || "").toLowerCase().includes(term) ||
         (req.student_number || "").includes(searchTerm);
 
-      const isRenewal = isRenewalRequest(req);
-      const effectiveStatus = (req.approval_status === "pending" && isRenewal) ? "pending renewal" : req.approval_status;
+      const effectiveStatus = statusOf(req);
 
       const matchesStatus =
         statusFilter === "All" || effectiveStatus === statusFilter.toLowerCase();
@@ -294,7 +313,23 @@ const Registrations = () => {
 
       return matchesSearch && matchesStatus && matchesCollege;
     })
-    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    .sort((a, b) => {
+      // Rejected tab: this semester's rejections first, then earlier semesters;
+      // newest first in each group (it's a history list, not a queue to work through).
+      if (statusFilter === "Rejected") {
+        const aOld = a.period !== currentPeriod;
+        const bOld = b.period !== currentPeriod;
+        if (aOld !== bOld) return aOld ? 1 : -1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      }
+      // Renewals the student hasn't submitted yet (no academic info) can't be
+      // approved, so they go below the ones that are ready.
+      const aWaiting = statusOf(a) === "pending renewal" && !a.college;
+      const bWaiting = statusOf(b) === "pending renewal" && !b.college;
+      if (aWaiting !== bWaiting) return aWaiting ? 1 : -1;
+      // Otherwise first come, first served (submitting a renewal updates created_at).
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
 
   // Go back to page 1 whenever a filter changes, so results aren't hidden on a later page.
   useEffect(() => {
@@ -378,7 +413,7 @@ const Registrations = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
 
-            <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
+            <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} counts={actionCounts} />
 
             <FilterSelect value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)}>
               <option value="All Colleges">All Colleges</option>
@@ -407,22 +442,18 @@ const Registrations = () => {
                   ) : filteredRequests.length === 0 ? (
                     <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-400">No registrations match your filters.</td></tr>
                   ) : (
-                    paginatedRequests.map((req) => {
+                    paginatedRequests.map((req, i) => {
                       const latest = latestRequestByStudent[req.student_number];
+                      // Rejected tab: small "This semester" / "Earlier semesters" heading
+                      // above the first row of each group (and at the top of every page).
+                      const isOld = req.period !== currentPeriod;
+                      const showGroupHeading =
+                        statusFilter === "Rejected" &&
+                        (i === 0 || (paginatedRequests[i - 1].period !== currentPeriod) !== isOld);
                       const isLatest = latest?.request_id === req.request_id;
 
-                      const isRenewal = isRenewalRequest(req);
-
-                      // Label shown in the Status column. A pending request from an
-                      // older semester was never acted on, so it's shown as expired.
-                      let displayStatus = req.approval_status;
-                      if (req.approval_status === "pending") {
-                        if (req.period === currentPeriod) {
-                          displayStatus = isRenewal ? "pending renewal" : "pending";
-                        } else {
-                          displayStatus = "expired / unapproved";
-                        }
-                      }
+                      // Label shown in the Status column (see statusOf above).
+                      const displayStatus = statusOf(req);
 
                       // "Juan D. Dela Cruz" style name (falls back to full_name for old records).
                       const displayName = req.first_name && req.surname
@@ -432,8 +463,15 @@ const Registrations = () => {
                         : req.full_name;
 
                       return (
+                        <React.Fragment key={req.request_id}>
+                        {showGroupHeading && (
+                          <tr className="bg-[#F7F8F7]">
+                            <td colSpan={5} className="px-5 py-2 text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500">
+                              {isOld ? "Earlier semesters" : `This semester · ${currentPeriod}`}
+                            </td>
+                          </tr>
+                        )}
                         <RegistrationItem
-                          key={req.request_id}
                           studentNumber={req.student_number}
                           name={displayName}
                           email={req.email}
@@ -442,13 +480,14 @@ const Registrations = () => {
                           period={req.period}
                           status={displayStatus}
                           isLatest={isLatest}
-                          currentStatus={latest?.approval_status === 'pending' && isRenewal ? 'pending renewal' : latest?.approval_status}
+                          currentStatus={statusOf(latest)}
                           onRowClick={() => setSelectedRequest(req)}
                           onApprove={() => handleApprove(req.request_id)}
                           onReject={() => openReject(req.request_id)}
                           onDeactivate={() => openDeactivate(req.request_id, req.student_number)}
                           onReactivate={() => setToReactivate({ id: req.request_id, studentNumber: req.student_number })}
                         />
+                        </React.Fragment>
                       );
                     })
                   )}

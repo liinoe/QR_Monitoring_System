@@ -18,6 +18,7 @@ import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessMark, ScanFrame, BrandPattern } from '../components/QLessLogo';
 import { getRejectionGuide } from '../utils/rejection';
+import { authHeaders, clearSavedLogin } from '../utils/studentAuth';
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -223,13 +224,20 @@ export default function HomeScreen({ navigation }) {
 
       const response = await fetch(
         `${API_URL}/api/student/profile/${student.student_number}`,
-        { signal: controller.signal }
+        { signal: controller.signal, headers: await authHeaders() }
       );
+
+      if (response.status === 401 || response.status === 403) {
+        // Login pass missing or expired: log in again.
+        await clearSavedLogin();
+        navigation.replace('Login');
+        return;
+      }
 
       if (response.status === 404) {
         setStudentData(null);
         await AsyncStorage.removeItem('cached_profile');
-      } else {
+      } else if (response.ok) {
         const data = await response.json();
         setStudentData(data);
         // Cached so the QR pass — which is static and doesn't need a live
@@ -252,7 +260,8 @@ export default function HomeScreen({ navigation }) {
       const student = JSON.parse(storedStudent);
 
       const response = await fetch(
-        `${API_URL}/api/student/analytics/${student.student_number}`
+        `${API_URL}/api/student/analytics/${student.student_number}`,
+        { headers: await authHeaders() }
       );
       if (response.ok) {
         const data = await response.json();
@@ -327,6 +336,17 @@ export default function HomeScreen({ navigation }) {
       unsubscribeNetInfo();
     };
   }, []);
+
+  // Coming back to Home (e.g. after Renew or Register Again): refresh right away
+  // so the new "pending" status shows without waiting for the 10-second refresh.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchProfileData(false);
+      fetchCurrentPeriod();
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
 
   const isApproved = studentData?.status === 'approved';
   const isRejected = studentData?.status === 'rejected';

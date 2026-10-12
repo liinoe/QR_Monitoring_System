@@ -1578,8 +1578,13 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
 });
 
 // Returns one student's profile for the mobile app (without the password).
-app.get('/api/student/profile/:student_number', async (req, res) => {
+// Needs the student's login pass, and only their OWN profile can be read:
+// it contains the QR code, phone number and address.
+app.get('/api/student/profile/:student_number', verifyStudentToken, async (req, res) => {
     const { student_number } = req.params;
+    if (req.student.student_number !== student_number) {
+        return res.status(403).json({ message: "You can only view your own profile." });
+    }
 
     try {
         const [students] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
@@ -1735,7 +1740,9 @@ app.get('/api/guests/live-count', async (req, res) => {
 // REPORTING PERIODS — shared by the mobile app and mirrored in the web
 // Analytics page (Analytics.jsx: semesterInfo / semesterRange, "Semester" tab).
 // Keep both sides identical so the numbers always match.
-//   Semester: 1st Sem = Aug–Dec, 2nd Sem = Jan–May, Midyear = Jun–Jul
+//   The mobile stats use the real dates from the academic calendar
+//   (reportingSemester below). These fixed months are only the fallback when no
+//   semesters have been added yet: 1st Sem = Aug–Dec, 2nd Sem = Jan–May, Midyear = Jun–Jul.
 // Ranges are [start, endExclusive) on visit_date.
 // ---------------------------------------------------------------------------
 const SEM_SHORT_NAMES = { '1st': '1st Sem', '2nd': '2nd Sem', 'Summer': 'Midyear' };
@@ -1759,17 +1766,60 @@ function currentSemester(date = new Date()) {
     return { start, endExclusive, label: `${SEM_SHORT_NAMES[sem]} · AY ${ayStart}–${ayStart + 1}` };
 }
 
+// "2026-10-12" → a Date at local midnight (no timezone shift).
+const ymdToDate = (ymd) => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, d);
+};
+const TERM_SHORT_NAMES = { '1st': '1st Sem', '2nd': '2nd Sem', 'Midyear': 'Midyear' };
+
+// The semester the mobile stats should cover, taken from the academic calendar
+// in Settings (the real start/end dates), so it always matches the current period:
+//   1) the semester running today, or
+//   2) during a break, the semester that just ended (so stats don't go blank).
+// Falls back to the fixed months above if no semesters have been added yet.
+async function reportingSemester(date = new Date()) {
+    try {
+        const [rows] = await db.query(
+            `SELECT term, ay_start, status,
+                    DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+                    DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
+             FROM semesters
+             WHERE status = 'active' OR (status = 'ended' AND start_date <= CURDATE())
+             ORDER BY (status = 'active') DESC, start_date DESC
+             LIMIT 1`
+        );
+        if (rows.length > 0) {
+            const sem = rows[0];
+            const start = ymdToDate(sem.start_date);
+            const endExclusive = ymdToDate(sem.end_date);
+            endExclusive.setDate(endExclusive.getDate() + 1); // include the last day
+            return {
+                start,
+                endExclusive,
+                label: `${TERM_SHORT_NAMES[sem.term] || sem.term} · AY ${sem.ay_start}–${sem.ay_start + 1}`,
+            };
+        }
+    } catch (err) {
+        console.error('reportingSemester error:', err.message); // semesters table missing → use fixed months
+    }
+    return currentSemester(date);
+}
+
 // STUDENT PERSONAL ANALYTICS (for the mobile app home screen)
 // Total visits, the activity chart, frequent day and average stay all cover
 // the CURRENT SEMESTER only (matches the semester renewal cycle).
 // current_occupancy is live (everyone inside right now).
-app.get('/api/student/analytics/:student_number', async (req, res) => {
+app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req, res) => {
     const { student_number } = req.params;
+    if (req.student.student_number !== student_number) {
+        return res.status(403).json({ message: "You can only view your own analytics." });
+    }
     try {
         const [students] = await db.query('SELECT user_id FROM students WHERE student_number = ?', [student_number]);
         if (students.length === 0) return res.status(404).json({ message: 'Student not found.' });
         const user_id = students[0].user_id;
-        const semester = currentSemester();
+        const semester = await reportingSemester();
 
         const [myLogs] = await db.query(
             `SELECT time_in, time_out, visit_date, forced_exit FROM student_logs
@@ -1860,7 +1910,7 @@ const PEAK_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 app.get('/api/library/peak-hours', async (req, res) => {
     try {
         const now = new Date();
-        const period = currentSemester(now);
+        const period = await reportingSemester(now);
 
         const [studentRows] = await db.query(
             'SELECT time_in, time_out FROM student_logs WHERE visit_date >= ? AND visit_date < ?',
@@ -1893,7 +1943,9 @@ app.get('/api/library/peak-hours', async (req, res) => {
         const hasData = bestCount > 0;
 
         // Days elapsed in the semester so far — same divisor the web's "Avg. Daily Visits" uses.
-        const daysElapsed = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - period.start) / 86400000) + 1;
+        // (stops at the semester's last day when looking at a semester that already ended)
+        const lastDay = new Date(Math.min(new Date(now.getFullYear(), now.getMonth(), now.getDate()), period.endExclusive - 86400000));
+        const daysElapsed = Math.max(1, Math.floor((lastDay - period.start) / 86400000) + 1);
 
         const hours = PEAK_HOURS.map(h => ({
             hour: h,
@@ -2019,6 +2071,32 @@ const isPastClosingTimeToday = () => {
 if (isPastClosingTimeToday()) {
     runAutoLogout('startup catch-up');
 }
+
+// LEFTOVERS FROM EARLIER DAYS: if the server was OFF at 5:31 PM (e.g. the laptop was
+// closed) and is started again the next morning, the catch-up above doesn't run
+// (it isn't past 5:31 PM yet), so people from earlier days would stay "inside" for days.
+// This closes every log from a PAST day that is still inside. The time out is set to
+// that day's closing time (5:31 PM, or the time in if they came in later), not "now",
+// and it's flagged as a forced exit so it's left out of the average stay.
+const closeStaleLogs = async () => {
+    const closeSql = (table) => `
+        UPDATE ${table}
+        SET time_out = GREATEST(time_in, TIMESTAMP(visit_date, '${String(CLOSING_HOUR).padStart(2, '0')}:${String(CLOSING_MINUTE).padStart(2, '0')}:00')),
+            status = "exited", forced_exit = 1
+        WHERE status = "inside" AND visit_date < CURDATE()`;
+    try {
+        const [students] = await db.query(closeSql('student_logs'));
+        const [guests] = await db.query(closeSql('guest_logs'));
+        if (students.affectedRows || guests.affectedRows) {
+            console.log(`[Auto Logout - earlier days] Closed ${students.affectedRows} student(s) and ${guests.affectedRows} guest(s) left inside from past days.`);
+        }
+    } catch (err) {
+        console.error('[Auto Logout - earlier days] Failed:', err.message);
+    }
+};
+closeStaleLogs(); // once when the server starts
+// …and every day at 12:05 AM, in case the server stayed on but missed 5:31 PM.
+cron.schedule('5 0 * * *', closeStaleLogs, { timezone: 'Asia/Manila' });
 
 // Starts the server. '0.0.0.0' lets phones on the same Wi-Fi reach it.
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

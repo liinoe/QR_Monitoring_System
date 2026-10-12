@@ -8,6 +8,17 @@ import { btn } from "../../components/AdminUI";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const POLL_MS = 2000;
 
+// Basic email shape: something@something.something (no spaces).
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Returns the message to show under the Email box, or "" if the email looks fine.
+const checkEmail = (value) => {
+    const email = value.trim();
+    if (!email) return "Please enter your email.";
+    if (!EMAIL_REGEX.test(email)) return "Enter a valid email, e.g. name@cvsu.edu.ph";
+    return "";
+};
+
 // Admin / staff sign-in page. Same deep green header as the admin pages and a
 // white card with the app-style inputs. Also handles "waiting for approval" when
 // the account is already open in another browser.
@@ -16,6 +27,9 @@ const Login = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    // Show the email format message only after they leave the box or press Sign In,
+    // so it doesn't nag while they're still typing.
+    const [emailTouched, setEmailTouched] = useState(false);
     const [loading, setLoading] = useState(false);
     const [checkingSetup, setCheckingSetup] = useState(true);
 
@@ -138,13 +152,16 @@ const Login = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
+        // Format check first, so a typo never reaches the server.
+        setEmailTouched(true);
+        if (checkEmail(email)) return;
         setLoading(true);
 
         try {
             const res = await fetch(`${API_URL}/api/admin/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email: email.trim(), password }),
             });
             const data = await res.json();
 
@@ -213,12 +230,18 @@ const Login = () => {
                                     </div>
                                 )}
 
-                                <form onSubmit={handleSubmit} className="space-y-4">
+                                <form onSubmit={handleSubmit} noValidate className="space-y-4">
                                     <AuthInput
                                         id="admin-email" name="email" label="Email" icon="mail" type="email" required
                                         autoComplete="username" placeholder="name@cvsu.edu.ph"
                                         value={email} onChange={(e) => setEmail(e.target.value)}
+                                        onBlur={() => setEmailTouched(true)}
+                                        error={emailTouched && !!checkEmail(email)}
                                     />
+                                    {/* Email format message (updates live once shown) */}
+                                    {emailTouched && checkEmail(email) && (
+                                        <p className="text-[12.5px] text-[#B3261E] -mt-2 ml-0.5">{checkEmail(email)}</p>
+                                    )}
                                     <AuthInput
                                         id="admin-password" name="password" label="Password" icon="lock" type="password" required
                                         autoComplete="current-password" placeholder="Enter your password"

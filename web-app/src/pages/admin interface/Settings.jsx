@@ -3,6 +3,7 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import FilterSelect from "../../components/FilterSelect";
 import DatePicker from "../../components/DatePicker";
+import CalendarReminder from "../../components/CalendarReminder";
 import { authFetch, isSuperAdmin, getAdmin } from "../../auth";
 import { BRAND, PageTitle, Card, CardTitle, SectionLabel, Pill, Dialog, btn } from "../../components/AdminUI";
 
@@ -285,9 +286,17 @@ const Settings = () => {
   const active = calendar?.active;
   const next = calendar?.next;
   const today = calendar?.today;
-  // A.Y. choices: last year to two years ahead.
+  // A.Y. choices for a new semester. With semesters on the calendar: the latest one's
+  // academic year and the next one (a new semester can't go back to an older year).
+  // Empty calendar: last year, this year and next year (the school year may have started
+  // last calendar year, e.g. 2nd Semester of 2025-2026 running in March 2026).
   const thisYear = new Date().getFullYear();
-  const ayOptions = [thisYear - 1, thisYear, thisYear + 1, thisYear + 2];
+  const latestAy = Math.max(0, ...(calendar?.semesters || []).map((s) => s.ay_start));
+  const ayOptions = latestAy
+    ? [latestAy, latestAy + 1]
+    : [thisYear - 1, thisYear, thisYear + 1];
+  // Editing keeps the semester's own year in the list (the field is locked anyway).
+  if (semForm?.ay_start && !ayOptions.includes(semForm.ay_start)) ayOptions.unshift(semForm.ay_start);
 
   return (
     <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
@@ -317,6 +326,9 @@ const Settings = () => {
                     + Add Semester
                   </button>
                 </div>
+
+                {/* Reminder to add the next semester (ending soon / break with nothing scheduled) */}
+                {calendar && <CalendarReminder semesters={calendar.semesters} inSettings />}
 
                 {/* Undo banner: shows during the break, up to 7 days after a semester ended */}
                 {calendar?.undo && (

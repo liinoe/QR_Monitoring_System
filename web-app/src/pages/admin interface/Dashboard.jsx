@@ -3,7 +3,8 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
-import { authFetch } from "../../auth";
+import { authFetch, isSuperAdmin } from "../../auth";
+import CalendarReminder from "../../components/CalendarReminder";
 import {
   BRAND,
   COLLEGE_COLORS,
@@ -15,8 +16,7 @@ import {
   TrendPill,
   ChartTooltip,
   Avatar,
-  EmptyState,
-} from "../../components/AdminUI";
+  EmptyState, maskName } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -214,7 +214,7 @@ const Dashboard = () => {
       isGuest: false,
     })),
     ...guestLogs.map((g) => ({
-      name: g.full_name || "Unknown",
+      name: maskName(g.full_name), // guests: name partly hidden for privacy
       sub: g.guest_type ? `Guest · ${g.guest_type.charAt(0).toUpperCase() + g.guest_type.slice(1)}` : "Guest",
       status: g.status,
       time_in: g.time_in,
@@ -241,6 +241,9 @@ const Dashboard = () => {
             </div>
             <Pill tone="gray">{dateText}</Pill>
           </div>
+
+          {/* Super Admin: reminder to add the next semester */}
+          {isSuperAdmin() && <CalendarReminder />}
 
           {/* KPI CARDS */}
           <div>

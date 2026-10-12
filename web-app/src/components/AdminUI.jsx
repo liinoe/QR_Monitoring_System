@@ -219,6 +219,16 @@ const DIALOG_TONES = {
   error: { fg: BRAND.red, bg: BRAND.redSoft, icon: <><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></> },
 };
 
+// Hides most of a guest's name for privacy (same as the guest log-out kiosk):
+// "John Snow" → "Jo*** Sn***". Each word keeps its first 2 letters, then always "***".
+export const maskName = (name) =>
+  (name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word.length <= 2 ? `${word[0]}*` : `${word.slice(0, 2)}***`))
+    .join(" ") || "Guest";
+
 // Centered pop-up with a blurred background (replaces window.confirm / alert).
 //   tone     'success' | 'warning' | 'error'
 //   footer   the buttons row
@@ -257,6 +267,7 @@ const REG_STATUS_STYLES = {
   deactivated: { bg: "#F1F3F1", fg: "#4B5563", label: "Deactivated" },
   expired: { bg: "#F1F3F1", fg: "#4B5563", label: "Semester Ended" }, // pass expired when the semester ended
   "expired / unapproved": { bg: "#F1F3F1", fg: "#6B7280", label: "Not Reviewed" }, // old pending request nobody answered
+  "not reviewed": { bg: "#F1F3F1", fg: "#6B7280", label: "Not Reviewed" },         // same as above (Registrations page)
 };
 
 // Colored pill with a friendly label, e.g. "pending renewal" → "Pending Renewal".
