@@ -72,7 +72,6 @@ CREATE TABLE `admins` (
   `password` varchar(255) NOT NULL,
   `role` varchar(50) DEFAULT 'admin',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `session_id` varchar(255) DEFAULT NULL,
   `password_is_temp` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`admin_id`),
   UNIQUE KEY `email` (`email`)
@@ -187,7 +186,8 @@ CREATE TABLE `semester_transition_students` (
   `prev_status` varchar(20) NOT NULL,
   `prev_qr_code` text,
   `prev_status_reason` varchar(500) DEFAULT NULL,
-  PRIMARY KEY (`transition_id`,`student_number`)
+  PRIMARY KEY (`transition_id`,`student_number`),
+  CONSTRAINT `fk_transition_students_transition` FOREIGN KEY (`transition_id`) REFERENCES `semester_transitions` (`transition_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -205,7 +205,9 @@ CREATE TABLE `semester_transitions` (
   `affected_count` int NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `undone_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`transition_id`)
+  PRIMARY KEY (`transition_id`),
+  KEY `fk_transitions_semester` (`semester_id`),
+  CONSTRAINT `fk_transitions_semester` FOREIGN KEY (`semester_id`) REFERENCES `semesters` (`semester_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -260,6 +262,8 @@ CREATE TABLE `student_edit_logs` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`edit_id`),
   KEY `admin_id` (`admin_id`),
+  KEY `fk_edit_logs_student` (`student_number`),
+  CONSTRAINT `fk_edit_logs_student` FOREIGN KEY (`student_number`) REFERENCES `students` (`student_number`),
   CONSTRAINT `student_edit_logs_ibfk_1` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`admin_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -329,4 +333,4 @@ CREATE TABLE `students` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-10-12 13:14:49
+-- Dump completed on 2026-10-16 12:13:50

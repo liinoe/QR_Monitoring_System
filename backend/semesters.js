@@ -133,7 +133,10 @@ module.exports = function registerSemesterRoutes(app, { db, verifyToken, require
                 await conn.beginTransaction();
                 const [periodRows] = await conn.query("SELECT setting_value FROM settings WHERE setting_key = 'current_period'");
                 const previousPeriod = periodRows[0]?.setting_value || null;
-                await conn.query(`UPDATE settings SET setting_value = ? WHERE setting_key = 'current_period'`, [due.name]);
+                // Insert-or-update, so it also works on a fresh database with no settings row yet.
+                await conn.query(
+                    `INSERT INTO settings (setting_key, setting_value) VALUES ('current_period', ?)
+                     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`, [due.name]);
 
                 // If this semester IS already the current period (e.g. the admin just added
                 // the semester that's running now), nobody has to renew.

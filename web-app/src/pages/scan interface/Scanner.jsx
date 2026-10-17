@@ -213,7 +213,8 @@ const Scanner = () => {
         playErrorSound();
         setStatus("error");
         setScanResult({
-          full_name: "Access Denied",
+          // "Library Closed" when it's past the 5:30 PM entry cut-off, otherwise "Access Denied".
+          full_name: data.closed ? "Library Closed" : "Access Denied",
           message: data.message || "This code is not linked to an approved account.",
           scannedAt,
         });

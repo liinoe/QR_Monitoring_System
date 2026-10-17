@@ -44,6 +44,27 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Sends one email. If BREVO_API_KEY is set (deployed on Render, where SMTP ports
+// are blocked) it uses Brevo's web API; otherwise it uses the SMTP settings above.
+async function sendEmail({ to, subject, html }) {
+    const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    if (process.env.BREVO_API_KEY) {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sender: { name: 'QLess Library', email: from },
+                to: [{ email: to }],
+                subject,
+                htmlContent: html,
+            }),
+        });
+        if (!response.ok) throw new Error(`Brevo error ${response.status}: ${await response.text()}`);
+        return;
+    }
+    await transporter.sendMail({ from, to, subject, html });
+}
+
 // Address used in the reset-password email link.
 //   - Deployed: set RESET_BASE_URL in .env (e.g. https://qless.example.com).
 //   - Local testing: leave it empty — the link then uses the same address the
@@ -116,6 +137,83 @@ async function ensureAdminColumns() {
     }
 }
 ensureAdminColumns().catch((err) => console.error('ensureAdminColumns error:', err.message));
+
+// EMAIL VERIFICATION (OTP) FOR NEW REGISTRATIONS
+// One row per email: the latest 6-digit code (saved as a SHA-256 hash, never as
+// plain text), when it expires, how many wrong tries so far, and when it was sent.
+const OTP_TTL_MINUTES = 10;      // a code works for 10 minutes
+const OTP_MAX_ATTEMPTS = 5;      // after 5 wrong tries the student must request a new code
+const OTP_RESEND_SECONDS = 60;   // wait 1 minute before sending another code
+
+// Creates the email_verifications table if it doesn't exist yet.
+async function ensureOtpTable() {
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS email_verifications (
+            email VARCHAR(255) NOT NULL PRIMARY KEY,
+            code_hash CHAR(64) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            attempts INT NOT NULL DEFAULT 0,
+            last_sent_at DATETIME NOT NULL
+        )`);
+}
+ensureOtpTable().catch((err) => console.error('ensureOtpTable error:', err.message));
+
+// Turns a code into its SHA-256 hash (what we store and compare).
+const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
+
+// Checks a code typed by the student. Returns { ok: true } or { ok: false, message }.
+// A wrong code counts as one attempt. The row is deleted only after the
+// registration is saved (see /api/register), so a later error doesn't waste the code.
+async function checkOtp(email, code) {
+    const [rows] = await db.query(
+        'SELECT code_hash, attempts, expires_at < NOW() AS expired FROM email_verifications WHERE email = ?',
+        [email]
+    );
+    if (rows.length === 0) return { ok: false, message: 'Please request a verification code first.' };
+    const row = rows[0];
+    if (row.expired) return { ok: false, message: 'This code has expired. Please tap "Resend code".' };
+    if (row.attempts >= OTP_MAX_ATTEMPTS) {
+        return { ok: false, message: 'Too many wrong tries. Please tap "Resend code" for a new one.' };
+    }
+    if (!/^\d{6}$/.test(String(code || '')) || hashOtp(code) !== row.code_hash) {
+        await db.query('UPDATE email_verifications SET attempts = attempts + 1 WHERE email = ?', [email]);
+        const left = OTP_MAX_ATTEMPTS - row.attempts - 1;
+        return { ok: false, message: left > 0 ? `Incorrect code. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Incorrect code. Please tap "Resend code" for a new one.' };
+    }
+    return { ok: true };
+}
+
+// Email with the 6-digit code — same look as the reset-password email.
+function buildOtpEmail(code) {
+    return `
+    <div style="background:#F7F8F7;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;">
+        <tr>
+          <td style="background:#0E3B1F;padding:28px 28px 24px;text-align:center;">
+            <div style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">
+              <span style="color:#F0CD5A;">Q</span>Less
+            </div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:4px;">Ladislao N. Diwa Memorial Library</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px;">
+            <h1 style="margin:0 0 8px;font-size:20px;color:#111827;">Verify your email</h1>
+            <p style="margin:0 0 22px;font-size:14px;line-height:21px;color:#4B5563;">
+              Enter this code in the QLess app to finish your registration.
+            </p>
+            <div style="text-align:center;font-size:34px;font-weight:800;letter-spacing:10px;color:#0E3B1F;background:#E8F1E9;border-radius:14px;padding:16px 0;">${code}</div>
+            <div style="margin-top:22px;padding:14px 16px;background:#FBF3DC;border-radius:14px;font-size:13px;line-height:19px;color:#946800;">
+              This code expires in <b>${OTP_TTL_MINUTES} minutes</b>. Never share it with anyone.
+            </div>
+            <p style="margin:20px 0 0;font-size:12px;line-height:18px;color:#9CA3AF;">
+              Didn't register for QLess? You can ignore this email.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>`;
+}
 
 // Allowed year levels. Veterinary Medicine is a 6-year program.
 const VETMED_COLLEGE = 'College of Veterinary Medicine and Biomedical Sciences';
@@ -197,6 +295,49 @@ app.get('/api/settings/current-period', async (req, res) => {
 // FRESH REGISTRATION. Also handles the one legitimate case of an existing
 // student resubmitting: a previously REJECTED account. Renewal (approved
 // students whose semester lapsed) has its own separate endpoint (/api/renew).
+// SEND OTP — the app calls this when the student taps Submit on a new registration.
+// Emails a 6-digit code to the CvSU email. The registration itself is only saved
+// once the correct code is sent with it to /api/register.
+app.post('/api/register/send-otp', async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const student_number = String(req.body.student_number || '');
+    if (!CVSU_EMAIL_REGEX.test(email)) {
+        return res.status(400).json({ message: "Please use your CvSU email ending in @cvsu.edu.ph." });
+    }
+    try {
+        // Same rule as /api/register: the email can't belong to another student.
+        const [byEmail] = await db.query('SELECT student_number FROM students WHERE LOWER(email) = ?', [email]);
+        if (byEmail.length > 0 && byEmail[0].student_number !== student_number) {
+            return res.status(400).json({ message: "This email is already associated with a different student number." });
+        }
+
+        // Wait 1 minute between codes (stops spamming someone's inbox).
+        const [rows] = await db.query(
+            'SELECT TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since FROM email_verifications WHERE email = ?',
+            [email]
+        );
+        if (rows.length > 0 && rows[0].since < OTP_RESEND_SECONDS) {
+            const wait = OTP_RESEND_SECONDS - rows[0].since;
+            return res.status(429).json({ message: `Please wait ${wait} seconds before requesting a new code.`, retry_after_seconds: wait });
+        }
+
+        const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+        await db.query(
+            `INSERT INTO email_verifications (email, code_hash, expires_at, attempts, last_sent_at)
+             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW())
+             ON DUPLICATE KEY UPDATE code_hash = VALUES(code_hash), expires_at = VALUES(expires_at),
+                                     attempts = 0, last_sent_at = NOW()`,
+            [email, hashOtp(code), OTP_TTL_MINUTES]
+        );
+        await sendEmail({ to: email, subject: 'Your QLess verification code', html: buildOtpEmail(code) });
+
+        res.json({ success: true, message: `We sent a 6-digit code to ${email}.`, retry_after_seconds: OTP_RESEND_SECONDS });
+    } catch (err) {
+        console.error('Send OTP error:', err.message);
+        res.status(500).json({ message: "We couldn't send the code right now. Please try again." });
+    }
+});
+
 app.post('/api/register', async (req, res) => {
     const {
         surname, first_name, middle_name,
@@ -228,6 +369,13 @@ app.post('/api/register', async (req, res) => {
     }
 
     try {
+        // The email must be verified with the code sent by /api/register/send-otp.
+        // otp_error tells the app to keep the code pop-up open so the student can retry.
+        const otp = await checkOtp(email, req.body.otp);
+        if (!otp.ok) {
+            return res.status(400).json({ otp_error: true, message: otp.message });
+        }
+
         const currentPeriod = await getCurrentPeriod();
 
         // One active account per phone number.
@@ -283,6 +431,7 @@ app.post('/api/register', async (req, res) => {
                      student_number, college, program, year_level, currentPeriod]
                 );
 
+                await db.query('DELETE FROM email_verifications WHERE email = ?', [email]); // code used up
                 return res.status(201).json({ message: "Registration resubmitted! Please wait for admin approval." });
             }
 
@@ -321,6 +470,7 @@ app.post('/api/register', async (req, res) => {
              student_number, college, program, year_level, currentPeriod]
         );
 
+        await db.query('DELETE FROM email_verifications WHERE email = ?', [email]); // code used up
         res.status(201).json({ message: "Registration submitted successfully!" });
     } catch (err) {
         console.error(err);
@@ -699,8 +849,7 @@ app.post('/api/student/forgot-password', async (req, res) => {
         const baseUrl = RESET_BASE_URL || `${req.protocol}://${req.get('host')}`;
         const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
 
-        await transporter.sendMail({
-            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        await sendEmail({
             to: email.trim().toLowerCase(),
             subject: 'Reset your QLess Library password',
             html: buildResetEmail(resetLink),
@@ -977,6 +1126,14 @@ app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
 // publicly-viewable kiosk screen, so only student_number + program go
 // back to the client. Anyone reading the full DB row still sees the name,
 // but it never leaves the server for this endpoint.
+// True from the 5:30 PM cut-off until midnight (Philippine time).
+// After the cut-off no one may ENTER the library, but people can still exit.
+const isPastEntryCutoff = () => {
+    const manilaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    return manilaNow.getHours() * 60 + manilaNow.getMinutes() >= 17 * 60 + 30; // 5:30 PM
+};
+const LIBRARY_CLOSED_MESSAGE = 'The library is closed for entry after 5:30 PM. Exits are still allowed.';
+
 app.post('/api/logs/scan', async (req, res) => {
     const { qr_code } = req.body;
     try {
@@ -993,6 +1150,10 @@ app.post('/api/logs/scan', async (req, res) => {
             await db.query('UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE log_id = ?', [activeLogs[0].log_id]);
             res.json({ success: true, action: 'exit', student_number: student.student_number, program: student.program });
         } else {
+            // Not inside yet = this would be an entry, which is blocked after 5:30 PM.
+            if (isPastEntryCutoff()) {
+                return res.status(403).json({ success: false, closed: true, message: LIBRARY_CLOSED_MESSAGE });
+            }
             await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
             res.json({ success: true, action: 'entry', student_number: student.student_number, program: student.program });
         }
@@ -1537,7 +1698,7 @@ app.post('/api/admin/start-new-semester', verifyToken, requireSuperAdmin, async 
         }
 
         await db.query(
-            "UPDATE settings SET setting_value = ? WHERE setting_key = 'current_period'",
+            "INSERT INTO settings (setting_key, setting_value) VALUES ('current_period', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
             [trimmed]
         );
 
@@ -1634,6 +1795,11 @@ app.post('/api/guests/log', async (req, res) => {
 
     if (!guest_type || !first_name || !last_name) {
         return res.status(400).json({ message: "Please fill in all required fields." });
+    }
+
+    // Guests can't log a new visit after the 5:30 PM cut-off (logging out still works).
+    if (isPastEntryCutoff()) {
+        return res.status(403).json({ closed: true, message: LIBRARY_CLOSED_MESSAGE });
     }
 
     const full_name = `${first_name} ${last_name}`.trim();

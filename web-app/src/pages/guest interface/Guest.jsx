@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GuestLayout, Card, SectionLabel, Dialog, Icon, btn, inputClass, BRAND } from "./GuestLayout";
 
+// Backend address (set VITE_API_URL when building for deployment).
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 // Visitor type icons (color follows the button's text color).
 // Faculty: teacher pointing at a board.
 const FacultyIcon = () => (
@@ -140,7 +143,7 @@ const GuestEntry = () => {
     const guestName = `${firstName.trim()} ${lastName.trim()}`;
 
     try {
-      const response = await fetch("http://localhost:5000/api/guests/log", {
+      const response = await fetch(`${API_URL}/api/guests/log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GuestLayout, Card, SectionLabel, Dialog, Icon, btn, inputClass, BRAND } from "./GuestLayout";
 
+// Backend address (set VITE_API_URL when building for deployment).
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 // For privacy, names on this public screen are partly hidden:
 // "John Snow" → "Jo*** Sn***". Every word keeps its first 2 letters and the
 // rest becomes "***" (always 3 stars, so the name's length isn't shown either).
@@ -32,7 +35,7 @@ const GuestLogout = () => {
   // Loads the guests who are still inside the library.
   const fetchInsideGuests = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/guests/inside");
+      const res = await fetch(`${API_URL}/api/guests/inside`);
       const data = await res.json();
       setGuests(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -55,7 +58,7 @@ const GuestLogout = () => {
     setFeedback(null);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/guests/self-exit/${guest_log_id}`, {
+      const res = await fetch(`${API_URL}/api/guests/self-exit/${guest_log_id}`, {
         method: "PATCH",
       });
       const data = await res.json();

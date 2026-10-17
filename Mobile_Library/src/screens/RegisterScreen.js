@@ -149,8 +149,22 @@ export default function RegisterScreen({ navigation, route }) {
   const [renewalStudent, setRenewalStudent] = useState(null); // shown in the renewal banner only
   const [rejectionReason, setRejectionReason] = useState(''); // shown at the top in resubmit mode
   const [loadingProfile, setLoadingProfile] = useState(isResubmit);
+  // Email verification (new registrations only): after "Submit", the review pop-up
+  // switches to a code screen. The registration is sent only with the right code.
+  const [otpStep, setOtpStep] = useState(false);      // true = showing the code screen
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);      // sending a code or submitting
+  const [resendIn, setResendIn] = useState(0);        // seconds until "Resend code" works
   // Styled pop-up used instead of the phone's plain alert (see components/AppDialog.js).
   const { dialog, showDialog } = useAppDialog();
+
+  // Counts the "Resend code" timer down by 1 every second.
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   // Used by "Edit Number" to scroll back up to the Student Number field.
   const scrollRef = useRef(null);
@@ -406,8 +420,47 @@ export default function RegisterScreen({ navigation, route }) {
   // Closes the review pop-up first, then shows the message. (On iPhone, two
   // full-screen pop-ups can't open at the same moment.)
   const showAfterReview = (options) => {
-    setConfirmModalVisible(false);
+    closeReview();
     setTimeout(() => showDialog(options), 400);
+  };
+
+  // Closes the review pop-up and clears the code screen.
+  const closeReview = () => {
+    setConfirmModalVisible(false);
+    setOtpStep(false);
+    setOtpCode('');
+    setOtpError('');
+  };
+
+  // Asks the server to email a 6-digit code, then shows the code screen.
+  const requestOtp = async () => {
+    setOtpBusy(true);
+    setOtpError('');
+    try {
+      const response = await fetch(`${API_URL}/api/register/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email: form.email.trim().toLowerCase(), student_number: form.student_number }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setOtpStep(true);
+        setOtpCode('');
+        setResendIn(result.retry_after_seconds || 60);
+      } else if (response.status === 429) {
+        // A code was sent less than a minute ago — it still works, so just show the code screen.
+        setOtpStep(true);
+        setResendIn(result.retry_after_seconds || 60);
+        if (otpStep) setOtpError(result.message);
+      } else if (otpStep) {
+        setOtpError(result.message || 'Could not send the code.');
+      } else {
+        showAfterReview({ tone: 'error', title: 'Verification Error', message: result.message || 'Could not send the code.' });
+      }
+    } catch (error) {
+      showAfterReview({ tone: 'error', title: 'Connection Error', message: 'Could not reach the server. Please try again.' });
+    }
+    setOtpBusy(false);
   };
 
   // Sends a NEW registration to the server, then goes back to Login.
@@ -426,14 +479,23 @@ export default function RegisterScreen({ navigation, route }) {
         college: form.college,
         program: form.program,
         year_level: form.year_level,
+        otp: otpCode,
       };
 
+      setOtpBusy(true);
       const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload),
       });
       const result = await response.json();
+      setOtpBusy(false);
+
+      // Wrong / expired code: stay on the code screen and show why.
+      if (!response.ok && result.otp_error) {
+        setOtpError(result.message);
+        return;
+      }
 
       setConfirmModalVisible(false);
 
@@ -460,7 +522,7 @@ export default function RegisterScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error("Fetch Error:", error);
-      setConfirmModalVisible(false);
+      setOtpBusy(false);
       showAfterReview({ tone: 'error', title: 'Connection Error', message: 'Check if server is running and on the same Wi-Fi.' });
     }
   };
@@ -566,7 +628,7 @@ export default function RegisterScreen({ navigation, route }) {
   const handleFinalSubmit = () => {
     if (isRenewal) submitRenewal();
     else if (isResubmit) submitResubmit();
-    else submitRegistration();
+    else requestOtp(); // new registration: verify the email first, then submitRegistration()
   };
 
   // "Cancel" button: renewal / resubmit go back to Home (still logged in);
@@ -824,8 +886,56 @@ export default function RegisterScreen({ navigation, route }) {
       </KeyboardAvoidingView>
 
       {/* REVIEW POP-UP — last check before actually submitting */}
-      <Modal visible={confirmModalVisible} transparent animationType="fade" onRequestClose={() => setConfirmModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
+      <Modal
+        visible={confirmModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => (otpStep ? setOtpStep(false) : closeReview())}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBackdrop}>
+          {otpStep ? (
+          /* EMAIL CODE SCREEN — the registration is sent only with the right code */
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Verify Your Email</Text>
+            <Text style={styles.otpText}>
+              Enter the 6-digit code we sent to{'\n'}
+              <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{form.email.trim().toLowerCase()}</Text>
+            </Text>
+            <TextInput
+              style={[styles.input, styles.otpInput, otpError ? styles.inputInvalid : null]}
+              value={otpCode}
+              onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="••••••"
+              placeholderTextColor="#B8C2BA"
+              autoFocus
+              textContentType="oneTimeCode"
+              autoComplete="sms-otp"
+            />
+            {!!otpError && <Text style={styles.otpError}>{otpError}</Text>}
+
+            <TouchableOpacity
+              style={[styles.btn, otpCode.length === 6 && !otpBusy ? styles.confirmBtn : styles.disabledBtn, { marginTop: 16 }]}
+              disabled={otpCode.length !== 6 || otpBusy}
+              onPress={submitRegistration}
+            >
+              {otpBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Verify & Submit</Text>}
+            </TouchableOpacity>
+
+            <View style={styles.otpLinks}>
+              <TouchableOpacity onPress={() => { setOtpStep(false); setOtpError(''); }}>
+                <Text style={styles.otpLink}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity disabled={resendIn > 0 || otpBusy} onPress={requestOtp}>
+                <Text style={[styles.otpLink, (resendIn > 0 || otpBusy) && { color: colors.textSecondary }]}>
+                  {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalNote}>Can't find it? Check your Spam or Promotions folder. The code expires in 10 minutes.</Text>
+          </View>
+          ) : (
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>
               {isRenewal ? 'Confirm Renewal' : isResubmit ? 'Confirm Resubmission' : 'Confirm Your Info'}
@@ -854,15 +964,23 @@ export default function RegisterScreen({ navigation, route }) {
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity style={[styles.btn, styles.confirmBtn, { flex: 1 }]} onPress={handleFinalSubmit}>
-                <Text style={styles.confirmText}>Submit</Text>
+              <TouchableOpacity
+                style={[styles.btn, otpBusy ? styles.disabledBtn : styles.confirmBtn, { flex: 1 }]}
+                disabled={otpBusy}
+                onPress={handleFinalSubmit}
+              >
+                {otpBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Submit</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.cancelBtn, { flex: 1 }]} onPress={() => setConfirmModalVisible(false)}>
+              <TouchableOpacity style={[styles.btn, styles.cancelBtn, { flex: 1 }]} onPress={closeReview}>
                 <Text style={styles.cancelText}>Edit</Text>
               </TouchableOpacity>
             </View>
+            {!isRenewal && !isResubmit && (
+              <Text style={styles.modalNote}>After you tap Submit, we'll email a code to your CvSU email to verify it.</Text>
+            )}
           </View>
-        </View>
+          )}
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Styled pop-up (errors, warnings, success) — drawn on top of everything */}
@@ -1123,6 +1241,11 @@ const styles = StyleSheet.create({
   modalSheet: { backgroundColor: '#fff', borderRadius: 20, padding: 20 },
   modalTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 },
   modalNote: { fontSize: 12, color: colors.textSecondary, marginTop: 12, lineHeight: 17 },
+  otpText: { fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 14 },
+  otpInput: { fontSize: 26, fontWeight: '700', letterSpacing: 10, textAlign: 'center', paddingVertical: 14 },
+  otpError: { fontSize: 12, color: '#DC2626', marginTop: 8, marginLeft: 2 },
+  otpLinks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
+  otpLink: { fontSize: 13, fontWeight: '700', color: colors.primary },
 
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.grayLight },
   summaryLabel: { fontSize: 13, color: colors.textSecondary, flex: 1 },
