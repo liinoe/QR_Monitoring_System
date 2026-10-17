@@ -1255,8 +1255,16 @@ app.get('/api/admin/check-setup', async (req, res) => {
 // ONE-TIME first super admin creation. Locks itself out once any admin exists.
 app.post('/api/admin/bootstrap', async (req, res) => {
     const { name, email, password } = req.body;
-    if (!name || !email || !password) {
+    if (!name || !name.trim() || !email || !password) {
         return res.status(400).json({ message: "Please fill in all fields." });
+    }
+    // Same email shape and password rules as everywhere else — this is the most
+    // powerful account in the system, so it must have a strong password.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return res.status(400).json({ message: "Please enter a valid email." });
+    }
+    if (!isStrongPassword(password)) {
+        return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
     try {
         const [existing] = await db.query('SELECT COUNT(*) as count FROM admins');
@@ -1267,7 +1275,7 @@ app.post('/api/admin/bootstrap', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         await db.query(
             'INSERT INTO admins (name, email, password, role) VALUES (?, ?, ?, "super_admin")',
-            [name, email.trim().toLowerCase(), hashedPassword]
+            [name.trim(), email.trim().toLowerCase(), hashedPassword]
         );
 
         res.status(201).json({ success: true, message: "Super admin account created. Please log in." });
