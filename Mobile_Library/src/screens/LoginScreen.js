@@ -345,10 +345,22 @@ export default function LoginScreen({ navigation }) {
           showDialog({
             tone: 'error',
             title: 'Incorrect Password',
-            message: 'The password you entered is incorrect.',
+            // The server says how many tries are left before a 15-minute lock.
+            message: data.message || 'The password you entered is incorrect.',
             buttons: [
               { text: 'Forgot Password', style: 'secondary', onPress: () => navigation.navigate('ForgotPassword') },
               { text: 'Try Again', style: 'primary', onPress: retryPassword },
+            ],
+          });
+        } else if (response.status === 429) {
+          // Too many wrong passwords: the account is locked for a while.
+          showDialog({
+            tone: 'warning',
+            title: 'Too Many Attempts',
+            message: data.message,
+            buttons: [
+              { text: 'OK', style: 'secondary' },
+              { text: 'Forgot Password', style: 'primary', onPress: () => navigation.navigate('ForgotPassword') },
             ],
           });
         } else {

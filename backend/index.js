@@ -580,6 +580,68 @@ function issueStudentToken(student_number) {
 
 // Middleware: only lets the request through if it has a valid student login pass.
 // Puts the student's number in req.student for the route to use.
+// WRONG-PASSWORD LIMIT (stops password guessing)
+// After 5 wrong passwords for the same account within 15 minutes, that account's
+// password checks are blocked for 5 minutes. A warning starts at the 3rd wrong try. Counted per ACCOUNT (not per device),
+// so switching phones or browsers doesn't help a guesser. A correct password resets it.
+// Kept in memory: a server restart clears it (fine for this purpose).
+const MAX_WRONG_PASSWORDS = 5;
+const WRONG_PASSWORD_WINDOW_MS = 15 * 60 * 1000; // count wrong tries within 15 minutes
+const LOCKOUT_MS = 5 * 60 * 1000;                // then block for 5 minutes
+const WARN_FROM_TRY = 3;                         // show "tries left" from the 3rd wrong password
+const wrongPasswords = new Map(); // key ("student:202312345" / "admin:a@b.com") -> { count, firstAt, lockedUntil }
+
+// How many seconds this account is still locked (0 = not locked).
+function lockedSeconds(key) {
+    const entry = wrongPasswords.get(key);
+    if (!entry || !entry.lockedUntil) return 0;
+    const left = entry.lockedUntil - Date.now();
+    if (left <= 0) { wrongPasswords.delete(key); return 0; }
+    return Math.ceil(left / 1000);
+}
+
+// Counts one wrong password; locks the account when the limit is reached.
+function recordWrongPassword(key) {
+    const now = Date.now();
+    let entry = wrongPasswords.get(key);
+    if (!entry || now - entry.firstAt > WRONG_PASSWORD_WINDOW_MS) entry = { count: 0, firstAt: now, lockedUntil: 0 };
+    entry.count += 1;
+    if (entry.count >= MAX_WRONG_PASSWORDS) entry.lockedUntil = now + LOCKOUT_MS;
+    wrongPasswords.set(key, entry);
+    return MAX_WRONG_PASSWORDS - entry.count; // tries left
+}
+
+// Correct password: forget the wrong tries.
+function clearWrongPasswords(key) {
+    wrongPasswords.delete(key);
+}
+
+// Message for a wrong password: plain for the 1st and 2nd try, then a warning
+// with how many tries are left, then the "locked" message on the last one.
+function wrongPasswordMessage(triesLeft, forStaff = false) {
+    if (triesLeft <= 0) return lockedMessage(LOCKOUT_MS / 1000, forStaff);
+    const used = MAX_WRONG_PASSWORDS - triesLeft;
+    if (used < WARN_FROM_TRY) return 'Incorrect password.';
+    const minutes = LOCKOUT_MS / 60000;
+    return `Incorrect password. ${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left before your account is locked for ${minutes} minutes.`;
+}
+
+// The message shown while an account is locked (staff can't use Forgot Password,
+// so they're told to ask the Super Admin instead).
+function lockedMessage(seconds, forStaff = false) {
+    const minutes = Math.ceil(seconds / 60);
+    const wait = `Too many wrong passwords. Please try again in ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    return forStaff ? `${wait}, or ask the Super Admin to reset your password.` : `${wait}, or use Forgot Password.`;
+}
+
+// Removes old entries every 30 minutes so the list doesn't grow forever.
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, e] of wrongPasswords) {
+        if ((e.lockedUntil && e.lockedUntil < now) || (!e.lockedUntil && now - e.firstAt > WRONG_PASSWORD_WINDOW_MS)) wrongPasswords.delete(key);
+    }
+}, 30 * 60 * 1000);
+
 function verifyStudentToken(req, res, next) {
     const header = req.headers['authorization'] || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -690,10 +752,14 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
 
 // RENEWAL — academic info only. Deliberately cannot touch name, email,
 // phone, address, sex, or password: those simply aren't in this payload.
-app.post('/api/renew', async (req, res) => {
+// Needs the student's login pass, and only renews THAT student's own account.
+app.post('/api/renew', verifyStudentToken, async (req, res) => {
     const { student_number, college, program, year_level } = req.body;
     if (!student_number || !college || !program || !year_level) {
         return res.status(400).json({ message: "Please complete all academic info fields." });
+    }
+    if (req.student.student_number !== student_number) {
+        return res.status(403).json({ message: "You can only renew your own account." });
     }
     if (!isValidYearLevel(college, year_level)) {
         return res.status(400).json({ message: "Invalid year level for the selected college." });
@@ -773,10 +839,21 @@ app.post('/api/student/change-password', async (req, res) => {
             return res.status(403).json({ message: "This account has no password set up yet." });
         }
 
+        // Same wrong-password limit as login, so this can't be used to guess passwords.
+        const limitKey = `student:${student.student_number}`;
+        const lockLeft = lockedSeconds(limitKey);
+        if (lockLeft > 0) {
+            return res.status(429).json({ message: lockedMessage(lockLeft), retry_after_seconds: lockLeft });
+        }
+
         const match = await bcrypt.compare(current_password, student.password);
         if (!match) {
-            return res.status(401).json({ message: "Current password is incorrect." });
+            const left = recordWrongPassword(limitKey);
+            return res.status(401).json({
+                message: wrongPasswordMessage(left).replace('Incorrect password.', 'Current password is incorrect.'),
+            });
         }
+        clearWrongPasswords(limitKey);
         // The new password must actually be new.
         if (await bcrypt.compare(new_password, student.password)) {
             return res.status(400).json({ message: "Your new password must be different from your current one." });
@@ -1292,10 +1369,20 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ message: 'This account needs a password set up. Please contact the library or re-register.' });
     }
 
+    // Too many wrong passwords recently? (Counted per student, whether they typed
+    // their email or student number.)
+    const limitKey = `student:${student.student_number}`;
+    const lockLeft = lockedSeconds(limitKey);
+    if (lockLeft > 0) {
+      return res.status(429).json({ message: lockedMessage(lockLeft), retry_after_seconds: lockLeft });
+    }
+
     const match = await bcrypt.compare(password, student.password);
     if (!match) {
-      return res.status(401).json({ message: 'Incorrect password.' });
+      const left = recordWrongPassword(limitKey);
+      return res.status(401).json({ message: wrongPasswordMessage(left) });
     }
+    clearWrongPasswords(limitKey);
 
     // Send the student's info (never the password) plus their login pass.
     const { password: _omit, ...safeStudent } = student;
@@ -1413,10 +1500,20 @@ app.post('/api/admin/login', async (req, res) => {
         }
 
         const admin = admins[0];
+
+        // Too many wrong passwords for this staff account recently?
+        const limitKey = `admin:${admin.admin_id}`;
+        const lockLeft = lockedSeconds(limitKey);
+        if (lockLeft > 0) {
+            return res.status(429).json({ message: lockedMessage(lockLeft, true), retry_after_seconds: lockLeft });
+        }
+
         const match = await bcrypt.compare(password, admin.password);
         if (!match) {
-            return res.status(401).json({ message: "Incorrect password." });
+            const left = recordWrongPassword(limitKey);
+            return res.status(401).json({ message: wrongPasswordMessage(left, true) });
         }
+        clearWrongPasswords(limitKey);
 
         // Housekeeping: forget browsers that haven't been seen for a day, and
         // close out approval requests nobody answered.

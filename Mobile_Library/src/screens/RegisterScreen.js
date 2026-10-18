@@ -538,9 +538,10 @@ export default function RegisterScreen({ navigation, route }) {
         year_level: form.year_level,
       };
 
+      // Sent with the student's login pass, so only they can renew their own account.
       const response = await fetch(`${API_URL}/api/renew`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(payload),
       });
       const result = await response.json();
