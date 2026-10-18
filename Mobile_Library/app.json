@@ -7,25 +7,34 @@
     "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#1B5E20"
+      "backgroundColor": "#0E3B1F"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "edu.cvsu.qless"
     },
     "android": {
+      "package": "edu.cvsu.qless",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#1B5E20"
-      },
-      "package": "com.anonymous.qless"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0E3B1F"
+      }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-status-bar"
-    ]
+    ],
+    "icon": "./assets/icon.png",
+    "extra": {
+      "eas": {
+        "projectId": "dfcdd06a-f72a-434a-b5d5-ece304ed68bd"
+      }
+    }
   }
 }
