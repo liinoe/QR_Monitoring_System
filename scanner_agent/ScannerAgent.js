@@ -16,8 +16,10 @@ const readline = require('readline');
 const { execFile } = require('child_process');
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
-const CACHE_MS = 2000; // reuse the last device list for 2 seconds (checking takes ~1s on Windows)
+const CACHE_MS = 5000;      // reuse the last device list for 5 seconds (checking takes 1–8 s on Windows)
+const PS_TIMEOUT_MS = 20000; // give PowerShell up to 20 seconds (some PCs are slow at listing devices)
 let cache = { at: 0, devices: null };
+let inFlight = null;         // the device check that is running right now (so checks don't pile up)
 
 // Reads config.json → { port, vid, pid, name }. Missing file = defaults.
 function loadConfig() {
@@ -42,9 +44,15 @@ function listWindowsDevices() {
         "Where-Object { $_.InstanceId -match 'VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' } | " +
         "Select-Object FriendlyName, InstanceId, Class | ConvertTo-Json -Compress";
     return new Promise((resolve, reject) => {
-        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 8000, windowsHide: true },
-            (err, stdout) => {
-                if (err) return reject(err);
+        const child = execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: PS_TIMEOUT_MS, windowsHide: true },
+            (err, stdout, stderr) => {
+                // Use the list if PowerShell gave one, even if it also reported a warning.
+                if (err && !(stdout && stdout.trim())) {
+                    const why = err.killed
+                        ? `PowerShell took longer than ${PS_TIMEOUT_MS / 1000} seconds`
+                        : (String(stderr || '').trim().split('\n')[0] || err.message);
+                    return reject(new Error(why));
+                }
                 let rows = [];
                 try {
                     const parsed = JSON.parse(stdout || '[]');
@@ -56,6 +64,9 @@ function listWindowsDevices() {
                     .map((r) => ({ name: r.FriendlyName, type: r.Class, ...parseIds(r.InstanceId) }))
                     .filter((d) => d.vid));
             });
+        // Tell PowerShell there's no keyboard input coming. Without this, on some PCs
+        // PowerShell waits for input forever when started from Node, and the check never ends.
+        child.stdin.end();
     });
 }
 
@@ -70,9 +81,17 @@ function listLinuxDevices() {
         .filter((d) => d.vid));
 }
 
-// Returns the plugged-in USB devices (cached for 2 seconds unless fresh=true).
+// Returns the plugged-in USB devices (cached for 5 seconds unless fresh=true).
+// If a check is already running, waits for that one instead of starting another.
 async function listDevices(fresh = false) {
     if (!fresh && cache.devices && Date.now() - cache.at < CACHE_MS) return cache.devices;
+    if (inFlight) return inFlight;
+    inFlight = readDevices().finally(() => { inFlight = null; });
+    return inFlight;
+}
+
+// Asks the operating system for the device list and remembers it.
+async function readDevices() {
     let devices;
     if (process.platform === 'win32') devices = await listWindowsDevices();
     else if (process.platform === 'linux') devices = await listLinuxDevices();
