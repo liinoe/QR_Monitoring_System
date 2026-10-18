@@ -243,7 +243,7 @@ const GENDER_COLORS = { male: BRAND.green, female: BRAND.gold, prefer_not_to_say
 const GUEST_TYPE_LABELS = { faculty: 'Faculty', alumni: 'Alumni', walkin: 'Walk-in', student: 'Student' };
 
 const KPI_TOOLTIPS = {
-  totalVisits: "Counts every entry log — students and guests — with a visit date inside the selected period.",
+  totalVisits: "Counts every entry — students and guests — with a visit date inside the selected period. A student who enters twice counts as 2 visits; the 'different students' number counts each student once.",
   avgDaily: "Total visits in this period ÷ number of days elapsed so far (or the full period length, once it has ended).",
   peakHour: "The 2-hour window with the most entries, based on time-in, across the selected period. The subtitle shows the weekday(s) with the most total visits.",
 };
@@ -648,11 +648,17 @@ const Analytics = () => {
                 color={BRAND.green}
                 tooltip={KPI_TOOLTIPS.totalVisits}
                 footer={
-                  <TrendPill
-                    change={visitsTrend}
-                    suffix={`${Math.abs(visitsTrend ?? 0)}% vs ${previousPeriodLabel}`}
-                    emptyText={periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`}
-                  />
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <TrendPill
+                      change={visitsTrend}
+                      suffix={`${Math.abs(visitsTrend ?? 0)}% vs ${previousPeriodLabel}`}
+                      emptyText={periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`}
+                    />
+                    {/* each student counted once, however many times they came */}
+                    <span className="text-xs text-gray-500">
+                      {totalUniqueStudents} different {totalUniqueStudents === 1 ? "student" : "students"}
+                    </span>
+                  </div>
                 }
               />
               <KpiCard
@@ -704,7 +710,7 @@ const Analytics = () => {
                     <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: "#6B7280" }} />
                     <YAxis fontSize={12} allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: "#9CA3AF" }} />
                     <Tooltip content={<ChartTooltip unit="visits" />} />
-                    <Area type="monotone" dataKey="visits" stroke={BRAND.green} fill="url(#trendFill)" strokeWidth={2.5} name="Visitors" />
+                    <Area type="monotone" dataKey="visits" stroke={BRAND.green} fill="url(#trendFill)" strokeWidth={2.5} name="Visits" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

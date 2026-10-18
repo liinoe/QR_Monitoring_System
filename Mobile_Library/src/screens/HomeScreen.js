@@ -59,10 +59,17 @@ const hourRange = (h, span = 1) => {
   return `${fmt(h)}–${fmt(h + span)}`;
 };
 
-// How busy it is right now, compared with this library's usual peak.
+// The smallest crowd that can count as "Busy". Without this, a new system (or a
+// quiet semester) with a tiny usual peak would call 2 people "Busy".
+// Change it to fit the library (about how many people make it feel full).
+const MIN_BUSY_BASELINE = 30;
+
+// How busy it is right now, compared with this library's usual peak
+// (or the minimum baseline above, whichever is bigger).
 const getCrowdLevel = (current, peakAvg) => {
   if (current == null) return null;
-  const ratio = peakAvg > 0 ? current / peakAvg : current > 0 ? 1 : 0;
+  const baseline = Math.max(peakAvg || 0, MIN_BUSY_BASELINE);
+  const ratio = current / baseline;
   if (ratio < 0.4) return { label: 'Not busy', color: '#1B5E20', bg: '#E8F1E9' };
   if (ratio < 0.8) return { label: 'Moderate', color: '#946800', bg: '#FBF1CE' };
   return { label: 'Busy', color: '#B3261E', bg: '#FBDFDB' };
@@ -235,8 +242,12 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (response.status === 404) {
-        setStudentData(null);
-        await AsyncStorage.removeItem('cached_profile');
+        // The saved account no longer exists on the server (e.g. it was deleted,
+        // or the app now points to a different database): forget the saved
+        // login and send the student to Login instead of showing an empty Home.
+        await clearSavedLogin();
+        navigation.replace('Login');
+        return;
       } else if (response.ok) {
         const data = await response.json();
         setStudentData(data);

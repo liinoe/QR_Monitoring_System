@@ -74,7 +74,7 @@ const formatActivityTime = (dateStr) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalToday: "Counts every entry log — students and guests — with today's date, regardless of whether they've exited yet.",
+  totalToday: "Counts every entry — students and guests — with today's date, whether or not they've exited yet. A student who enters twice counts as 2 visits; the 'different students' number counts each student once.",
   currentlyInside: "Live count of every log (students + guests) currently marked as \"inside\" right now.",
   pending: "Number of student registration requests awaiting admin approval on the Registrations page.",
 };
@@ -143,7 +143,10 @@ const Dashboard = () => {
 
   const logsToday = onDay(logs, todayStr);
   const guestLogsToday = onDay(guestLogs, todayStr);
-  const totalVisitorsToday = logsToday.length + guestLogsToday.length;
+  const totalVisitorsToday = logsToday.length + guestLogsToday.length; // visits (entries), not people
+  // Different students today (one student entering 3 times = 1). Guests aren't counted
+  // here because each guest visit is a new guest record.
+  const uniqueStudentsToday = new Set(logsToday.map((l) => l.student_number).filter(Boolean)).size;
   const totalVisitorsYesterday = onDay(logs, yesterdayStr).length + onDay(guestLogs, yesterdayStr).length;
 
   const visitorsTrend = totalVisitorsYesterday > 0
@@ -202,7 +205,18 @@ const Dashboard = () => {
       .sort((a, b) => b.value - a.value);
   };
   const collegeData = getCollegeData();
-  const totalCollegeVisitors = collegeData.reduce((sum, c) => sum + c.value, 0);
+  const totalCollegeVisitors = collegeData.reduce((sum, c) => sum + c.value, 0); // visits this week
+  // Different students behind those visits (same week, same rule as the donut).
+  const uniqueStudentsThisWeek = (() => {
+    const { start, end } = getWeekRange(now);
+    const seen = new Set();
+    logs.forEach((log) => {
+      if (!log.visit_date || !log.student_number) return;
+      const d = new Date(log.visit_date);
+      if (!isNaN(d) && d >= start && d <= end) seen.add(log.student_number);
+    });
+    return seen.size;
+  })();
 
   // ---- Recent activity: latest 5 student + guest entries ----
   const recentActivity = [
@@ -250,16 +264,21 @@ const Dashboard = () => {
             <SectionLabel>Today</SectionLabel>
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
               <KpiCard
-                label="Total Visitors Today"
+                label="Total Visits Today"
                 value={totalVisitorsToday}
                 color={BRAND.green}
                 tooltip={KPI_TOOLTIPS.totalToday}
                 footer={
-                  <TrendPill
-                    change={visitorsTrend}
-                    suffix={`${Math.abs(visitorsTrend ?? 0)}% vs yesterday`}
-                    emptyText="No data from yesterday"
-                  />
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <TrendPill
+                      change={visitorsTrend}
+                      suffix={`${Math.abs(visitorsTrend ?? 0)}% vs yesterday`}
+                      emptyText="No data from yesterday"
+                    />
+                    <span className="text-xs text-gray-500">
+                      {uniqueStudentsToday} different {uniqueStudentsToday === 1 ? "student" : "students"}
+                    </span>
+                  </div>
                 }
               />
               <KpiCard
@@ -328,7 +347,10 @@ const Dashboard = () => {
 
             {/* Visitors by college */}
             <Card className="p-6 xl:col-span-2">
-              <CardTitle title="Visitors by College" note="Students only, this week" />
+              <CardTitle
+                title="Visits by College"
+                note={`Students only, this week · ${uniqueStudentsThisWeek} different ${uniqueStudentsThisWeek === 1 ? "student" : "students"}`}
+              />
               {totalCollegeVisitors === 0 ? (
                 <EmptyState text="No college data this week" />
               ) : (
@@ -342,12 +364,16 @@ const Dashboard = () => {
                             <Cell key={entry.name} fill={COLLEGE_COLORS[entry.name] || "#9CA3AF"} />
                           ))}
                         </Pie>
-                        <Tooltip content={<ChartTooltip unit="visitors" />} />
+                        <Tooltip content={<ChartTooltip unit="visits" />} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                       <p className="text-[26px] font-extrabold text-gray-900 leading-none">{totalCollegeVisitors}</p>
-                      <p className="text-[11px] text-gray-500 mt-1">visitors</p>
+                      <p className="text-[11px] text-gray-500 mt-1">{totalCollegeVisitors === 1 ? "visit" : "visits"}</p>
+                      {/* how many different students made those visits */}
+                      <p className="text-[10.5px] font-semibold text-[#1B5E20] mt-0.5">
+                        {uniqueStudentsThisWeek} {uniqueStudentsThisWeek === 1 ? "student" : "students"}
+                      </p>
                     </div>
                   </div>
 
