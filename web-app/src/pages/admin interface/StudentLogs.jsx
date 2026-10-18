@@ -8,6 +8,7 @@ import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
 import MonthPicker from "../../components/MonthPicker";
 import { authFetch } from "../../auth";
+import useChangeWatcher from "../../components/useChangeWatcher";
 import {
   BRAND,
   COLLEGE_COLORS,
@@ -91,12 +92,14 @@ const StudentLogs = () => {
     }
   };
 
-  // Loads the logs now, then refreshes every 10 seconds.
+  // Loads the logs once when the page opens.
   useEffect(() => {
     fetchLogs();
-    const interval = setInterval(fetchLogs, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Then reloads only when a log changed (entry, exit, force exit) or a student's
+  // info was edited (names / colleges shown in the table).
+  useChangeWatcher(["logs", "students"], fetchLogs);
 
   // Everyone still inside (not just the filtered ones) — Force Exit affects all of them.
   const allInside = logs.filter((l) => l.status === "inside").length;

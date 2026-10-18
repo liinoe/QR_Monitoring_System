@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getAdmin, isSuperAdmin, logout, authFetch } from "../auth";
 import { Avatar, Dialog, btn } from "./AdminUI";
 import ChangePasswordDialog from "./ChangePasswordDialog";
+import useChangeWatcher from "./useChangeWatcher";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -92,7 +93,7 @@ const Sidebar = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Gets how many registrations are waiting (for the badge), every 10 seconds.
+  // Gets how many registrations are waiting (for the badge) once when the page opens.
   useEffect(() => {
     const fetchPendingCount = async () => {
       try {
@@ -100,13 +101,15 @@ const Sidebar = () => {
         const data = await response.json();
         setPendingCount(Array.isArray(data) ? data.length : 0);
       } catch {
-        // offline for a moment — try again next time
+        // offline for a moment — the change check below will update it
       }
     };
     fetchPendingCount();
-    const interval = setInterval(fetchPendingCount, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  // After that, the badge updates only when registrations change
+  // (the change check already includes the pending count — no list download).
+  useChangeWatcher(["registrations"], (now) => setPendingCount(now?.pending_count ?? 0), { intervalMs: 10000, fullRefreshMs: 0 });
 
   const menu = [
     { name: "Dashboard", path: "/", icon: "dashboard" },

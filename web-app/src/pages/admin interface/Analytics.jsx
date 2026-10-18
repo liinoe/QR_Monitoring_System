@@ -8,6 +8,7 @@ import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import StatBarList from "../../components/StatBarList";
 import HoverTooltip from "../../components/HoverTooltip";
 import { authFetch } from "../../auth";
+import useChangeWatcher from "../../components/useChangeWatcher";
 import { BRAND, PageTitle, Card, CardTitle, SectionLabel, KpiCard, TrendPill, ChartTooltip, EmptyState } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -286,16 +287,17 @@ const Analytics = () => {
     }
   };
 
-  // Loads the logs when the page opens, then refreshes them every 15 seconds.
+  // Loads the logs once when the page opens.
   useEffect(() => {
     fetchLogs();
     fetchGuestLogs();
-    const interval = setInterval(() => {
-      fetchLogs();
-      fetchGuestLogs();
-    }, 15000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Then reloads only when student/guest logs or student info changed (checked every 15 s).
+  useChangeWatcher(["logs", "guests", "students"], () => {
+    fetchLogs();
+    fetchGuestLogs();
+  }, { intervalMs: 15000 });
 
   // Which period values (of the currently selected type) actually have data,
   // plus the current one so it's always selectable even before any visits.

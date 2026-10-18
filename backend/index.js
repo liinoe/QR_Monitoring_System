@@ -986,6 +986,66 @@ app.get('/api/admin/all', verifyToken, async (req, res) => {
      }
 });
 
+// "DID ANYTHING CHANGE?" CHECK for the admin pages (Dashboard, Student Logs,
+// Guest Logs, Analytics, sidebar badge). The pages call this every few seconds
+// instead of downloading every log. Each part is a short "signature" text that
+// changes whenever its data changes:
+//   logs          - a student entered / exited / was force-exited / a log was voided
+//   guests        - same for guest visits
+//   registrations - new registration, renewal, approve / reject / deactivate / expire
+//   students      - a student's info was edited, or their status changed
+// A page reloads its full data only when a part it uses is different.
+// pending_count is sent too, so the sidebar badge needs no extra download.
+app.get('/api/admin/changes', verifyToken, async (req, res) => {
+    try {
+        // Builds the signature for one log table (student_logs or guest_logs).
+        const logSignature = async (table, idColumn) => {
+            const [[r]] = await db.query(
+                `SELECT COUNT(*) AS total, MAX(${idColumn}) AS last_id,
+                        COALESCE(SUM(status = 'inside'), 0) AS inside,
+                        COALESCE(SUM(forced_exit = 1), 0) AS forced,
+                        COALESCE(SUM(status = 'voided'), 0) AS voided,
+                        MAX(time_out) AS last_out
+                 FROM ${table}`
+            );
+            const lastOut = r.last_out ? new Date(r.last_out).getTime() : 0;
+            return [r.total, r.last_id || 0, r.inside, r.forced, r.voided, lastOut].join('|');
+        };
+
+        const [[reg]] = await db.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(approval_status = 'pending'), 0)     AS pending,
+                    COALESCE(SUM(approval_status = 'approved'), 0)    AS approved,
+                    COALESCE(SUM(approval_status = 'rejected'), 0)    AS rejected,
+                    COALESCE(SUM(approval_status = 'deactivated'), 0) AS deactivated,
+                    COALESCE(SUM(approval_status = 'expired'), 0)     AS expired,
+                    MAX(created_at) AS latest
+             FROM registration_requests`
+        );
+        const [[stu]] = await db.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(status = 'approved'), 0)    AS approved,
+                    COALESCE(SUM(status = 'deactivated'), 0) AS deactivated,
+                    COALESCE(SUM(status = 'expired'), 0)     AS expired,
+                    (SELECT COUNT(*) FROM student_edit_logs) AS edits,
+                    (SELECT MAX(edit_id) FROM student_edit_logs) AS last_edit
+             FROM students`
+        );
+
+        res.json({
+            logs: await logSignature('student_logs', 'log_id'),
+            guests: await logSignature('guest_logs', 'guest_log_id'),
+            registrations: [reg.total, reg.pending, reg.approved, reg.rejected, reg.deactivated, reg.expired,
+                reg.latest ? new Date(reg.latest).getTime() : 0].join('|'),
+            students: [stu.total, stu.approved, stu.deactivated, stu.expired, stu.edits, stu.last_edit || 0].join('|'),
+            pending_count: Number(reg.pending),
+        });
+    } catch (err) {
+        console.error('Changes check error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Tiny "did anything change?" check for the admin Registrations page.
 // Instead of downloading every request every few seconds, the page calls this.
 // The "signature" changes when a request is added (new registration), renewed

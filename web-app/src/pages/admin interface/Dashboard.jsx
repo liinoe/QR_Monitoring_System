@@ -5,6 +5,7 @@ import Header from "../../components/Header";
 import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import { authFetch, isSuperAdmin } from "../../auth";
 import CalendarReminder from "../../components/CalendarReminder";
+import useChangeWatcher from "../../components/useChangeWatcher";
 import {
   BRAND,
   COLLEGE_COLORS,
@@ -118,18 +119,20 @@ const Dashboard = () => {
     }
   };
 
-  // Loads everything now, then refreshes every 5 seconds.
+  // Loads everything once when the page opens.
   useEffect(() => {
     fetchDashboardData();
     fetchGuestData();
     fetchPendingCount();
-    const interval = setInterval(() => {
-      fetchDashboardData();
-      fetchGuestData();
-      fetchPendingCount();
-    }, 5000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Then reloads only what changed (checked every 5 seconds with a tiny request).
+  // A full reload also happens every 5 minutes as a safety net (e.g. after midnight).
+  useChangeWatcher(["logs", "guests", "registrations", "students"], () => {
+    fetchDashboardData();
+    fetchGuestData();
+    fetchPendingCount();
+  });
 
   // ---- KPIs (students + guests together) ----
   const now = new Date();
