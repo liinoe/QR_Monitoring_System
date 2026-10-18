@@ -125,33 +125,23 @@ const Scanner = () => {
     playTone(220, 0.3, "sawtooth", 0, 0.2);
   };
 
-  // Gets how many students from each college are inside.
+  // Gets the live numbers in ONE request: students inside per college + guests inside.
   const fetchBoardData = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/logs/live-board`);
+      const response = await fetch(`${API_URL}/api/scanner/live`);
       const data = await response.json();
       const counts = {};
       let total = 0;
-      data.forEach((item) => {
+      (data.colleges || []).forEach((item) => {
         const code = toAcronym(item.college);
         if (code) counts[code] = (counts[code] || 0) + item.count;
         total += item.count;
       });
       setBoardData(counts);
       setTotalInside(total);
+      setGuestsInside(data.guests ?? 0);
     } catch (err) {
       console.error("Board fetch error:", err);
-    }
-  };
-
-  // Gets how many guests are inside.
-  const fetchGuestsInside = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/guests/live-count`);
-      const data = await response.json();
-      setGuestsInside(data.count);
-    } catch (err) {
-      console.error("Guest fetch error:", err);
     }
   };
 
@@ -168,25 +158,35 @@ const Scanner = () => {
     }
   };
 
-  // Checks the scanner now and every 3 seconds (so unplugging shows up quickly).
+  // Checks the scanner now and every 5 seconds. Skipped while this tab is hidden.
   useEffect(() => {
     fetchScannerStatus();
-    const scannerInterval = setInterval(fetchScannerStatus, 3000);
+    const scannerInterval = setInterval(() => {
+      if (document.visibilityState !== "hidden") fetchScannerStatus();
+    }, 5000);
     return () => clearInterval(scannerInterval);
   }, []);
 
-  // Loads the counts now, refreshes them every 5 seconds, and ticks the clock.
+  // Loads the live numbers now and every 5 seconds (skipped while the tab is hidden;
+  // refreshed right away when it's visible again), and ticks the clock.
+  // A scan on this screen also refreshes them immediately (see processScan).
   useEffect(() => {
     fetchBoardData();
-    fetchGuestsInside();
     const boardInterval = setInterval(() => {
-      fetchBoardData();
-      fetchGuestsInside();
+      if (document.visibilityState !== "hidden") fetchBoardData();
     }, 5000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchBoardData();
+        fetchScannerStatus();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => {
       clearInterval(boardInterval);
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

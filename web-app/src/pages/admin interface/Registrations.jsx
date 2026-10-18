@@ -9,14 +9,11 @@ import RegistrationItem from "../../components/RegistrationItem";
 import ReasonModal from "../../components/ReasonModal";
 import StudentDetailsModal from "../../components/StudentDetailsModal";
 import { authFetch } from "../../auth";
+import useChangeWatcher from "../../components/useChangeWatcher";
 import { collegeAcronyms, toCollegeAcronym } from "../../data/options";
 import { BRAND, PageTitle, SectionLabel, KpiCard, Pill, Dialog, btn } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-// How often (ms) we ask the server "did anything change?". This check is tiny,
-// so it's cheap — the full list is only downloaded when the answer is "yes".
-const CHANGE_CHECK_MS = 5000;
 
 const COLLEGE_FILTER_OPTIONS = Object.values(collegeAcronyms);
 
@@ -65,11 +62,6 @@ const Registrations = () => {
   // Shows the error pop-up with a title and message.
   const showError = (title, message) => setErrorDialog({ title, message });
 
-  // Remembers the last "change signature" from the server, so we can tell when something changed.
-  const lastSignature = useRef(null);
-  // Remembers the last total, so we can tell how many NEW requests arrived.
-  const lastTotal = useRef(null);
-
   // Downloads every registration request and puts it on screen.
   const fetchRegistrations = async () => {
     try {
@@ -93,53 +85,20 @@ const Registrations = () => {
     }
   };
 
-  // Asks the server for a small summary of the registrations table. If it's
-  // different from last time (new registration, renewal, or another admin
-  // approved/rejected something), reload the full list. Otherwise do nothing.
-  const checkForChanges = async () => {
-    // Don't bother while the tab is hidden; we'll check again when it's visible.
-    if (document.visibilityState === "hidden") return;
-    try {
-      const response = await authFetch(`${API_URL}/api/admin/registrations/summary`);
-      if (!response.ok) return;
-      const summary = await response.json();
-
-      // First check after the page opens: just remember the answer.
-      if (lastSignature.current === null) {
-        lastSignature.current = summary.signature;
-        lastTotal.current = summary.total;
-        return;
-      }
-
-      if (summary.signature !== lastSignature.current) {
-        const added = summary.total - (lastTotal.current ?? summary.total);
-        if (added > 0) setNewCount((n) => n + added);
-        lastSignature.current = summary.signature;
-        lastTotal.current = summary.total;
-        fetchRegistrations();
-      }
-    } catch {
-      // Server unreachable for a moment — try again on the next check.
-    }
-  };
-
-  // On page open: load the list and the semester once, then start the light change check.
+  // On page open: load the list and the semester once.
   useEffect(() => {
     fetchRegistrations();
     fetchCurrentPeriod();
-    checkForChanges();
-
-    const interval = setInterval(checkForChanges, CHANGE_CHECK_MS);
-    // Check right away when the admin comes back to this tab.
-    const onVisible = () => document.visibilityState === "visible" && checkForChanges();
-    document.addEventListener("visibilitychange", onVisible);
-
-    // Stop checking when the admin leaves this page.
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
   }, []);
+
+  // Then reloads the list only when registrations changed (new registration, renewal,
+  // or another admin approved / rejected something) — using the shared change check,
+  // the same request the sidebar badge listens to. Also counts new arrivals for the notice.
+  useChangeWatcher(["registrations"], (now, before) => {
+    const added = (now?.registrations_total ?? 0) - (before?.registrations_total ?? 0);
+    if (added > 0) setNewCount((n) => n + added);
+    fetchRegistrations();
+  });
 
   // Hides the "new registration" notice by itself after a few seconds.
   useEffect(() => {

@@ -293,11 +293,11 @@ const Analytics = () => {
     fetchGuestLogs();
   }, []);
 
-  // Then reloads only when student/guest logs or student info changed (checked every 15 s).
+  // Then reloads only when student/guest logs or student info changed.
   useChangeWatcher(["logs", "guests", "students"], () => {
     fetchLogs();
     fetchGuestLogs();
-  }, { intervalMs: 15000 });
+  });
 
   // Which period values (of the currently selected type) actually have data,
   // plus the current one so it's always selectable even before any visits.

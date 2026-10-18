@@ -109,7 +109,7 @@ const Sidebar = () => {
 
   // After that, the badge updates only when registrations change
   // (the change check already includes the pending count — no list download).
-  useChangeWatcher(["registrations"], (now) => setPendingCount(now?.pending_count ?? 0), { intervalMs: 10000, fullRefreshMs: 0 });
+  useChangeWatcher(["registrations"], (now) => setPendingCount(now?.pending_count ?? 0), { fullRefreshMs: 0 });
 
   const menu = [
     { name: "Dashboard", path: "/", icon: "dashboard" },

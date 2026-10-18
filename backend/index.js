@@ -15,7 +15,9 @@ const { verifyToken, requireSuperAdmin } = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// maxAge: the browser remembers the CORS permission for 10 minutes instead of asking
+// (an extra "preflight" request) before almost every admin request.
+app.use(cors({ maxAge: 600 }));
 app.use(express.json());
 
 // Serves /public/reset-password.html and any other static assets. This is
@@ -1039,6 +1041,7 @@ app.get('/api/admin/changes', verifyToken, async (req, res) => {
                 reg.latest ? new Date(reg.latest).getTime() : 0].join('|'),
             students: [stu.total, stu.approved, stu.deactivated, stu.expired, stu.edits, stu.last_edit || 0].join('|'),
             pending_count: Number(reg.pending),
+            registrations_total: Number(reg.total), // lets the Registrations page count new arrivals
         });
     } catch (err) {
         console.error('Changes check error:', err.message);
@@ -1836,7 +1839,23 @@ app.get('/api/student/profile/:student_number', verifyStudentToken, async (req, 
     }
 });
 
+// SCANNER SCREEN LIVE NUMBERS in ONE request (public, counts only — no names):
+// students inside per college + guests inside. The scanner page asks every 5 s.
+app.get('/api/scanner/live', async (req, res) => {
+    try {
+        const [colleges] = await db.query(`
+            SELECT s.college, COUNT(*) as count FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
+            WHERE sl.status = 'inside' GROUP BY s.college
+        `);
+        const [[{ guests }]] = await db.query('SELECT COUNT(*) AS guests FROM guest_logs WHERE status = "inside"');
+        res.json({ colleges, guests: Number(guests) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // How many students are inside right now, grouped by college (public live board).
+// (Kept for older versions of the scanner page; the new one uses /api/scanner/live.)
 app.get('/api/logs/live-board', async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -2078,9 +2097,10 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
         const totalVisits = myLogs.length;
         const currentOccupancy = studentsInside + guestsInside;
 
-        const dayHourTotals = new Array(6).fill(0);
-        const dayHourCounts = new Array(6).fill(0);
-        const dayVisitCounts = new Array(6).fill(0);
+        // One slot per weekday, Sunday first (Sun–Sat, same order as the web app).
+        const dayHourTotals = new Array(7).fill(0);
+        const dayHourCounts = new Array(7).fill(0);
+        const dayVisitCounts = new Array(7).fill(0);
 
         let totalStayMs = 0;
         let exitedCount = 0;
@@ -2088,9 +2108,7 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
         myLogs.forEach(log => {
             if (!log.visit_date) return;
             const d = new Date(log.visit_date);
-            const jsDay = d.getDay();
-            if (jsDay === 0) return;
-            const idx = jsDay - 1;
+            const idx = d.getDay(); // 0 = Sunday … 6 = Saturday
             dayVisitCounts[idx] += 1;
 
             if (log.time_in && log.time_out && !log.forced_exit) {
@@ -2102,7 +2120,7 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
             }
         });
 
-        const weeklyActivity = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => ({
+        const weeklyActivity = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => ({
             day: label,
             hours: dayHourCounts[i] > 0 ? parseFloat((dayHourTotals[i] / dayHourCounts[i]).toFixed(1)) : 0,
         }));
@@ -2110,7 +2128,7 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
         const maxVisits = Math.max(...dayVisitCounts);
         const frequentDayIdx = maxVisits > 0 ? dayVisitCounts.indexOf(maxVisits) : null;
         const frequentDay = frequentDayIdx !== null
-            ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][frequentDayIdx]
+            ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][frequentDayIdx]
             : '--';
 
         const avgStayHours = exitedCount > 0 ? (totalStayMs / exitedCount / (1000 * 60 * 60)) : 0;

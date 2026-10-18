@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { authFetch, describeUserAgent, isLoggedIn } from "../auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const POLL_MS = 4000;
+const POLL_MS = 8000; // every 8 s (the waiting browser has ~60 s, so this is plenty)
 
 /**
  * Shown on every signed-in admin page (mounted by ProtectedRoute).
