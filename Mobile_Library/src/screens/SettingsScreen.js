@@ -19,6 +19,7 @@ import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessTile, ScanFrame } from '../components/QLessLogo';
 import { useAppDialog } from '../components/AppDialog';
+import appConfig from '../../app.json';
 
 // Library details shown in the Support section.
 // Hours follow the library's own schedule (not Google's "Always open" listing).
@@ -34,7 +35,8 @@ const LIBRARY_INFO = {
   youtube: 'https://www.youtube.com/@cvsulibrary',
   website: 'https://library.cvsu.edu.ph/landing/',
 };
-const APP_VERSION = '1.0.0'; // keep in sync with app.json "version"
+// Read straight from app.json, so the version shown always matches the installed build.
+const APP_VERSION = appConfig.expo.version;
 
 // Returns the status pill (label, icon, colors) for the student.
 // Same status wording as the Home screen cards.
