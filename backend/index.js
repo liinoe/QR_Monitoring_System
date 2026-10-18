@@ -21,7 +21,12 @@ app.use(express.json());
 // Serves /public/reset-password.html and any other static assets. This is
 // what the "one-time link" in the reset email actually opens — a plain
 // HTML page.
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] })); // /reset-password works too
+
+// Opening the backend address in a browser shows a short note instead of "Cannot GET /".
+app.get('/', (req, res) => {
+    res.type('text/plain').send('QLess API is running. This is the server for the QLess library app and website.');
+});
 
 // Academic calendar: semesters with start/end dates that switch by themselves
 // (passes expire on the end date, renewal opens on the next start date).
@@ -847,7 +852,7 @@ app.post('/api/student/forgot-password', async (req, res) => {
         );
 
         const baseUrl = RESET_BASE_URL || `${req.protocol}://${req.get('host')}`;
-        const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
+        const resetLink = `${baseUrl}/reset-password?token=${token}`; // page lives on the website (RESET_BASE_URL)
 
         await sendEmail({
             to: email.trim().toLowerCase(),
