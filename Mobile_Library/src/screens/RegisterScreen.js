@@ -25,6 +25,7 @@ import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { useAppDialog } from '../components/AppDialog';
 import { getRejectionGuide } from '../utils/rejection';
+import PrivacyNoticeModal from '../components/PrivacyNoticeModal';
 
 // Maps what the student picks ("Male") to what the database stores ("male").
 const sexLabelToValue = {
@@ -128,6 +129,10 @@ export default function RegisterScreen({ navigation, route }) {
   const isRenewal = route?.params?.mode === 'renewal';
   // Resubmit mode comes from the Home screen's "Register Again" button (rejected accounts).
   const isResubmit = route?.params?.mode === 'resubmit';
+  // Privacy Notice: has the student ticked "I agree", and is the notice pop-up open?
+  // (Renewal doesn't ask again — no new personal details are collected.)
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   const [form, setForm] = useState({
     surname: '',
@@ -404,6 +409,10 @@ export default function RegisterScreen({ navigation, route }) {
   const handleReview = () => {
     const valid = isRenewal ? validateRenewalOnly() : validatePersonalAndAcademic();
     if (!valid) return;
+    if (!isRenewal && !agreedToPrivacy) {
+      showDialog({ tone: 'error', title: 'Privacy Notice', message: 'Please read and agree to the Privacy Notice and Terms of Use first.' });
+      return;
+    }
     setConfirmModalVisible(true);
   };
 
@@ -411,6 +420,7 @@ export default function RegisterScreen({ navigation, route }) {
 
   // Clears the whole form after a successful registration.
   const resetForm = () => {
+    setAgreedToPrivacy(false);
     setForm({
       surname: '', first_name: '', middle_name: '',
       email: '', phone_number: '', address: '', sexLabel: '',
@@ -482,6 +492,7 @@ export default function RegisterScreen({ navigation, route }) {
         program: form.program,
         year_level: form.year_level,
         otp: otpCode,
+        privacy_consent: agreedToPrivacy, // the server saves when they agreed
       };
 
       setOtpBusy(true);
@@ -872,11 +883,34 @@ export default function RegisterScreen({ navigation, route }) {
           {/* LAST STEP — REVIEW */}
           <View style={[styles.stepRow, { width: layout.contentWidth }]}>
             <StepIndicator number={reviewStep} isLast />
+            <View style={{ flex: 1 }}>
+            {/* Privacy Notice checkbox (new registration / resubmit only).
+                Tapping the box ticks it; tapping the green words opens the notice. */}
+            {!isRenewal && (
+              <View style={styles.consentRow}>
+                <TouchableOpacity
+                  onPress={() => setAgreedToPrivacy(!agreedToPrivacy)}
+                  style={[styles.checkbox, agreedToPrivacy && styles.checkboxOn]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: agreedToPrivacy }}
+                  hitSlop={8}
+                >
+                  {agreedToPrivacy && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </TouchableOpacity>
+                <Text style={styles.consentText}>
+                  <Text onPress={() => setAgreedToPrivacy(!agreedToPrivacy)}>I have read and agree to the </Text>
+                  <Text style={styles.consentLink} onPress={() => setPrivacyOpen(true)}>
+                    Privacy Notice and Terms of Use
+                  </Text>
+                  <Text>.</Text>
+                </Text>
+              </View>
+            )}
             <View style={styles.confirmActions}>
               <TouchableOpacity
-                style={[styles.btn, styles.confirmBtn, !isRenewal && !phoneNumberIsValid && styles.disabledBtn]}
+                style={[styles.btn, styles.confirmBtn, !isRenewal && (!phoneNumberIsValid || !agreedToPrivacy) && styles.disabledBtn]}
                 onPress={handleReview}
-                disabled={!isRenewal && !phoneNumberIsValid}
+                disabled={!isRenewal && (!phoneNumberIsValid || !agreedToPrivacy)}
               >
                 <Text style={styles.confirmText}>Continue</Text>
               </TouchableOpacity>
@@ -884,9 +918,13 @@ export default function RegisterScreen({ navigation, route }) {
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Privacy Notice and Terms of Use pop-up */}
+      <PrivacyNoticeModal visible={privacyOpen} onClose={() => setPrivacyOpen(false)} />
 
       {/* REVIEW POP-UP — last check before actually submitting */}
       <Modal
@@ -1235,6 +1273,16 @@ const styles = StyleSheet.create({
   passwordInput: { flex: 1, fontSize: 14, color: colors.textPrimary, paddingVertical: 8 },
 
   confirmActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 12, gap: 10 },
+  // Privacy Notice checkbox row above Continue / Cancel
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginLeft: 12, marginBottom: 14 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, marginTop: 1,
+    borderWidth: 1.5, borderColor: colors.gray, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  consentText: { flex: 1, fontSize: 13, lineHeight: 19, color: colors.textSecondary },
+  consentLink: { color: colors.primary, fontWeight: '700', textDecorationLine: 'underline' },
   btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
   confirmBtn: { backgroundColor: colors.primary },
   disabledBtn: { backgroundColor: '#AAB8AC' },

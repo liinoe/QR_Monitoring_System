@@ -20,6 +20,7 @@ import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessTile, ScanFrame } from '../components/QLessLogo';
 import { useAppDialog } from '../components/AppDialog';
 import appConfig from '../../app.json';
+import PrivacyNoticeModal from '../components/PrivacyNoticeModal';
 
 // Library details shown in the Support section.
 // Hours follow the library's own schedule (not Google's "Always open" listing).
@@ -78,6 +79,8 @@ export default function SettingsScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [studentData, setStudentData] = useState(null);
+  // Privacy Notice pop-up (same one shown during registration)
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   // Styled pop-up (see components/AppDialog.js).
@@ -267,6 +270,16 @@ export default function SettingsScreen({ navigation }) {
           />
         </View>
 
+        {/* PRIVACY */}
+        <Text style={styles.sectionLabel}>Privacy</Text>
+        <View style={styles.card}>
+          <SettingsRow
+            icon="shield-checkmark-outline"
+            label="Privacy Notice and Terms of Use"
+            onPress={() => setPrivacyOpen(true)}
+          />
+        </View>
+
         {/* ABOUT */}
         <Text style={styles.sectionLabel}>About</Text>
         <View style={[styles.card, styles.aboutCard]}>
@@ -282,6 +295,8 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      <PrivacyNoticeModal visible={privacyOpen} onClose={() => setPrivacyOpen(false)} />
 
       <ChangePasswordModal
         visible={changePasswordOpen}

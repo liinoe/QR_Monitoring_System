@@ -183,6 +183,19 @@ async function ensureAdminArchiveColumns() {
 }
 ensureAdminArchiveColumns().catch((err) => console.error('ensureAdminArchiveColumns error:', err.message));
 
+// Adds students.privacy_consent_at if it isn't there yet: the date and time the
+// student agreed to the Privacy Notice in the app (proof of consent, Data Privacy Act).
+async function ensurePrivacyConsentColumn() {
+    const [cols] = await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'privacy_consent_at'`
+    );
+    if (cols.length === 0) {
+        await db.query('ALTER TABLE students ADD COLUMN privacy_consent_at DATETIME NULL');
+    }
+}
+ensurePrivacyConsentColumn().catch((err) => console.error('ensurePrivacyConsentColumn error:', err.message));
+
 // Turns a code into its SHA-256 hash (what we store and compare).
 const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
 
@@ -380,6 +393,10 @@ app.post('/api/register', async (req, res) => {
     if (!isStrongPassword(password)) {
         return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
+    // The student must agree to the Privacy Notice before we keep their details.
+    if (req.body.privacy_consent !== true) {
+        return res.status(400).json({ message: "Please read and agree to the Privacy Notice and Terms of Use." });
+    }
     if (!VALID_SEX_VALUES.includes(sex)) {
         return res.status(400).json({ message: "Invalid value for sex." });
     }
@@ -437,7 +454,8 @@ app.post('/api/register', async (req, res) => {
                         full_name = ?, surname = ?, first_name = ?, middle_name = ?,
                         email = ?, phone_number = ?, address = ?, sex = ?, password = ?,
                         college = ?, program = ?, year_level = ?,
-                        status = "pending", status_reason = NULL, qr_code = NULL, registered_period = ?
+                        status = "pending", status_reason = NULL, qr_code = NULL, registered_period = ?,
+                        privacy_consent_at = NOW()
                      WHERE student_number = ?`,
                     [full_name, surname, first_name, middle_name || null,
                      email, phone_number, address, sex, hashedPassword,
@@ -488,8 +506,8 @@ app.post('/api/register', async (req, res) => {
                 full_name, surname, first_name, middle_name,
                 email, phone_number, address, sex, password,
                 student_number, college, program, year_level,
-                qr_code, status, registered_period
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, "pending", ?)`,
+                qr_code, status, registered_period, privacy_consent_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, "pending", ?, NOW())`,
             [full_name, surname, first_name, middle_name || null,
              email, phone_number, address, sex, hashedPassword,
              student_number, college, program, year_level, currentPeriod]

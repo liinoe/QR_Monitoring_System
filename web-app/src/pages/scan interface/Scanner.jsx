@@ -298,20 +298,19 @@ const Scanner = () => {
               <p className="text-[11px] text-white/60 truncate">
                 Library Patron Access and Monitoring System · Entry &amp; Exit Station
               </p>
-              <div className="flex items-center gap-3 mt-0.5">
-                <h1 className="text-[20px] font-bold leading-tight">Scan Your QR Pass</h1>
-                {/* Scanner connection pill */}
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-white/[0.12] px-2.5 py-0.5 rounded-full">
-                  <span
-                    className={`w-2 h-2 rounded-full ${scannerState === "connected" ? "animate-pulse" : ""}`}
-                    style={{ backgroundColor: pill.dot }}
-                  />
-                  {pill.text}
-                </span>
-              </div>
+              <h1 className="text-[20px] font-bold leading-tight mt-0.5">Scan Your QR Pass</h1>
             </div>
           </div>
-          <div className="text-right flex-shrink-0">
+          {/* Right side: scanner connection pill, then the clock */}
+          <div className="flex items-center gap-5 flex-shrink-0">
+          <span className="flex items-center gap-2 text-[12px] font-semibold bg-white/[0.12] px-3 py-1.5 rounded-full">
+            <span
+              className={`w-2 h-2 rounded-full ${scannerState === "connected" ? "animate-pulse" : ""}`}
+              style={{ backgroundColor: pill.dot }}
+            />
+            {pill.text}
+          </span>
+          <div className="text-right">
             <p className="text-[24px] font-bold leading-none tracking-tight tabular-nums">
               {clock}
               <span className="text-[13px] text-white/50 ml-1">:{pad(currentTime.getSeconds())}</span>
@@ -320,6 +319,7 @@ const Scanner = () => {
               </span>
             </p>
             <p className="text-[11px] text-white/60 mt-1">{dateText}</p>
+          </div>
           </div>
         </div>
       </header>

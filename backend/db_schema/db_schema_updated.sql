@@ -319,6 +319,7 @@ CREATE TABLE `students` (
   `status_reason` varchar(500) DEFAULT NULL,
   `registered_period` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `privacy_consent_at` datetime DEFAULT NULL,
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `student_number` (`student_number`),
