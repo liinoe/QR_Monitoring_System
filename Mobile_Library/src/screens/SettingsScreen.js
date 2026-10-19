@@ -8,7 +8,7 @@ import {
   Linking,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -73,6 +73,8 @@ const formatPhone = (phone) => {
 // Settings page: profile header (with Log Out), account details,
 // password change, library contacts and app info.
 export default function SettingsScreen({ navigation }) {
+  // Height of the phone's bottom navigation bar, so nothing hides behind it.
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [studentData, setStudentData] = useState(null);
@@ -197,7 +199,7 @@ export default function SettingsScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: layout.horizontalPadding, width: '100%', alignSelf: 'center', maxWidth: layout.contentWidth },
+          { paddingHorizontal: layout.horizontalPadding, width: '100%', alignSelf: 'center', maxWidth: layout.contentWidth, paddingBottom: 40 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >

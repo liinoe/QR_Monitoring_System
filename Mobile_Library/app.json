@@ -2,7 +2,7 @@
   "expo": {
     "name": "QLess",
     "slug": "qless",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "edu.cvsu.qless",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0E3B1F"

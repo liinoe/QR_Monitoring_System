@@ -289,38 +289,37 @@ const Scanner = () => {
   return (
     <div className="scanner-page h-screen w-full flex flex-col font-sans overflow-hidden" style={{ backgroundColor: BRAND.page }}>
       {/* HEADER — same as the guest pages */}
+      {/* Compact header: one row so the scan area gets more space */}
       <header className="relative text-white shadow-[0_4px_16px_rgba(14,59,31,0.18)] flex-shrink-0" style={{ backgroundColor: BRAND.deep }}>
-        <div className="flex items-center gap-3 px-8 pt-5">
-          <img src={logo} alt="CvSU Logo" className="w-9 h-9 object-contain" />
-          <div className="leading-tight">
-            <p className="text-[13px] font-extrabold tracking-wide">Library Patron Access and Monitoring System</p>
-            <p className="text-[11px] text-white/60">Ladislao N. Diwa Memorial Library</p>
-          </div>
-        </div>
-        <div className="flex items-end justify-between gap-6 px-8 pt-5 pb-6">
-          <div>
-            <p className="text-[13px] text-white/70 font-medium">Entry &amp; Exit Station</p>
-            <div className="flex items-center gap-3 mt-0.5">
-              <h1 className="text-[28px] font-bold leading-tight">Scan Your QR Pass</h1>
-              {/* Scanner connection pill */}
-              <span className="flex items-center gap-1.5 text-[11.5px] font-semibold bg-white/[0.12] px-3 py-1 rounded-full">
-                <span
-                  className={`w-2 h-2 rounded-full ${scannerState === "connected" ? "animate-pulse" : ""}`}
-                  style={{ backgroundColor: pill.dot }}
-                />
-                {pill.text}
-              </span>
+        <div className="flex items-center justify-between gap-6 px-8 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={logo} alt="CvSU Logo" className="w-9 h-9 object-contain flex-shrink-0" />
+            <div className="leading-tight min-w-0">
+              <p className="text-[11px] text-white/60 truncate">
+                Library Patron Access and Monitoring System · Entry &amp; Exit Station
+              </p>
+              <div className="flex items-center gap-3 mt-0.5">
+                <h1 className="text-[20px] font-bold leading-tight">Scan Your QR Pass</h1>
+                {/* Scanner connection pill */}
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-white/[0.12] px-2.5 py-0.5 rounded-full">
+                  <span
+                    className={`w-2 h-2 rounded-full ${scannerState === "connected" ? "animate-pulse" : ""}`}
+                    style={{ backgroundColor: pill.dot }}
+                  />
+                  {pill.text}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[34px] font-bold leading-none tracking-tight tabular-nums">
+          <div className="text-right flex-shrink-0">
+            <p className="text-[24px] font-bold leading-none tracking-tight tabular-nums">
               {clock}
-              <span className="text-[16px] text-white/50 ml-1">:{pad(currentTime.getSeconds())}</span>
-              <span className="text-[16px] ml-2" style={{ color: BRAND.goldLight }}>
+              <span className="text-[13px] text-white/50 ml-1">:{pad(currentTime.getSeconds())}</span>
+              <span className="text-[13px] ml-1.5" style={{ color: BRAND.goldLight }}>
                 {currentTime.getHours() < 12 ? "AM" : "PM"}
               </span>
             </p>
-            <p className="text-[12px] text-white/60 mt-1.5">{dateText}</p>
+            <p className="text-[11px] text-white/60 mt-1">{dateText}</p>
           </div>
         </div>
       </header>

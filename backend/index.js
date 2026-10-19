@@ -165,6 +165,24 @@ async function ensureOtpTable() {
 }
 ensureOtpTable().catch((err) => console.error('ensureOtpTable error:', err.message));
 
+// Adds the "archived" columns to admins if they aren't there yet.
+// (MySQL has no "ADD COLUMN IF NOT EXISTS", so we check the table first.)
+// An archived staff account can't sign in, but its records stay (who approved what).
+async function ensureAdminArchiveColumns() {
+    const [cols] = await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME IN ('is_archived', 'archived_at')`
+    );
+    const have = cols.map((c) => c.COLUMN_NAME);
+    if (!have.includes('is_archived')) {
+        await db.query('ALTER TABLE admins ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    if (!have.includes('archived_at')) {
+        await db.query('ALTER TABLE admins ADD COLUMN archived_at DATETIME NULL');
+    }
+}
+ensureAdminArchiveColumns().catch((err) => console.error('ensureAdminArchiveColumns error:', err.message));
+
 // Turns a code into its SHA-256 hash (what we store and compare).
 const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
 
@@ -1324,6 +1342,32 @@ app.get('/api/logs/all', verifyToken, async (req, res) => {
 });
 
 // FORCE EXIT ALL ACTIVE LOGS (Bulk action for closing time)
+// FORCE EXIT ALL PATRONS (Dashboard button): logs out every student AND guest
+// still inside, flagged as forced exits so they're left out of the average stay.
+// Same SQL as the 5:31 PM auto logout, for early closures or emergencies.
+app.patch('/api/patrons/force-exit-all', verifyToken, async (req, res) => {
+    try {
+        const [studentResult] = await db.query(
+            'UPDATE student_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
+        const [guestResult] = await db.query(
+            'UPDATE guest_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
+        const students = studentResult.affectedRows;
+        const guests = guestResult.affectedRows;
+        res.json({
+            success: true,
+            students,
+            guests,
+            message: `Logged out ${students} student(s) and ${guests} guest(s).`,
+        });
+    } catch (err) {
+        console.error("Force exit all patrons error:", err.message);
+        res.status(500).json({ message: "Force exit failed. Please try again." });
+    }
+});
+
+// Older one-table versions (kept so nothing breaks; the website now uses the one above).
 app.patch('/api/logs/force-exit-all', verifyToken, async (req, res) => {
     try {
         const [result] = await db.query(
@@ -1515,6 +1559,11 @@ app.post('/api/admin/login', async (req, res) => {
         }
         clearWrongPasswords(limitKey);
 
+        // Archived accounts can no longer sign in (the super admin can restore them).
+        if (admin.is_archived) {
+            return res.status(403).json({ message: "This account has been archived. Please contact the super admin." });
+        }
+
         // Housekeeping: forget browsers that haven't been seen for a day, and
         // close out approval requests nobody answered.
         await db.query('DELETE FROM admin_sessions WHERE last_seen_at < NOW() - INTERVAL 1 DAY');
@@ -1692,8 +1741,11 @@ app.post('/api/admin/staff/:admin_id/reset-password', verifyToken, requireSuperA
         return res.status(400).json({ message: "Use Change Password for your own account." });
     }
     try {
-        const [rows] = await db.query('SELECT admin_id, email FROM admins WHERE admin_id = ?', [adminId]);
+        const [rows] = await db.query('SELECT admin_id, email, is_archived FROM admins WHERE admin_id = ?', [adminId]);
         if (rows.length === 0) return res.status(404).json({ message: "Account not found." });
+        if (rows[0].is_archived) {
+            return res.status(400).json({ message: "Restore this account first before resetting its password." });
+        }
 
         const tempPassword = generateTempPassword();
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -1752,9 +1804,64 @@ app.post('/api/admin/keep-password', verifyToken, async (req, res) => {
 // List all staff accounts, for the "Manage Staff Accounts" table.
 app.get('/api/admin/staff', verifyToken, requireSuperAdmin, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT admin_id, name, email, role, password_is_temp, created_at FROM admins ORDER BY created_at DESC');
+        const [rows] = await db.query(
+            `SELECT admin_id, name, email, role, password_is_temp, created_at, is_archived, archived_at
+             FROM admins ORDER BY is_archived ASC, created_at DESC`
+        );
         res.json(rows);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ARCHIVE A STAFF ACCOUNT — super_admin only.
+// Like deactivating: the account can't sign in anymore and is signed out everywhere,
+// but it is NOT deleted, so the logs of what it approved stay correct.
+app.post('/api/admin/staff/:admin_id/archive', verifyToken, requireSuperAdmin, async (req, res) => {
+    const adminId = Number(req.params.admin_id);
+    if (adminId === req.admin.admin_id) {
+        return res.status(400).json({ message: "You can't archive your own account." });
+    }
+    try {
+        const [rows] = await db.query('SELECT admin_id, name, role, is_archived FROM admins WHERE admin_id = ?', [adminId]);
+        if (rows.length === 0) return res.status(404).json({ message: "Account not found." });
+        if (rows[0].is_archived) return res.status(400).json({ message: "This account is already archived." });
+
+        // Always keep at least one active super admin, or no one could manage accounts.
+        if (rows[0].role === 'super_admin') {
+            const [[{ others }]] = await db.query(
+                'SELECT COUNT(*) AS others FROM admins WHERE role = "super_admin" AND is_archived = 0 AND admin_id <> ?',
+                [adminId]
+            );
+            if (others === 0) {
+                return res.status(400).json({ message: "At least one active super admin is required." });
+            }
+        }
+
+        await db.query('UPDATE admins SET is_archived = 1, archived_at = NOW() WHERE admin_id = ?', [adminId]);
+        await db.query('DELETE FROM admin_sessions WHERE admin_id = ?', [adminId]); // signs them out everywhere
+        await db.query('UPDATE admin_login_requests SET status = "expired" WHERE admin_id = ? AND status = "pending"', [adminId]);
+
+        res.json({ success: true, message: `${rows[0].name}'s account was archived.` });
+    } catch (err) {
+        console.error("Archive staff error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// RESTORE AN ARCHIVED STAFF ACCOUNT — super_admin only. They can sign in again
+// with their old password (or the super admin can reset it).
+app.post('/api/admin/staff/:admin_id/restore', verifyToken, requireSuperAdmin, async (req, res) => {
+    const adminId = Number(req.params.admin_id);
+    try {
+        const [rows] = await db.query('SELECT admin_id, name, is_archived FROM admins WHERE admin_id = ?', [adminId]);
+        if (rows.length === 0) return res.status(404).json({ message: "Account not found." });
+        if (!rows[0].is_archived) return res.status(400).json({ message: "This account is not archived." });
+
+        await db.query('UPDATE admins SET is_archived = 0, archived_at = NULL WHERE admin_id = ?', [adminId]);
+        res.json({ success: true, message: `${rows[0].name}'s account was restored.` });
+    } catch (err) {
+        console.error("Restore staff error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1788,6 +1895,10 @@ app.put('/api/admin/students/:student_number', verifyToken, async (req, res) => 
     }
     if (updates.sex && !VALID_SEX_VALUES.includes(updates.sex)) {
         return res.status(400).json({ message: "Invalid value for sex." });
+    }
+    // Same phone rule as the mobile app: +63 followed by 10 digits starting with 9.
+    if (updates.phone_number !== undefined && !/^\+639\d{9}$/.test(updates.phone_number)) {
+        return res.status(400).json({ message: "Please enter all 10 digits of the phone number after +63." });
     }
 
     try {

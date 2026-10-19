@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +34,8 @@ const formatCountdown = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(
 // Forgot password: the student enters their CvSU email and we email a one-time reset link.
 // Plain white page with a back button (no green header), same inputs/buttons as Login.
 export default function ForgotPasswordScreen({ navigation }) {
+  // Height of the phone's bottom navigation bar, so nothing hides behind it.
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const isFocused = useIsFocused(); // dark status-bar icons only while this white screen is showing
@@ -105,7 +107,7 @@ export default function ForgotPasswordScreen({ navigation }) {
           </SafeAreaView>
 
           {/* CONTENT */}
-          <View style={[styles.card, { paddingHorizontal: layout.cardPadding }]}>
+          <View style={[styles.card, { paddingHorizontal: layout.cardPadding, paddingBottom: 36 + insets.bottom }]}>
             <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }}>
               {!sentTo ? (
                 <>

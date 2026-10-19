@@ -73,6 +73,8 @@ CREATE TABLE `admins` (
   `role` varchar(50) DEFAULT 'admin',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `password_is_temp` tinyint(1) NOT NULL DEFAULT '0',
+  `is_archived` tinyint(1) NOT NULL DEFAULT '0',
+  `archived_at` datetime DEFAULT NULL,
   PRIMARY KEY (`admin_id`),
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

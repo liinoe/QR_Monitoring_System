@@ -32,6 +32,21 @@ const CollegeLabel = ({ college }) => (
 const inputClass =
   "w-full bg-white border border-[#E3E7E3] rounded-[12px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
 
+// Phone helpers (same rules as the mobile Register screen).
+// Keeps only the 10 digits after +63 (accepts "09...", "63..." or "9...").
+const normalizePhoneDigits = (value) => {
+  const digits = (value || "").replace(/\D/g, "");
+  const local = digits.startsWith("09") ? digits.slice(1) : digits.startsWith("63") ? digits.slice(2) : digits;
+  return local.slice(0, 10);
+};
+// Shows "+639123456789" as "912 345 6789" in the input box.
+const formatPhoneDigits = (phone) => {
+  const d = (phone || "").replace(/^\+63/, "").slice(0, 10);
+  return [d.slice(0, 3), d.slice(3, 6), d.slice(6, 10)].filter(Boolean).join(" ");
+};
+// A complete Philippine mobile number: +63 then 9 and 9 more digits.
+const isValidPhone = (phone) => /^\+639\d{9}$/.test(phone || "");
+
 // Year levels for a college: Vet Med (CVMBS) also has a 6th year.
 const yearLevelsFor = (college) =>
   /veterinary/i.test(college || "") ? [...yearLevels.filter((y) => y !== "6th Year"), "6th Year"] : yearLevels;
@@ -56,6 +71,33 @@ const ManageStudents = () => {
   const [error, setError] = useState("");
   // Student number shown in the "Changes saved" pop-up.
   const [savedFor, setSavedFor] = useState(null);
+  // Live phone check: idle | checking | available | taken | unknown
+  const [phoneCheck, setPhoneCheck] = useState({ state: "idle", message: "" });
+
+  // Live "is this phone number already used?" check, like the mobile app.
+  // Waits 0.5 s after the admin stops typing. Skips the student's own current number.
+  useEffect(() => {
+    if (!editing || !isValidPhone(form.phone_number) || form.phone_number === editing.phone_number) {
+      setPhoneCheck({ state: "idle", message: "" });
+      return;
+    }
+    setPhoneCheck({ state: "checking", message: "Checking..." });
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const url = `${API_URL}/api/register/check-phone/${encodeURIComponent(form.phone_number)}?student_number=${encodeURIComponent(form.student_number)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (cancelled) return;
+        setPhoneCheck(data.available
+          ? { state: "available", message: data.message || "Phone number is available." }
+          : { state: "taken", message: data.message || "This phone number is already used by another account." });
+      } catch {
+        if (!cancelled) setPhoneCheck({ state: "unknown", message: "Could not check right now." });
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [form.phone_number, form.student_number, editing]);
 
   // Gets every student account from the server.
   const fetchStudents = async () => {
@@ -95,7 +137,10 @@ const ManageStudents = () => {
       surname: student.surname || guessed?.surname || "",
       first_name: student.first_name || guessed?.first_name || "",
       middle_name: student.middle_name || guessed?.middle_name || "",
-      phone_number: student.phone_number || "",
+      // Old records may be saved as "09..."; show them in the +63 format.
+      phone_number: isValidPhone(student.phone_number)
+        ? student.phone_number
+        : student.phone_number ? `+63${normalizePhoneDigits(student.phone_number)}` : "",
       address: student.address || "",
       sex: student.sex || "male",
       college: student.college || "",
@@ -130,6 +175,14 @@ const ManageStudents = () => {
     e.preventDefault();
     if (!form.college || !form.program || !form.year_level) {
       setError("Please choose the college, program and year level.");
+      return;
+    }
+    if (!isValidPhone(form.phone_number)) {
+      setError("Please enter all 10 digits of the phone number after +63.");
+      return;
+    }
+    if (phoneCheck.state === "taken") {
+      setError("This phone number is already used by another account.");
       return;
     }
     setSaving(true);
@@ -307,7 +360,11 @@ const ManageStudents = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Phone Number" htmlFor="phone_number">
-                    <input id="phone_number" name="phone_number" value={form.phone_number} onChange={handleChange} className={inputClass} />
+                    <PhoneInput
+                      value={form.phone_number}
+                      onChange={(v) => setForm((f) => ({ ...f, phone_number: v }))}
+                      check={phoneCheck}
+                    />
                   </Field>
                   <Field label="Sex" htmlFor="sex">
                     <FilterSelect fullWidth value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value })}>
@@ -385,6 +442,47 @@ const FormSection = ({ title, children }) => (
     <div className="rounded-[16px] bg-[#F7F8F7] p-4 space-y-3">{children}</div>
   </div>
 );
+
+// Phone input with a fixed "+63" in front: digits only, max 10 digits.
+// Red border while incomplete or already used; live message underneath.
+const PhoneInput = ({ value, onChange, check }) => {
+  const digits = (value || "").replace(/^\+63/, "");
+  const invalid = (digits.length > 0 && !/^9\d{9}$/.test(digits)) || check.state === "taken";
+  const tone = {
+    checking: "text-gray-500",
+    available: "text-[#1B5E20]",
+    taken: "text-[#B3261E]",
+    unknown: "text-[#946800]",
+  }[check.state];
+  return (
+    <div>
+      <div
+        className={`flex items-center bg-white border rounded-[12px] transition focus-within:ring-4 ${
+          invalid
+            ? "border-[#B3261E] focus-within:ring-[#B3261E]/10"
+            : "border-[#E3E7E3] focus-within:border-[#1B5E20] focus-within:ring-[#1B5E20]/10"
+        }`}
+      >
+        <span className="pl-3.5 pr-2 text-sm font-semibold text-gray-600 border-r border-[#E3E7E3]">+63</span>
+        <input
+          id="phone_number"
+          inputMode="numeric"
+          autoComplete="off"
+          value={formatPhoneDigits(value)}
+          onChange={(e) => onChange(`+63${normalizePhoneDigits(e.target.value)}`)}
+          placeholder="912 345 6789"
+          maxLength={12}
+          className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none tabular-nums"
+        />
+      </div>
+      {digits.length > 0 && !/^9\d{9}$/.test(digits) ? (
+        <p className="text-[12px] mt-1 text-[#B3261E]">Enter all 10 digits after +63 (starts with 9).</p>
+      ) : check.state !== "idle" ? (
+        <p className={`text-[12px] mt-1 ${tone}`}>{check.message}</p>
+      ) : null}
+    </div>
+  );
+};
 
 // Label above an input.
 const Field = ({ label, htmlFor, children }) => (

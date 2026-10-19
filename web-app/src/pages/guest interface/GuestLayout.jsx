@@ -132,7 +132,7 @@ export const useNow = () => {
 
 // Page frame: light background + deep green header.
 //   title     big text in the header (e.g. "Guest Entry")
-//   subtitle  small text above the title
+//   subtitle  small text after the system name, above the title
 //   onBack    if given, shows a white "Back" button on the left
 export const GuestLayout = ({ title, subtitle, onBack, children }) => {
   const now = useNow();
@@ -145,46 +145,40 @@ export const GuestLayout = ({ title, subtitle, onBack, children }) => {
   return (
     <div className="min-h-screen w-full font-sans flex flex-col" style={{ backgroundColor: BRAND.page }}>
       {/* HEADER */}
+      {/* Compact header: one row so the form gets more space */}
       <header
         className="relative text-white shadow-[0_4px_16px_rgba(14,59,31,0.18)] flex-shrink-0"
         style={{ backgroundColor: BRAND.deep }}
       >
-        {/* Top strip: logo + system name */}
-        <div className="relative flex items-center gap-3 px-8 pt-5">
-          <img src={logo} alt="CvSU Logo" className="w-9 h-9 object-contain" />
-          <div className="leading-tight">
-            <p className="text-[13px] font-extrabold tracking-wide">Library Patron Access and Monitoring System</p>
-            <p className="text-[11px] text-white/60">Ladislao N. Diwa Memorial Library</p>
-          </div>
-        </div>
-
-        {/* Main row: back + title on the left, clock on the right */}
-        <div className="relative flex items-end justify-between gap-6 px-8 pt-6 pb-7">
-          <div className="flex items-center gap-4">
+        <div className="relative flex items-center justify-between gap-6 px-8 py-3">
+          <div className="flex items-center gap-3 min-w-0">
             {onBack && (
               <button
                 onClick={onBack}
                 aria-label="Back"
-                className="w-11 h-11 rounded-full bg-white/[0.12] hover:bg-white/20 flex items-center justify-center transition-colors"
+                className="w-9 h-9 rounded-full bg-white/[0.12] hover:bg-white/20 flex items-center justify-center transition-colors flex-shrink-0"
               >
-                <Icon name="back" size={20} />
+                <Icon name="back" size={18} />
               </button>
             )}
-            <div>
-              {subtitle && <p className="text-[13px] text-white/70 font-medium">{subtitle}</p>}
-              <h1 className="text-[28px] font-bold leading-tight mt-0.5">{title}</h1>
+            <img src={logo} alt="CvSU Logo" className="w-9 h-9 object-contain flex-shrink-0" />
+            <div className="leading-tight min-w-0">
+              <p className="text-[11px] text-white/60 truncate">
+                Library Patron Access and Monitoring System{subtitle ? ` · ${subtitle}` : ""}
+              </p>
+              <h1 className="text-[20px] font-bold leading-tight mt-0.5 truncate">{title}</h1>
             </div>
           </div>
 
-          <div className="text-right">
-            <p className="text-[34px] font-bold leading-none tracking-tight tabular-nums">
+          <div className="text-right flex-shrink-0">
+            <p className="text-[24px] font-bold leading-none tracking-tight tabular-nums">
               {time}
-              <span className="text-[16px] text-white/50 ml-1">:{seconds}</span>
-              <span className="text-[16px] ml-2" style={{ color: BRAND.goldLight }}>
+              <span className="text-[13px] text-white/50 ml-1">:{seconds}</span>
+              <span className="text-[13px] ml-1.5" style={{ color: BRAND.goldLight }}>
                 {now.getHours() < 12 ? "AM" : "PM"}
               </span>
             </p>
-            <p className="text-[12px] text-white/60 mt-1.5">{date}</p>
+            <p className="text-[11px] text-white/60 mt-1">{date}</p>
           </div>
         </div>
       </header>

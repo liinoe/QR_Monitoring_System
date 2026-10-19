@@ -438,7 +438,7 @@ export default function LoginScreen({ navigation }) {
             ],
           }}
         >
-          <View style={[styles.card, styles.cardContent, { paddingHorizontal: layout.cardPadding }]}>
+          <View style={[styles.card, styles.cardContent, { paddingHorizontal: layout.cardPadding, paddingBottom: 36 + insets.bottom }]}>
             {/* TAB SWITCHER */}
             <Animated.View
               style={[

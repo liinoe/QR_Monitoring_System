@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -120,6 +120,8 @@ function useAvailabilityCheck(url) {
 }
 
 export default function RegisterScreen({ navigation, route }) {
+  // Height of the phone's bottom navigation bar, so nothing hides behind it.
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   // Renewal mode comes from the Home screen's "Renew Registration" button.
@@ -670,7 +672,7 @@ export default function RegisterScreen({ navigation, route }) {
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' }]}
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: layout.horizontalPadding, alignItems: 'center', paddingBottom: 32 + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
         >
           {/* RENEWAL: shows whose account is being renewed */}
@@ -891,9 +893,11 @@ export default function RegisterScreen({ navigation, route }) {
         visible={confirmModalVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => (otpStep ? setOtpStep(false) : closeReview())}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBackdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.modalBackdrop, { paddingBottom: 20 + insets.bottom }]}>
           {otpStep ? (
           /* EMAIL CODE SCREEN — the registration is sent only with the right code */
           <View style={styles.modalSheet}>

@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
@@ -193,6 +193,8 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding 
 }
 
 export default function HomeScreen({ navigation }) {
+  // Height of the phone's bottom navigation bar, so nothing hides behind it.
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [now, setNow] = useState(new Date());
@@ -424,7 +426,7 @@ export default function HomeScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: layout.horizontalPadding, alignItems: 'center' },
+          { paddingHorizontal: layout.horizontalPadding, alignItems: 'center', paddingBottom: 30 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >

@@ -17,7 +17,7 @@ import {
   TrendPill,
   ChartTooltip,
   Avatar,
-  EmptyState, maskName } from "../../components/AdminUI";
+  EmptyState, maskName, Dialog, btn } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -85,6 +85,10 @@ const Dashboard = () => {
   const [logs, setLogs] = useState([]);
   const [guestLogs, setGuestLogs] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
+  // Force Exit All: the "are you sure?" pop-up, the result pop-up, and the busy flag.
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [exitResult, setExitResult] = useState(null);
+  const [exiting, setExiting] = useState(false);
 
   // Gets every student entry/exit log.
   const fetchDashboardData = async () => {
@@ -159,6 +163,29 @@ const Dashboard = () => {
   const studentsInside = logs.filter((l) => l.status === "inside").length;
   const guestsInside = guestLogs.filter((g) => g.status === "inside").length;
   const currentlyInside = studentsInside + guestsInside;
+
+  // "Yes, Force Exit": logs out EVERY patron inside (students and guests) in one go,
+  // e.g. for an early closure. The 5:31 PM auto logout does the same thing daily.
+  const handleForceExitAll = async () => {
+    setExiting(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/patrons/force-exit-all`, { method: "PATCH" });
+      const data = await res.json().catch(() => ({}));
+      setConfirmExit(false);
+      if (res.ok) {
+        setExitResult({ tone: "success", title: "All Patrons Logged Out", message: data.message });
+        fetchDashboardData();
+        fetchGuestData();
+      } else {
+        setExitResult({ tone: "error", title: "Force Exit Failed", message: data.message || "Please try again." });
+      }
+    } catch {
+      setConfirmExit(false);
+      setExitResult({ tone: "error", title: "Can't Reach the Server", message: "Please check the connection and try again." });
+    } finally {
+      setExiting(false);
+    }
+  };
 
   // Average stay: forced exits (Force Exit All / 5:31 PM auto-logout) are left out,
   // since they don't show when the person really left — same rule as Analytics.
@@ -256,7 +283,15 @@ const Dashboard = () => {
               <h1 className="text-[26px] font-bold text-gray-900 leading-tight">Dashboard</h1>
               <p className="text-sm text-gray-500 mt-1">Here's what's happening at the library today.</p>
             </div>
-            <Pill tone="gray">{dateText}</Pill>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Shows only while someone is inside */}
+              {currentlyInside > 0 && (
+                <button onClick={() => setConfirmExit(true)} className={btn.dangerSoft}>
+                  Force Exit All Inside ({currentlyInside})
+                </button>
+              )}
+              <Pill tone="gray">{dateText}</Pill>
+            </div>
           </div>
 
           {/* Super Admin: reminder to add the next semester */}
@@ -426,6 +461,31 @@ const Dashboard = () => {
           </Card>
         </main>
       </div>
+
+      {/* Force Exit All: "Are you sure?" pop-up */}
+      <Dialog
+        open={confirmExit}
+        tone="warning"
+        title="Force Exit All Patrons?"
+        message={`This will log out everyone still inside: ${studentsInside} student(s) and ${guestsInside} guest(s). Use it for early closures. These exits won't count toward the average stay.`}
+        footer={
+          <>
+            <button onClick={() => setConfirmExit(false)} disabled={exiting} className={btn.secondary}>Cancel</button>
+            <button onClick={handleForceExitAll} disabled={exiting} className={btn.danger}>
+              {exiting ? "Logging out..." : "Yes, Force Exit All"}
+            </button>
+          </>
+        }
+      />
+
+      {/* Force Exit All: result pop-up */}
+      <Dialog
+        open={!!exitResult}
+        tone={exitResult?.tone}
+        title={exitResult?.title}
+        message={exitResult?.message}
+        footer={<button onClick={() => setExitResult(null)} className={btn.primary}>OK</button>}
+      />
     </div>
   );
 };

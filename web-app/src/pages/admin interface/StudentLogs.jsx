@@ -16,8 +16,6 @@ import {
   KpiCard,
   Pill,
   FilterDivider,
-  Dialog,
-  btn,
 } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -68,7 +66,7 @@ const thisMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-// Admin page listing every student entry/exit, with filters and a Force Exit button.
+// Admin page listing every student entry/exit, with filters. (Force Exit All is on the Dashboard.)
 const StudentLogs = () => {
   const [logs, setLogs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -76,10 +74,6 @@ const StudentLogs = () => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("Today");
   const [selectedMonth, setSelectedMonth] = useState(thisMonth);
-  // Pop-ups: the "are you sure?" confirm, and the result after force exit.
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [result, setResult] = useState(null);
-  const [exiting, setExiting] = useState(false);
 
   // Gets every student log from the server.
   const fetchLogs = async () => {
@@ -101,33 +95,6 @@ const StudentLogs = () => {
   // info was edited (names / colleges shown in the table).
   useChangeWatcher(["logs", "students"], fetchLogs);
 
-  // Everyone still inside (not just the filtered ones) — Force Exit affects all of them.
-  const allInside = logs.filter((l) => l.status === "inside").length;
-
-  // "Yes, Force Exit": marks every student inside as exited (usually at closing time).
-  const handleForceExitAll = async () => {
-    setExiting(true);
-    try {
-      const response = await authFetch(`${API_URL}/api/logs/force-exit-all`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await response.json();
-      setConfirmOpen(false);
-      if (response.ok) {
-        setResult({ tone: "success", title: "Students Logged Out", message: data.message || "All active students were logged out." });
-        fetchLogs();
-      } else {
-        setResult({ tone: "error", title: "Force Exit Failed", message: data.message || "Failed to force exit logs." });
-      }
-    } catch (error) {
-      console.error("Force exit error:", error);
-      setConfirmOpen(false);
-      setResult({ tone: "error", title: "Can't Reach the Server", message: "Please check the connection and try again." });
-    } finally {
-      setExiting(false);
-    }
-  };
 
   // True if a log falls inside the selected date tab (Today / This Week / chosen month).
   const isWithinDateFilter = (log) => {
@@ -203,13 +170,6 @@ const StudentLogs = () => {
           <PageTitle
             title="Student Logs"
             subtitle="Students' library entry and exit records."
-            right={
-              allInside > 0 && (
-                <button onClick={() => setConfirmOpen(true)} className={btn.dangerSoft}>
-                  Force Exit All Inside ({allInside})
-                </button>
-              )
-            }
           />
 
           {/* KPI CARDS */}
@@ -283,36 +243,6 @@ const StudentLogs = () => {
         </main>
       </div>
 
-      {/* "Are you sure?" pop-up */}
-      <Dialog
-        open={confirmOpen}
-        tone="warning"
-        title="Force Exit All Students?"
-        message={`This will log out all ${allInside} student(s) still inside. It's usually done at closing time. These exits won't count toward the average stay.`}
-        footer={
-          <>
-            <button onClick={() => setConfirmOpen(false)} disabled={exiting} className={btn.secondary}>
-              Cancel
-            </button>
-            <button onClick={handleForceExitAll} disabled={exiting} className={btn.danger}>
-              {exiting ? "Logging out..." : "Yes, Force Exit"}
-            </button>
-          </>
-        }
-      />
-
-      {/* Result pop-up */}
-      <Dialog
-        open={!!result}
-        tone={result?.tone}
-        title={result?.title}
-        message={result?.message}
-        footer={
-          <button onClick={() => setResult(null)} className={btn.primary}>
-            OK
-          </button>
-        }
-      />
     </div>
   );
 };

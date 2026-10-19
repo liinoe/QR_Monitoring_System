@@ -9,10 +9,13 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
 export default function DropdownField({ label, value, onChange, options, placeholder, disabled }) {
   const [open, setOpen] = useState(false);
+  // Keeps the last choices above the phone's bottom navigation bar.
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -28,9 +31,18 @@ export default function DropdownField({ label, value, onChange, options, placeho
         <Ionicons name="chevron-down" size={18} color={disabled ? colors.grayLight : colors.textSecondary} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      {/* Draws edge to edge (under the status and navigation bars) on every phone,
+          so the bottom padding below always matches the navigation bar. */}
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setOpen(false)}
+      >
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
+          <Pressable style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]} onPress={() => {}}>
             <Text style={styles.sheetTitle}>{label}</Text>
             <FlatList
               data={options}

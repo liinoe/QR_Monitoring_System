@@ -68,6 +68,9 @@ const Settings = () => {
   const [copied, setCopied] = useState(false);
   const [toReset, setToReset] = useState(null); // staff row waiting for "Reset password?" confirm
   const [resetting, setResetting] = useState(false);
+  // Archive / restore confirm: { type: "archive" | "restore", staff }
+  const [toArchive, setToArchive] = useState(null);
+  const [archiving, setArchiving] = useState(false);
 
   // ---- Academic calendar ----
   const [calendar, setCalendar] = useState(null);
@@ -255,6 +258,37 @@ const Settings = () => {
     }
   };
 
+  // "Archive" / "Restore" confirm → server turns the account's sign-in off or back on.
+  // Archiving also signs that account out of every browser.
+  const handleArchiveToggle = async () => {
+    const { type, staff: target } = toArchive;
+    setArchiving(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/staff/${target.admin_id}/${type}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      setToArchive(null);
+      if (!res.ok) {
+        setNotice({
+          tone: "error",
+          title: type === "archive" ? "Couldn't Archive Account" : "Couldn't Restore Account",
+          message: data.message || "Please try again.",
+        });
+        return;
+      }
+      setNotice({
+        tone: "success",
+        title: type === "archive" ? "Account Archived" : "Account Restored",
+        message: data.message,
+      });
+      loadStaff();
+    } catch {
+      setToArchive(null);
+      setNotice({ tone: "error", title: "Can't Reach the Server", message: "Please try again." });
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   // "Create Account": adds a new admin / staff account. The server makes the password.
   const handleCreateStaff = async (e) => {
     e.preventDefault();
@@ -405,7 +439,7 @@ const Settings = () => {
               <Card className="p-6">
                 <CardTitle
                   title="Manage Staff Accounts"
-                  note="Create accounts and reset passwords for staff who forgot theirs."
+                  note="Create accounts, reset forgotten passwords, and archive accounts of staff who no longer need access."
                   right={
                     <button onClick={() => setShowForm(!showForm)} className={showForm ? btn.secondary : btn.primary}>
                       {showForm ? "Cancel" : "+ New Account"}
@@ -440,6 +474,7 @@ const Settings = () => {
                         <th className="pb-3 text-left">Name</th>
                         <th className="pb-3 text-left">Email</th>
                         <th className="pb-3 text-left">Role</th>
+                        <th className="pb-3 text-left">Status</th>
                         <th className="pb-3 text-left">Password</th>
                         <th className="pb-3 text-left">Created</th>
                         <th className="pb-3 text-right"><span className="sr-only">Actions</span></th>
@@ -447,11 +482,14 @@ const Settings = () => {
                     </thead>
                     <tbody className="divide-y divide-[#F1F3F1]">
                       {staff.map((s) => (
-                        <tr key={s.admin_id}>
+                        <tr key={s.admin_id} className={s.is_archived ? "opacity-60" : ""}>
                           <td className="py-3 font-semibold text-gray-900">{s.name}</td>
                           <td className="py-3 text-gray-600">{s.email}</td>
                           <td className="py-3">
                             <Pill tone={s.role === "super_admin" ? "gold" : "green"}>{s.role === "super_admin" ? "Super Admin" : "Admin"}</Pill>
+                          </td>
+                          <td className="py-3">
+                            {s.is_archived ? <Pill tone="gray">Archived</Pill> : <Pill tone="green">Active</Pill>}
                           </td>
                           <td className="py-3">
                             {s.password_is_temp ? <Pill tone="gold">Given by admin</Pill> : <Pill tone="gray">Own password</Pill>}
@@ -460,14 +498,31 @@ const Settings = () => {
                           <td className="py-3 text-right">
                             {s.admin_id === myId ? (
                               <span className="text-xs text-gray-400">You</span>
-                            ) : (
+                            ) : s.is_archived ? (
                               <button
                                 type="button"
-                                onClick={() => setToReset(s)}
+                                onClick={() => setToArchive({ type: "restore", staff: s })}
                                 className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[10px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
                               >
-                                Reset password
+                                Restore
                               </button>
+                            ) : (
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setToReset(s)}
+                                  className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[10px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
+                                >
+                                  Reset password
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setToArchive({ type: "archive", staff: s })}
+                                  className="text-[13px] font-semibold text-[#B3261E] px-3 py-1.5 rounded-[10px] hover:bg-[#FBDFDB] transition-colors whitespace-nowrap"
+                                >
+                                  Archive
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -492,6 +547,33 @@ const Settings = () => {
             <button type="button" onClick={() => setToReset(null)} className={btn.secondary}>Cancel</button>
             <button type="button" disabled={resetting} onClick={handleResetPassword} className={btn.primary}>
               {resetting ? "Resetting…" : "Reset Password"}
+            </button>
+          </>
+        }
+      />
+
+      {/* ARCHIVE / RESTORE STAFF ACCOUNT — confirm */}
+      <Dialog
+        open={!!toArchive}
+        tone={toArchive?.type === "archive" ? "error" : "warning"}
+        title={toArchive?.type === "archive" ? "Archive this account?" : "Restore this account?"}
+        message={
+          !toArchive
+            ? ""
+            : toArchive.type === "archive"
+              ? `${toArchive.staff.name} will be signed out and won't be able to sign in. Their records stay, and you can restore the account anytime.`
+              : `${toArchive.staff.name} will be able to sign in again with their current password.`
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setToArchive(null)} className={btn.secondary}>Cancel</button>
+            <button
+              type="button"
+              disabled={archiving}
+              onClick={handleArchiveToggle}
+              className={toArchive?.type === "archive" ? btn.danger : btn.primary}
+            >
+              {archiving ? "Please wait…" : toArchive?.type === "archive" ? "Archive" : "Restore"}
             </button>
           </>
         }
