@@ -454,7 +454,7 @@ const Settings = () => {
                       <input name="name" placeholder="Full Name" required value={form.name} onChange={handleFormChange} className={inputClass} />
                       <input name="email" type="email" placeholder="Email" required value={form.email} onChange={handleFormChange} className={inputClass} />
                       <FilterSelect fullWidth value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                        <option value="admin">Admin / Library Staff</option>
+                        <option value="admin">Library Staff</option>
                         <option value="super_admin">Super Admin</option>
                       </FilterSelect>
                     </div>
@@ -486,7 +486,7 @@ const Settings = () => {
                           <td className="py-3 font-semibold text-gray-900">{s.name}</td>
                           <td className="py-3 text-gray-600">{s.email}</td>
                           <td className="py-3">
-                            <Pill tone={s.role === "super_admin" ? "gold" : "green"}>{s.role === "super_admin" ? "Super Admin" : "Admin"}</Pill>
+                            <Pill tone={s.role === "super_admin" ? "gold" : "green"}>{s.role === "super_admin" ? "Super Admin" : "Library Staff"}</Pill>
                           </td>
                           <td className="py-3">
                             {s.is_archived ? <Pill tone="gray">Archived</Pill> : <Pill tone="green">Active</Pill>}

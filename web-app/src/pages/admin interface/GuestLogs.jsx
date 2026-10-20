@@ -98,31 +98,37 @@ const GuestLogs = () => {
     return true;
   };
 
-  // Logs that match the search, status, visitor type and date filters.
-  const filteredData = logs.filter((log) => {
+  // Logs that match the search, visitor type and date filters (used by the KPI cards).
+  const kpiData = logs.filter((log) => {
     const matchesSearch =
       // Staff can still search by name, even though names are hidden in the table.
       (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (log.affiliation || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (log.purpose || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus =
-      statusFilter === "All" ||
-      (statusFilter === "Inside" && log.status === "inside") ||
-      (statusFilter === "Exited" && log.status === "exited");
     const matchesVisitorType = visitorTypeFilter === "All Types" || log.guest_type === visitorTypeFilter;
-    return matchesSearch && matchesStatus && matchesVisitorType && isWithinDateFilter(log);
+    return matchesSearch && matchesVisitorType && isWithinDateFilter(log);
   });
 
-  // KPI numbers (all follow the filters above).
-  const currentlyInside = filteredData.filter((l) => l.status === "inside").length;
-  const alreadyExited = filteredData.filter((l) => l.status === "exited").length;
+  // True if a log matches the Inside / Exited tab. Only the TABLE uses this tab;
+  // the KPI cards ignore it, so "Currently Inside" stays correct on the Exited tab.
+  const matchesStatusTab = (log) =>
+    statusFilter === "All" ||
+    (statusFilter === "Inside" && log.status === "inside") ||
+    (statusFilter === "Exited" && log.status === "exited");
+
+  // Rows shown in the table: the logs above, narrowed by the Inside / Exited tab.
+  const filteredData = kpiData.filter(matchesStatusTab);
+
+  // KPI numbers (follow search, visitor type and date — not the Inside / Exited tab).
+  const currentlyInside = kpiData.filter((l) => l.status === "inside").length;
+  const alreadyExited = kpiData.filter((l) => l.status === "exited").length;
 
   // Average stay: forced exits (Force Exit All / 5:31 PM auto-logout) are left out,
   // since they don't show when the guest really left.
-  const exitedLogs = filteredData.filter((l) => l.time_in && l.time_out && !l.forced_exit);
+  const exitedLogs = kpiData.filter((l) => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
-  const forcedExitCount = filteredData.filter((l) => l.time_in && l.time_out && l.forced_exit).length;
+  const forcedExitCount = kpiData.filter((l) => l.time_in && l.time_out && l.forced_exit).length;
   const avgStayTooltip = buildAvgStayTooltip(exitedLogs.length, totalStayMs, avgStay, forcedExitCount);
 
   // Title of the first card, matching the date tab.
@@ -139,7 +145,7 @@ const GuestLogs = () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const logsYesterday = logs.filter((l) => l.visit_date && new Date(l.visit_date).toDateString() === yesterday.toDateString());
-    const diff = filteredData.length - logsYesterday.length;
+    const diff = kpiData.length - logsYesterday.length;
     totalLogsFooter = <TrendPill change={diff} suffix={`${Math.abs(diff)} ${diff >= 0 ? "more" : "fewer"} than yesterday`} />;
   } else if (dateFilter === "This Month") {
     const [selYear, selMonth] = selectedMonth.split("-").map(Number);
@@ -169,7 +175,7 @@ const GuestLogs = () => {
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
             <KpiCard
               label={totalLogsLabel}
-              value={filteredData.length}
+              value={kpiData.length}
               color={BRAND.green}
               tooltip={KPI_TOOLTIPS.totalLogs}
               footer={totalLogsFooter}
@@ -193,7 +199,7 @@ const GuestLogs = () => {
               value={alreadyExited}
               color={BRAND.goldText}
               tooltip={KPI_TOOLTIPS.alreadyExited}
-              footer={<span className="text-xs text-gray-500">{filteredData.length} total · {currentlyInside} inside</span>}
+              footer={<span className="text-xs text-gray-500">{kpiData.length} total · {currentlyInside} inside</span>}
             />
             <KpiCard
               label="Avg. Stay Duration"

@@ -3,6 +3,9 @@ import ScannerSideBar from "../../components/ScannerSideBar";
 import logo from "../../assets/cvsu_logo.png";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// How long the same QR code is ignored after a scan (10 seconds).
+const SAME_CODE_COOLDOWN_MS = 10000;
 // Scanner Agent running on THIS library PC (see scanner-agent folder). It tells us
 // if the USB scanner is plugged in, even when the website is hosted elsewhere.
 const SCANNER_AGENT_URL = import.meta.env.VITE_SCANNER_AGENT_URL || "http://localhost:5055";
@@ -213,8 +216,13 @@ const Scanner = () => {
         playErrorSound();
         setStatus("error");
         setScanResult({
-          // "Library Closed" when it's past the 5:30 PM entry cut-off, otherwise "Access Denied".
-          full_name: data.closed ? "Library Closed" : "Access Denied",
+          // "Already Logged Out" if the system already exited them today (5:31 PM auto
+          // logout / Force Exit), "Library Closed" after the 5:30 PM cut-off,
+          // "Already Scanned" for a repeat scan, otherwise "Access Denied".
+          full_name: data.already_exited ? "Already Logged Out"
+            : data.closed ? "Library Closed"
+            : data.duplicate ? "Already Scanned"
+            : "Access Denied",
           message: data.message || "This code is not linked to an approved account.",
           scannedAt,
         });
@@ -228,11 +236,18 @@ const Scanner = () => {
     setIsProcessing(false);
   }, []);
 
-  // Ignores the same code scanned twice within 0.8s (scanner "bounce").
+  // Ignores the SAME QR code for 10 seconds after it was scanned.
+  // A phone left on top of the scanner gets read again and again; without this,
+  // each read would flip the student between entry and exit.
+  // While the QR stays on the scanner the 10 seconds keep restarting, so it is
+  // read once; the student scans again only after removing it.
   const handleScanAction = useCallback((decodedText) => {
     const now = Date.now();
-    const isBounce = decodedText === lastScanRef.current.code && now - lastScanRef.current.time < 800;
-    if (isBounce) return;
+    const isRepeat = decodedText === lastScanRef.current.code && now - lastScanRef.current.time < SAME_CODE_COOLDOWN_MS;
+    if (isRepeat) {
+      lastScanRef.current.time = now; // still on the scanner → keep ignoring
+      return;
+    }
     lastScanRef.current = { code: decodedText, time: now };
     setScannerState("connected"); // a scan came in, so the scanner clearly works
     processScan(decodedText);

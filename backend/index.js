@@ -107,6 +107,13 @@ function generateResetToken() {
 const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
 
 // Only CvSU school emails can register, e.g. juan.delacruz@cvsu.edu.ph
+// Names: letters only (incl. ñ and accented letters), plus spaces, hyphens,
+// apostrophes and periods. Same rule as the mobile Register screen.
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ .'-]*$/;
+const NAME_RULE_MESSAGE = "Names can only contain letters, spaces, hyphens, apostrophes and periods.";
+// Checks surname / first name / middle name; empty middle name is fine.
+const namesAreValid = (...names) => names.every((n) => !n || !String(n).trim() || NAME_REGEX.test(String(n).trim()));
+
 const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
 
 // Student password rule: 8+ characters with an uppercase letter, a lowercase
@@ -392,6 +399,9 @@ app.post('/api/register', async (req, res) => {
     }
     if (!isStrongPassword(password)) {
         return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
+    }
+    if (!namesAreValid(surname, first_name, middle_name)) {
+        return res.status(400).json({ message: NAME_RULE_MESSAGE });
     }
     // The student must agree to the Privacy Notice before we keep their details.
     if (req.body.privacy_consent !== true) {
@@ -1325,6 +1335,23 @@ app.post('/api/logs/scan', async (req, res) => {
         }
 
         const student = students[0];
+
+        // Repeat-scan guard: if this student entered or exited in the last 10 seconds,
+        // ignore the scan (e.g. a phone left on the scanner gets read again and again).
+        // The scanner page also ignores repeats; this catches it even after a page reload.
+        const [[recent]] = await db.query(
+            `SELECT COUNT(*) AS n FROM student_logs
+             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 10 SECOND OR time_out >= NOW() - INTERVAL 10 SECOND)`,
+            [student.user_id]
+        );
+        if (recent.n > 0) {
+            return res.status(409).json({
+                success: false,
+                duplicate: true,
+                message: "Already scanned. Please remove your QR code from the scanner.",
+            });
+        }
+
         const [activeLogs] = await db.query('SELECT log_id FROM student_logs WHERE user_id = ? AND status = "inside"', [student.user_id]);
 
         if (activeLogs.length > 0) {
@@ -1333,6 +1360,23 @@ app.post('/api/logs/scan', async (req, res) => {
         } else {
             // Not inside yet = this would be an entry, which is blocked after 5:30 PM.
             if (isPastEntryCutoff()) {
+                // Was this student logged out by the system today (5:31 PM auto logout or
+                // an admin's Force Exit)? Then they're probably scanning to leave — tell them
+                // they're already logged out instead of just "Library Closed".
+                const [[forced]] = await db.query(
+                    `SELECT DATE_FORMAT(time_out, '%l:%i %p') AS out_time FROM student_logs
+                     WHERE user_id = ? AND visit_date = CURDATE() AND forced_exit = 1
+                     ORDER BY time_out DESC LIMIT 1`,
+                    [student.user_id]
+                );
+                if (forced) {
+                    return res.status(403).json({
+                        success: false,
+                        closed: true,
+                        already_exited: true,
+                        message: `You were already logged out at ${forced.out_time.trim()}. The library is closed for entry.`,
+                    });
+                }
                 return res.status(403).json({ success: false, closed: true, message: LIBRARY_CLOSED_MESSAGE });
             }
             await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
@@ -1914,6 +1958,9 @@ app.put('/api/admin/students/:student_number', verifyToken, async (req, res) => 
     if (updates.sex && !VALID_SEX_VALUES.includes(updates.sex)) {
         return res.status(400).json({ message: "Invalid value for sex." });
     }
+    if (!namesAreValid(updates.surname, updates.first_name, updates.middle_name)) {
+        return res.status(400).json({ message: NAME_RULE_MESSAGE });
+    }
     // Same phone rule as the mobile app: +63 followed by 10 digits starting with 9.
     if (updates.phone_number !== undefined && !/^\+639\d{9}$/.test(updates.phone_number)) {
         return res.status(400).json({ message: "Please enter all 10 digits of the phone number after +63." });
@@ -2359,7 +2406,17 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
 
         const avgStayHours = exitedCount > 0 ? (totalStayMs / exitedCount / (1000 * 60 * 60)) : 0;
 
+        // The student's 3 latest visits this semester, for the "Recent Visits" card.
+        // (Sent with the analytics so the app doesn't need an extra request.)
+        const [recentVisits] = await db.query(
+            `SELECT log_id, visit_date, time_in, time_out, status, forced_exit FROM student_logs
+             WHERE user_id = ? AND visit_date >= ? AND visit_date < ?
+             ORDER BY time_in DESC LIMIT 3`,
+            [user_id, semester.start, semester.endExclusive]
+        );
+
         res.json({
+            recent_visits: recentVisits,
             total_visits: totalVisits,
             current_occupancy: currentOccupancy,
             weekly_activity: weeklyActivity,
@@ -2370,6 +2427,32 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
     } catch (err) {
         console.error("SQL ERROR during student analytics:", err.message);
         res.status(500).json({ message: 'Server error computing analytics.' });
+    }
+});
+
+// MY VISITS — the student's own entry/exit history for the current semester,
+// newest first (the "My Visits" page in the app). A new semester starts a new list;
+// older visits stay saved in the database.
+app.get('/api/student/visits/:student_number', verifyStudentToken, async (req, res) => {
+    const { student_number } = req.params;
+    if (req.student.student_number !== student_number) {
+        return res.status(403).json({ message: "You can only view your own visits." });
+    }
+    try {
+        const [students] = await db.query('SELECT user_id FROM students WHERE student_number = ?', [student_number]);
+        if (students.length === 0) return res.status(404).json({ message: 'Student not found.' });
+
+        const semester = await reportingSemester();
+        const [visits] = await db.query(
+            `SELECT log_id, visit_date, time_in, time_out, status, forced_exit FROM student_logs
+             WHERE user_id = ? AND visit_date >= ? AND visit_date < ?
+             ORDER BY time_in DESC LIMIT 500`,
+            [students[0].user_id, semester.start, semester.endExclusive]
+        );
+        res.json({ period_label: semester.label, visits });
+    } catch (err) {
+        console.error("SQL ERROR during student visits:", err.message);
+        res.status(500).json({ message: 'Could not load your visits.' });
     }
 });
 

@@ -95,7 +95,6 @@ const StudentLogs = () => {
   // info was edited (names / colleges shown in the table).
   useChangeWatcher(["logs", "students"], fetchLogs);
 
-
   // True if a log falls inside the selected date tab (Today / This Week / chosen month).
   const isWithinDateFilter = (log) => {
     if (dateFilter === "All Time") return true;
@@ -122,30 +121,36 @@ const StudentLogs = () => {
     return true;
   };
 
-  // Logs that match the search, college, status and date filters.
-  const filteredData = logs.filter((log) => {
+  // Logs that match the search, college and date filters (used by the KPI cards).
+  const kpiData = logs.filter((log) => {
     const matchesSearch =
       (log.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (log.student_number || "").includes(searchTerm);
     const matchesCollege = collegeFilter === "All Colleges" || toAcronym(log.college) === collegeFilter;
-    const matchesStatus =
-      statusFilter === "All" ||
-      (statusFilter === "Inside" && log.status === "inside") ||
-      (statusFilter === "Exited" && log.status === "exited");
-    return matchesSearch && matchesCollege && matchesStatus && isWithinDateFilter(log);
+    return matchesSearch && matchesCollege && isWithinDateFilter(log);
   });
 
-  // KPI numbers (all follow the filters above).
-  const totalFiltered = filteredData.length;
-  const currentlyInside = filteredData.filter((l) => l.status === "inside").length;
-  const totalExits = filteredData.filter((l) => l.status === "exited").length;
+  // True if a log matches the Inside / Exited tab. Only the TABLE uses this tab;
+  // the KPI cards ignore it, so "Currently Inside" stays correct on the Exited tab.
+  const matchesStatusTab = (log) =>
+    statusFilter === "All" ||
+    (statusFilter === "Inside" && log.status === "inside") ||
+    (statusFilter === "Exited" && log.status === "exited");
+
+  // Rows shown in the table: the logs above, narrowed by the Inside / Exited tab.
+  const filteredData = kpiData.filter(matchesStatusTab);
+
+  // KPI numbers (follow search, college and date — not the Inside / Exited tab).
+  const totalFiltered = kpiData.length;
+  const currentlyInside = kpiData.filter((l) => l.status === "inside").length;
+  const totalExits = kpiData.filter((l) => l.status === "exited").length;
 
   // Average stay: forced exits (Force Exit All / 5:31 PM auto-logout) are left out,
   // since they don't show when the student really left.
-  const exitedLogs = filteredData.filter((l) => l.time_in && l.time_out && !l.forced_exit);
+  const exitedLogs = kpiData.filter((l) => l.time_in && l.time_out && !l.forced_exit);
   const totalStayMs = exitedLogs.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStay = exitedLogs.length > 0 ? (totalStayMs / exitedLogs.length / (1000 * 60 * 60)).toFixed(1) : "0.0";
-  const forcedExitCount = filteredData.filter((l) => l.time_in && l.time_out && l.forced_exit).length;
+  const forcedExitCount = kpiData.filter((l) => l.time_in && l.time_out && l.forced_exit).length;
   const avgStayTooltip = buildAvgStayTooltip(exitedLogs.length, totalStayMs, avgStay, forcedExitCount);
 
   const dateSuffix = { "All Time": "", Today: " Today", "This Week": " This Week", "This Month": " This Month" }[dateFilter];

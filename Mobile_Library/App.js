@@ -13,6 +13,7 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import MyVisitsScreen from './src/screens/MyVisitsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +58,7 @@ export default function App() {
           {/* Main Dashboard */}
           <Stack.Screen name="HomeScreen" component={HomeScreenComponent} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="MyVisits" component={MyVisitsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

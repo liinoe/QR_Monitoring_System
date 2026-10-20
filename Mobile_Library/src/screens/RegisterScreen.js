@@ -68,6 +68,13 @@ export function isStrongPassword(pw) {
   return PASSWORD_RULES.every((rule) => rule.test(pw));
 }
 
+// Names: letters only (including ñ and accented letters), plus spaces, hyphens,
+// apostrophes and periods — e.g. "Dela Cruz", "O'Neil", "Ma. Clara". No numbers or symbols.
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ .'-]*$/;
+const NAME_RULE_MESSAGE = 'Letters only. Spaces, hyphens (-), apostrophes (\') and periods (.) are allowed.';
+// True if the name is empty (checked separately) or follows the rule above.
+const isValidName = (value) => !value.trim() || NAME_REGEX.test(value.trim());
+
 // Cleans what the student types in the phone box and keeps only the 10
 // digits after +63 (accepts "09...", "63..." or "9...").
 function normalizePhoneDigits(value) {
@@ -311,8 +318,12 @@ export default function RegisterScreen({ navigation, route }) {
   // problem found and returns false; returns true if everything is valid.
   const validatePersonalAndAcademic = () => {
     // Step 1: Personal info
-    if (!form.surname || !form.first_name) {
+    if (!form.surname.trim() || !form.first_name.trim()) {
       showDialog({ tone: 'warning', title: 'Missing info', message: 'Please enter your surname and first name.' });
+      return false;
+    }
+    if (![form.surname, form.first_name, form.middle_name].every(isValidName)) {
+      showDialog({ tone: 'error', title: 'Invalid Name', message: `Please check your name. ${NAME_RULE_MESSAGE}` });
       return false;
     }
     if (!/^\+639\d{9}$/.test(form.phone_number)) {
@@ -722,24 +733,34 @@ export default function RegisterScreen({ navigation, route }) {
               <View style={styles.card}>
                 <Text style={styles.stepHeading}>Personal Info</Text>
 
+                {/* Name fields turn red with a hint if they contain numbers or symbols */}
                 <Field
                   label="Surname"
                   value={form.surname}
                   onChangeText={(v) => update('surname', v)}
                   placeholder="Dela Cruz"
+                  invalid={!isValidName(form.surname)}
+                  style={!isValidName(form.surname) && { marginBottom: 4 }}
                 />
+                {!isValidName(form.surname) && <Text style={styles.nameHint}>{NAME_RULE_MESSAGE}</Text>}
                 <Field
                   label="First Name"
                   value={form.first_name}
                   onChangeText={(v) => update('first_name', v)}
                   placeholder="Juan"
+                  invalid={!isValidName(form.first_name)}
+                  style={!isValidName(form.first_name) && { marginBottom: 4 }}
                 />
+                {!isValidName(form.first_name) && <Text style={styles.nameHint}>{NAME_RULE_MESSAGE}</Text>}
                 <Field
                   label="Middle Name (optional)"
                   value={form.middle_name}
                   onChangeText={(v) => update('middle_name', v)}
                   placeholder="Santos"
+                  invalid={!isValidName(form.middle_name)}
+                  style={!isValidName(form.middle_name) && { marginBottom: 4 }}
                 />
+                {!isValidName(form.middle_name) && <Text style={styles.nameHint}>{NAME_RULE_MESSAGE}</Text>}
                 <View onLayout={(e) => { phoneFieldY.current = e.nativeEvent.layout.y; }}>
                   <PhoneNumberField
                     ref={phoneRef}
@@ -1238,6 +1259,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
   inputInvalid: { borderColor: '#DC2626' },
+  nameHint: { fontSize: 12, color: '#DC2626', marginBottom: 14, marginLeft: 2 },
   inputLocked: { backgroundColor: '#F1F3F1', color: colors.textSecondary },
   fieldHint: { fontSize: 12, color: colors.textSecondary, marginTop: -2, marginBottom: 16, marginLeft: 2 },
   rejectBanner: {

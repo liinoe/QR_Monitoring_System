@@ -19,6 +19,52 @@ import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessMark, ScanFrame, BrandPattern } from '../components/QLessLogo';
 import { getRejectionGuide } from '../utils/rejection';
 import { authHeaders, clearSavedLogin } from '../utils/studentAuth';
+import { useAppDialog } from '../components/AppDialog';
+import VisitRow from '../components/VisitRow';
+
+// "What does this mean?" text for each card, shown when the (i) icon is tapped.
+// Explains where each number comes from, in plain words.
+const CARD_INFO = {
+  headcount: {
+    title: 'Real-Time Headcount',
+    message:
+      'How many people are inside the library right now: students and guests who have ' +
+      'scanned in but not yet scanned out. It refreshes every few seconds.',
+  },
+  totalVisits: {
+    title: 'Total Visits',
+    message:
+      'How many times YOU entered the library this semester. Every scan-in at the ' +
+      'entrance counts as one visit.',
+  },
+  peakHours: {
+    title: 'Peak Hours',
+    message:
+      'Each bar is the number of people (students and guests) who scanned in during that ' +
+      'hour, added up over this semester so far.\n\n' +
+      'Gold bars = the busiest 2-hour period. "Right now" compares how many are inside now ' +
+      "with the library's usual busiest time.\n\n" +
+      'Use it to find a quieter time to visit.',
+  },
+  activity: {
+    title: 'Your Library Activity',
+    message:
+      'Your own visits this semester. Each bar is how long you usually stay on that day ' +
+      'of the week (your average hours).\n\n' +
+      'Frequent Visit = the day you visit most often. Avg. Stay Duration = your usual stay.\n\n' +
+      "Visits closed by the system's automatic logout are not counted in the hours, since " +
+      'your real exit time is unknown.',
+  },
+};
+
+// Small (i) button placed beside a card title; opens that card's explanation.
+function InfoButton({ onPress }) {
+  return (
+    <TouchableOpacity onPress={onPress} hitSlop={10} accessibilityLabel="What does this mean?">
+      <Ionicons name="information-circle-outline" size={17} color="#9AA19C" />
+    </TouchableOpacity>
+  );
+}
 
 const CHART_MAX_BAR_HEIGHT = 80;
 
@@ -77,7 +123,7 @@ const getCrowdLevel = (current, peakAvg) => {
 
 const PEAK_BAR_MAX = 70;
 
-function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding }) {
+function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding, onInfo }) {
   const currentHour = now.getHours();
 
   let body;
@@ -185,8 +231,11 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding 
 
   return (
     <View style={[styles.chartCard, { width, padding }]}>
-      <Text style={[styles.chartTitle, { marginBottom: 0 }]}>Peak Hours</Text>
-      <Text style={styles.peakSub}>Check-ins per hour · students + guests</Text>
+      <View style={styles.titleRow}>
+        <Text style={[styles.chartTitle, { marginBottom: 0 }]}>Peak Hours</Text>
+        <InfoButton onPress={onInfo} />
+      </View>
+      <Text style={styles.peakSub}>Library-wide check-ins per hour · this semester</Text>
       {body}
     </View>
   );
@@ -198,6 +247,9 @@ export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [now, setNow] = useState(new Date());
+  // Pop-up used by the (i) buttons on the cards.
+  const { dialog, showDialog } = useAppDialog();
+  const showInfo = (key) => showDialog({ tone: 'info', ...CARD_INFO[key], buttons: [{ text: 'Got it', style: 'primary' }] });
   const [qrOpen, setQrOpen] = useState(false);
   const [studentData, setStudentData] = useState(null);
   const [fetched, setFetched] = useState(false);
@@ -587,7 +639,10 @@ export default function HomeScreen({ navigation }) {
 
             <View style={[styles.kpiRow, { width: layout.contentWidth }]}>
               <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.kpiLabel}>Real-Time Headcount</Text>
+                  <InfoButton onPress={() => showInfo('headcount')} />
+                </View>
                 {isOffline ? (
                   <>
                     <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
@@ -604,7 +659,10 @@ export default function HomeScreen({ navigation }) {
                 )}
               </View>
               <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Total Visits</Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.kpiLabel}>Total Visits</Text>
+                  <InfoButton onPress={() => showInfo('totalVisits')} />
+                </View>
                 {isOffline ? (
                   <>
                     <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
@@ -613,7 +671,7 @@ export default function HomeScreen({ navigation }) {
                 ) : (
                   <>
                     <Text style={styles.kpiValue}>{analytics ? analytics.total_visits : '--'}</Text>
-                    <Text style={styles.kpiSub}>this semester</Text>
+                    <Text style={styles.kpiSub}>your visits this semester</Text>
                   </>
                 )}
               </View>
@@ -663,12 +721,17 @@ export default function HomeScreen({ navigation }) {
               now={now}
               width={layout.contentWidth}
               padding={layout.cardPadding}
+              onInfo={() => showInfo('peakHours')}
             />
 
             <View style={{ height: 14 }} />
 
             <View style={[styles.chartCard, { width: layout.contentWidth, padding: layout.cardPadding }]}>
-              <Text style={styles.chartTitle}>Library Activity</Text>
+              <View style={styles.titleRow}>
+                <Text style={[styles.chartTitle, { marginBottom: 0 }]}>Your Library Activity</Text>
+                <InfoButton onPress={() => showInfo('activity')} />
+              </View>
+              <Text style={styles.peakSub}>Your average stay per day of the week · this semester</Text>
 
               {isOffline ? (
                 <View style={styles.chartOfflineWrap}>
@@ -725,6 +788,35 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
             </View>
+
+            <View style={{ height: 14 }} />
+
+            {/* RECENT VISITS — the student's own last 3 entries/exits; "View all" opens My Visits */}
+            <View style={[styles.chartCard, { width: layout.contentWidth, padding: layout.cardPadding }]}>
+              <View style={styles.titleRow}>
+                <Text style={[styles.chartTitle, { marginBottom: 0 }]}>Recent Visits</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('MyVisits')} hitSlop={10} style={styles.viewAllBtn}>
+                  <Text style={styles.viewAllText}>View all</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.peakSub}>Your latest entries and exits · this semester</Text>
+
+              {isOffline ? (
+                <View style={styles.chartOfflineWrap}>
+                  <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
+                  <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
+                </View>
+              ) : !analytics ? (
+                <Text style={styles.chartLoadingText}>Loading visits...</Text>
+              ) : (analytics.recent_visits || []).length === 0 ? (
+                <Text style={styles.chartLoadingText}>No visits yet this semester.</Text>
+              ) : (
+                analytics.recent_visits.map((v, i) => (
+                  <VisitRow key={v.log_id} visit={v} divider={i < analytics.recent_visits.length - 1} />
+                ))
+              )}
+            </View>
           </>
         )}
       </ScrollView>
@@ -732,6 +824,9 @@ export default function HomeScreen({ navigation }) {
       {isApproved && (
         <QRModal visible={qrOpen} onClose={() => setQrOpen(false)} value={studentData?.qr_code} />
       )}
+
+      {/* (i) explanation pop-ups */}
+      {dialog}
     </View>
   );
 }
@@ -959,6 +1054,11 @@ const styles = StyleSheet.create({
   periodBannerText: { fontSize: 12, color: colors.textSecondary },
   periodBannerStrong: { color: colors.textPrimary, fontWeight: '700' },
   peakLowData: { fontSize: 11, color: '#A3A8A4', lineHeight: 15, marginTop: 10 },
+  // "View all ›" link on the Recent Visits card
+  viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  viewAllText: { fontSize: 12.5, fontWeight: '700', color: colors.primary },
+  // Card title with the (i) button on the right
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   chartTitle: { fontSize: 14.5, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   chartLoadingText: { fontSize: 12, color: '#B0B4B1', textAlign: 'center', paddingVertical: 30 },
   chartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: CHART_MAX_BAR_HEIGHT + 40 },

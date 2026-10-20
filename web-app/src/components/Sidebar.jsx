@@ -203,7 +203,7 @@ const Sidebar = () => {
               <Avatar name={admin.name} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-gray-900 truncate">{admin.name}</p>
-                <p className="text-xs text-gray-500">{admin.role === "super_admin" ? "Super Admin" : "Admin"}</p>
+                <p className="text-xs text-gray-500">{admin.role === "super_admin" ? "Super Admin" : "Library Staff"}</p>
               </div>
               <button
                 type="button"

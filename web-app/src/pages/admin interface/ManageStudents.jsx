@@ -177,6 +177,13 @@ const ManageStudents = () => {
       setError("Please choose the college, program and year level.");
       return;
     }
+    // Names: letters, spaces, hyphens, apostrophes and periods only (same rule as the mobile app).
+    const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ .'-]*$/;
+    const badName = [form.surname, form.first_name, form.middle_name].some((n) => n.trim() && !NAME_REGEX.test(n.trim()));
+    if (badName) {
+      setError("Names can only contain letters, spaces, hyphens, apostrophes and periods.");
+      return;
+    }
     if (!isValidPhone(form.phone_number)) {
       setError("Please enter all 10 digits of the phone number after +63.");
       return;
