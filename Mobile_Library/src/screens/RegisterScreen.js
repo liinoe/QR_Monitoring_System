@@ -997,7 +997,27 @@ export default function RegisterScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalNote}>Can't find it? Check your Spam or Promotions folder. The code expires in 10 minutes.</Text>
+            {resendIn > 0 ? (
+              // First minute: emails usually arrive within a few seconds to a minute.
+              <Text style={styles.modalNote}>The code may take up to a minute to arrive. It expires in 10 minutes.</Text>
+            ) : (
+              // After 60 seconds (same time "Resend code" unlocks): probably in Spam, or the
+              // email was mistyped — the app can't tell if an email doesn't exist, so we ask them to check.
+              <View style={styles.otpHelpBox}>
+                <Text style={styles.otpHelpText}>
+                  <Text style={{ fontWeight: '700' }}>Didn't get the code?</Text> Check your Spam or Promotions folder,
+                  or make sure your CvSU email is spelled correctly.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { closeReview(); setTimeout(focusEmail, 400); }}
+                  style={styles.otpEditEmail}
+                  hitSlop={8}
+                >
+                  <Ionicons name="create-outline" size={14} color={colors.primary} />
+                  <Text style={styles.otpLink}>Edit email</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           ) : (
           <View style={styles.modalSheet}>
@@ -1321,6 +1341,10 @@ const styles = StyleSheet.create({
   otpError: { fontSize: 12, color: '#DC2626', marginTop: 8, marginLeft: 2 },
   otpLinks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   otpLink: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  // "Didn't get the code?" box shown after 60 seconds on the code screen
+  otpHelpBox: { marginTop: 14, backgroundColor: BRAND.goldSoft, borderRadius: 12, padding: 12 },
+  otpHelpText: { fontSize: 12.5, lineHeight: 18, color: '#7A5A08' },
+  otpEditEmail: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start' },
 
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.grayLight },
   summaryLabel: { fontSize: 13, color: colors.textSecondary, flex: 1 },
