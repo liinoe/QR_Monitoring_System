@@ -5,7 +5,7 @@ import logo from "../../assets/cvsu_logo.png";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // How long the same QR code is ignored after a scan (10 seconds).
-const SAME_CODE_COOLDOWN_MS = 10000;
+const SAME_CODE_COOLDOWN_MS = 1000;
 // Scanner Agent running on THIS library PC (see scanner-agent folder). It tells us
 // if the USB scanner is plugged in, even when the website is hosted elsewhere.
 const SCANNER_AGENT_URL = import.meta.env.VITE_SCANNER_AGENT_URL || "http://localhost:5055";

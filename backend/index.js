@@ -1341,7 +1341,7 @@ app.post('/api/logs/scan', async (req, res) => {
         // The scanner page also ignores repeats; this catches it even after a page reload.
         const [[recent]] = await db.query(
             `SELECT COUNT(*) AS n FROM student_logs
-             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 10 SECOND OR time_out >= NOW() - INTERVAL 10 SECOND)`,
+             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 1 SECOND OR time_out >= NOW() - INTERVAL 1 SECOND)`,
             [student.user_id]
         );
         if (recent.n > 0) {
