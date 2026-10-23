@@ -111,12 +111,7 @@ export default function ChangePasswordModal({ visible, onClose, studentNumber })
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
         <View style={[styles.sheet, { maxWidth: Math.min(420, layout.contentWidth), padding: layout.cardPadding }]}>
           <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <View style={styles.headerIcon}>
-                <Ionicons name="key-outline" size={18} color={BRAND.green} />
-              </View>
-              <Text style={styles.title}>Change Password</Text>
-            </View>
+            <Text style={styles.title}>Change Password</Text>
             <TouchableOpacity onPress={resetAndClose} hitSlop={10}>
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -201,12 +196,10 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     backgroundColor: '#fff',
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    elevation: 8,
   },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -221,10 +214,10 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff',
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 4,
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 4,
   },
   input: { flex: 1, fontSize: 14, color: colors.textPrimary, paddingVertical: 10 },
 
-  submitBtn: { backgroundColor: colors.primary, borderRadius: 14, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  submitBtn: { backgroundColor: colors.primary, borderRadius: 8, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   submitText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

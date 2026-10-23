@@ -40,16 +40,9 @@ const ReasonModal = ({ visible, title, actionLabel, tone = "red", presetReasons,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-[#071A0F]/40 backdrop-blur-sm">
-      <div className="w-full max-w-[480px] bg-white rounded-[24px] shadow-2xl p-7">
+      <div className="w-full max-w-[480px] bg-white rounded-[12px] shadow-lg p-7">
         {/* Icon + title */}
-        <div className="flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: t.bg, color: t.fg }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
+        <div className="flex flex-col">
           <h2 className="text-[19px] font-bold text-gray-900">{title}</h2>
           <p className="text-sm text-gray-500 mt-1.5">This reason will be shown to the student in their app.</p>
         </div>
@@ -63,7 +56,7 @@ const ReasonModal = ({ visible, title, actionLabel, tone = "red", presetReasons,
                 key={preset}
                 type="button"
                 onClick={() => handlePresetSelect(preset)}
-                className={`w-full flex items-center gap-3 text-left px-4 py-3 rounded-[14px] text-sm border-2 transition-colors ${
+                className={`w-full flex items-center gap-3 text-left px-4 py-3 rounded-[8px] text-sm border-2 transition-colors ${
                   active ? "border-[#1B5E20] bg-[#E8F1E9] text-[#1B5E20] font-semibold" : "border-[#ECEFEC] text-gray-700 hover:border-gray-300"
                 }`}
               >
@@ -85,21 +78,21 @@ const ReasonModal = ({ visible, title, actionLabel, tone = "red", presetReasons,
           onChange={(e) => setReasonText(e.target.value)}
           rows={3}
           placeholder="Type or edit the reason here..."
-          className="w-full bg-white border border-[#E3E7E3] rounded-[14px] px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 resize-none outline-none focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10"
+          className="w-full bg-white border border-[#E3E7E3] rounded-[8px] px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 resize-none outline-none focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10"
         />
 
         {/* Buttons */}
         <div className="flex gap-3 mt-6">
           <button
             onClick={onCancel}
-            className="flex-1 bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] py-3 rounded-[12px] text-sm font-semibold transition-colors"
+            className="flex-1 bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] py-3 rounded-[8px] text-sm font-semibold transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={!reasonText.trim()}
-            className={`flex-1 text-white py-3 rounded-[12px] text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${t.btn}`}
+            className={`flex-1 text-white py-3 rounded-[8px] text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${t.btn}`}
           >
             {actionLabel}
           </button>

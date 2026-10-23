@@ -14,7 +14,7 @@ const StudentLogTable = ({ data = [] }) => {
 
   // No overflow-hidden on the outer box, so the rows-per-page list isn't cut off.
   return (
-    <div className="bg-white rounded-[20px] border border-[#ECEFEC]">
+    <div className="bg-white rounded-[12px] border border-[#ECEFEC]">
       <div className="overflow-x-auto rounded-t-[20px]">
         <table className="data-table w-full text-sm">
           <thead>

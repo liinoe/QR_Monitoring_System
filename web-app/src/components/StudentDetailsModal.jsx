@@ -1,5 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { RegStatusPill, Avatar } from "./AdminUI";
+import { authFetch } from "../auth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const SEX_LABELS = {
   male: "Male",
@@ -26,9 +29,58 @@ const DetailRow = ({ label, value }) => (
 const Section = ({ title, children }) => (
   <div>
     <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] mb-2 ml-1">{title}</p>
-    <div className="rounded-[16px] bg-[#F7F8F7] p-4">{children}</div>
+    <div className="rounded-[12px] bg-[#F7F8F7] p-4">{children}</div>
   </div>
 );
+
+// The student's COR photo. Asks the server for a temporary link (valid 10 minutes)
+// each time the pop-up opens; the photo itself is private. Click it to open full size.
+const CorSection = ({ request }) => {
+  const [state, setState] = useState({ loading: !!request.cor_public_id, url: null, error: "" });
+
+  useEffect(() => {
+    if (!request.cor_public_id) return undefined;
+    let cancelled = false;
+    authFetch(`${API_URL}/api/admin/registrations/${request.request_id}/cor`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && data.url) setState({ loading: false, url: data.url, error: "" });
+        else setState({ loading: false, url: null, error: data.message || "Could not load the registration form photo." });
+      })
+      .catch(() => !cancelled && setState({ loading: false, url: null, error: "Can't reach the server." }));
+    return () => { cancelled = true; };
+  }, [request.request_id, request.cor_public_id]);
+
+  // No photo saved: either already reviewed (deleted) or sent before COR upload existed.
+  if (!request.cor_public_id) {
+    const reviewed = request.approval_status !== "pending";
+    return (
+      <p className="text-sm text-gray-500">
+        {reviewed
+          ? "The registration form photo was deleted after this request was reviewed."
+          : "No registration form photo. This request was sent before the registration form upload was required."}
+      </p>
+    );
+  }
+  if (state.loading) return <p className="text-sm text-gray-500">Loading registration form...</p>;
+  if (state.error) return <p className="text-sm text-[#B3261E]">{state.error}</p>;
+  return (
+    <div>
+      <a href={state.url} target="_blank" rel="noreferrer" title="Open full size">
+        <img
+          src={state.url}
+          alt="Registration Form"
+          className="w-full max-h-[360px] object-contain rounded-[8px] bg-white border border-[#E3E7E3]"
+        />
+      </a>
+      <p className="text-xs text-gray-500 mt-2">
+        Check that the name, student number, college and program match before approving.
+        Click the photo to open it full size. It is deleted after you approve or reject.
+      </p>
+    </div>
+  );
+};
 
 // Pop-up with everything a student submitted (opened by clicking a row in Registrations).
 const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = [], onClose }) => {
@@ -65,7 +117,7 @@ const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = []
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-[620px] max-h-[88vh] overflow-y-auto bg-white rounded-[24px] shadow-2xl"
+        className="w-full max-w-[620px] max-h-[88vh] overflow-y-auto bg-white rounded-[12px] shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header: initials, student number, name and status */}
@@ -103,6 +155,10 @@ const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = []
             </div>
           </Section>
 
+          <Section title="Registration Form">
+            <CorSection request={request} />
+          </Section>
+
           <Section title="Submission">
             <div className="grid grid-cols-2 gap-4">
               <DetailRow label="Submitted" value={formatDate(created_at)} />
@@ -112,7 +168,7 @@ const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = []
 
           {/* Why it was rejected / deactivated */}
           {(approval_status === "rejected" || approval_status === "deactivated") && reason && (
-            <div className="rounded-[16px] bg-[#FBDFDB] px-4 py-3">
+            <div className="rounded-[12px] bg-[#FBDFDB] px-4 py-3">
               <p className="text-[11px] font-bold text-[#B3261E] uppercase tracking-[0.06em]">
                 Reason for {approval_status === "rejected" ? "rejection" : "deactivation"}
               </p>
@@ -124,7 +180,7 @@ const StudentDetailsModal = ({ visible, request, currentPeriod, allRequests = []
         <div className="px-7 py-6 flex justify-end">
           <button
             onClick={onClose}
-            className="bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] px-6 py-2.5 rounded-[12px] text-sm font-semibold transition-colors"
+            className="bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] px-6 py-2.5 rounded-[8px] text-sm font-semibold transition-colors"
           >
             Close
           </button>

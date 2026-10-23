@@ -1,11 +1,23 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import ScannerSideBar from "../../components/ScannerSideBar";
 import logo from "../../assets/cvsu_logo.png";
+import {
+  saveScannerKeyFromUrl, getScannerKey, hashQr, loadPack, savePack, downloadPack,
+  loadQueue, saveQueue, syncQueue, fetchWithTimeout,
+} from "../../components/offlineScanner";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// How long the same QR code is ignored after a scan (10 seconds).
+// How long the same QR code is ignored after a scan (1 second).
 const SAME_CODE_COOLDOWN_MS = 1000;
+// ---- Offline mode (see components/offlineScanner.js) ----
+const PACK_REFRESH_MS = 5 * 60 * 1000;   // re-download the student list every 5 minutes while online
+const SYNC_RETRY_MS = 15 * 1000;         // while offline, try to reconnect / sync every 15 seconds
+const SCAN_TIMEOUT_MS = 4000;            // no answer in 4 seconds → treat as offline
+const ENTRY_CUTOFF_MINUTES = 17 * 60 + 30; // 5:30 PM: no new entries (same rule as the server)
+const AUTO_LOGOUT_MINUTES = 17 * 60 + 31;  // 5:31 PM: everyone inside is logged out
+const CLOCK_WARNING_MS = 5 * 60 * 1000;    // warn if this PC's clock is off by 5+ minutes
+
 // Scanner Agent running on THIS library PC (see scanner-agent folder). It tells us
 // if the USB scanner is plugged in, even when the website is hosted elsewhere.
 const SCANNER_AGENT_URL = import.meta.env.VITE_SCANNER_AGENT_URL || "http://localhost:5055";
@@ -87,6 +99,77 @@ const Scanner = () => {
   const audioCtxRef = useRef(null);
   const lastScanRef = useRef({ code: null, time: 0 });
 
+  // ---- Offline mode state ----
+  // offlineMode: the server can't be reached, so scans are checked and saved on this PC.
+  const [savedPack] = useState(loadPack); // the student list saved on this PC (read once)
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [queueCount, setQueueCount] = useState(() => loadQueue().length); // scans waiting to sync
+  const [packSavedAt, setPackSavedAt] = useState(savedPack?.savedAt || null);
+  const [clockSkewMs, setClockSkewMs] = useState(savedPack?.clockSkewMs || 0);
+  const offlineRef = useRef(false);        // same as offlineMode, readable inside timers
+  const syncingRef = useRef(false);        // a sync is running right now
+  const packRef = useRef(savedPack);       // saved student list (hashed QR codes)
+  const insideRef = useRef(new Set(savedPack?.inside || [])); // who's inside (hashes)
+
+  // Switches offline mode on/off (state for the screen + ref for the timers).
+  const setOffline = (value) => {
+    offlineRef.current = value;
+    setOfflineMode(value);
+  };
+
+  // Saves the "who's inside" list back into the stored pack.
+  const persistInside = () => {
+    if (!packRef.current) return;
+    packRef.current = { ...packRef.current, inside: Array.from(insideRef.current) };
+    savePack(packRef.current);
+  };
+
+  // Downloads a fresh student list while online (needs the scanner key).
+  const refreshPack = async () => {
+    try {
+      const pack = await downloadPack();
+      packRef.current = pack;
+      insideRef.current = new Set(pack.inside);
+      setPackSavedAt(pack.savedAt);
+      setClockSkewMs(pack.clockSkewMs);
+    } catch {
+      // No key yet, or offline — keep using the saved one.
+    }
+  };
+
+  // Live board numbers worked out on this PC (used while offline).
+  const showLocalBoard = () => {
+    const counts = {};
+    insideRef.current.forEach((h) => {
+      const college = packRef.current?.students?.[h]?.[2];
+      const code = toAcronym(college);
+      if (code) counts[code] = (counts[code] || 0) + 1;
+    });
+    setBoardData(counts);
+    setTotalInside(insideRef.current.size);
+  };
+
+  // Sends the saved offline scans to the server. Returns true if the server was
+  // reachable (online again), false if still offline.
+  const trySync = async () => {
+    if (syncingRef.current) return !offlineRef.current;
+    syncingRef.current = true;
+    try {
+      if (loadQueue().length > 0) await syncQueue();
+      setQueueCount(loadQueue().length);
+      if (loadQueue().length === 0) {
+        setOffline(false);
+        await refreshPack(); // server's view after the sync
+      }
+      return true;
+    } catch {
+      setOffline(true);
+      return false;
+    } finally {
+      syncingRef.current = false;
+    }
+  };
+
   // Creates the browser's sound player once and reuses it.
   const getAudioCtx = () => {
     if (!audioCtxRef.current) {
@@ -131,8 +214,14 @@ const Scanner = () => {
   // Gets the live numbers in ONE request: students inside per college + guests inside.
   const fetchBoardData = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/scanner/live`);
+      const response = await fetchWithTimeout(`${API_URL}/api/scanner/live`, {}, SCAN_TIMEOUT_MS);
+      if (!response.ok) throw new Error(`live-${response.status}`);
       const data = await response.json();
+      // The server answered → we're online. Send any saved offline scans first.
+      if (offlineRef.current || loadQueue().length > 0) {
+        trySync();
+        return;
+      }
       const counts = {};
       let total = 0;
       (data.colleges || []).forEach((item) => {
@@ -143,10 +232,39 @@ const Scanner = () => {
       setBoardData(counts);
       setTotalInside(total);
       setGuestsInside(data.guests ?? 0);
-    } catch (err) {
-      console.error("Board fetch error:", err);
+    } catch {
+      // Server unreachable → offline mode; the board is worked out on this PC.
+      setOffline(true);
+      showLocalBoard();
     }
   };
+
+  // OFFLINE MODE SETUP: saves the scanner key from the address bar (?key=...),
+  // downloads the student list now and every 5 minutes, and while offline keeps
+  // trying to reconnect and sync every 15 seconds.
+  useEffect(() => {
+    // Service worker (public/scanner-sw.js): lets THIS page open even without
+    // internet. Only on the live site — in development it would keep old code.
+    if (import.meta.env.PROD && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/scanner-sw.js", { scope: "/scanner" }).catch((err) => {
+        console.error("Scanner service worker failed:", err);
+      });
+    }
+    saveScannerKeyFromUrl();
+    refreshPack();
+    if (loadQueue().length > 0) trySync();
+    const packTimer = setInterval(() => {
+      if (!offlineRef.current) refreshPack();
+    }, PACK_REFRESH_MS);
+    const syncTimer = setInterval(() => {
+      if (offlineRef.current || loadQueue().length > 0) trySync();
+    }, SYNC_RETRY_MS);
+    return () => {
+      clearInterval(packTimer);
+      clearInterval(syncTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Asks the Scanner Agent (on this PC) if the USB scanner is plugged in.
   const fetchScannerStatus = async () => {
@@ -193,53 +311,140 @@ const Scanner = () => {
     };
   }, []);
 
+  // OFFLINE SCAN: checks the code against the saved student list, decides
+  // entry / exit from the saved "inside" list, saves it to the queue (synced
+  // later), and shows the same result screen as online.
+  const handleOfflineScan = (hash, scannedAt) => {
+    const pack = packRef.current;
+    const showError = (title, message) => {
+      playErrorSound();
+      setStatus("error");
+      setScanResult({ full_name: title, message, scannedAt });
+    };
+
+    if (!pack || !hash) {
+      showError("Offline – Can't Verify", "No internet, and this computer has no saved student list yet. Please ask the library staff.");
+      return;
+    }
+    const info = pack.students?.[hash];
+    if (!info) {
+      showError("Access Denied", "This code is not linked to an approved account.");
+      return;
+    }
+    const [studentNumber, program] = info;
+    const minutesNow = scannedAt.getHours() * 60 + scannedAt.getMinutes();
+    const wasInside = insideRef.current.has(hash);
+
+    // After 5:31 PM the server logs everyone out; mirror that here.
+    if (minutesNow >= AUTO_LOGOUT_MINUTES && wasInside) {
+      insideRef.current.delete(hash);
+      persistInside();
+      showLocalBoard();
+      showError("Already Logged Out", "You were automatically logged out at 5:31 PM. The library is closed for entry.");
+      return;
+    }
+
+    let action;
+    if (wasInside) {
+      action = "exit";
+      insideRef.current.delete(hash);
+    } else {
+      // Same 5:30 PM entry cut-off as the server (exits still allowed).
+      if (minutesNow >= ENTRY_CUTOFF_MINUTES) {
+        const forcedAt = pack.forcedDate === scannedAt.toDateString() ? pack.forcedToday?.[hash] : null;
+        showError(
+          forcedAt ? "Already Logged Out" : "Library Closed",
+          forcedAt
+            ? `You were already logged out at ${forcedAt}. The library is closed for entry.`
+            : "The library is closed for entry after 5:30 PM. Exits are still allowed."
+        );
+        return;
+      }
+      action = "entry";
+      insideRef.current.add(hash);
+    }
+    persistInside();
+
+    // Save the scan for syncing (the server re-checks it with the real time).
+    const queue = loadQueue();
+    queue.push({ offline_scan_id: crypto.randomUUID(), qr_hash: hash, action, scanned_at: scannedAt.toISOString() });
+    saveQueue(queue);
+    setQueueCount(queue.length);
+
+    if (action === "entry") playEntrySound();
+    else playExitSound();
+    setScanResult({ action, student_number: studentNumber, program, scannedAt, offline: true });
+    setStatus("ready");
+    showLocalBoard();
+  };
+
   // Sends the scanned code to the server and shows the result (entry / exit / denied).
+  // If the server can't be reached, the scan is handled OFFLINE instead.
   const processScan = useCallback(async (decodedText) => {
     setIsProcessing(true);
     const scannedAt = new Date();
+    const hash = await hashQr(decodedText).catch(() => null);
 
-    try {
-      const response = await fetch(`${API_URL}/api/logs/scan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qr_code: decodedText }),
-      });
-      const data = await response.json();
+    // Saved offline scans must reach the server BEFORE new ones, so entries and
+    // exits stay in the right order.
+    let online = !offlineRef.current;
+    if (loadQueue().length > 0) online = await trySync();
 
-      if (response.ok) {
-        if (data.action === "entry") playEntrySound();
-        else playExitSound();
-        setScanResult({ ...data, scannedAt });
-        setStatus("ready");
-        fetchBoardData();
-      } else {
-        playErrorSound();
-        setStatus("error");
-        setScanResult({
-          // "Already Logged Out" if the system already exited them today (5:31 PM auto
-          // logout / Force Exit), "Library Closed" after the 5:30 PM cut-off,
-          // "Already Scanned" for a repeat scan, otherwise "Access Denied".
-          full_name: data.already_exited ? "Already Logged Out"
-            : data.closed ? "Library Closed"
-            : data.duplicate ? "Already Scanned"
-            : "Access Denied",
-          message: data.message || "This code is not linked to an approved account.",
-          scannedAt,
-        });
+    if (online) {
+      try {
+        const response = await fetchWithTimeout(`${API_URL}/api/logs/scan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qr_code: decodedText }),
+        }, SCAN_TIMEOUT_MS);
+        // Render answers 502–504 when the server itself is down → offline.
+        if ([502, 503, 504].includes(response.status)) throw new Error("server-down");
+        const data = await response.json();
+
+        if (response.ok) {
+          if (data.action === "entry") playEntrySound();
+          else playExitSound();
+          setScanResult({ ...data, scannedAt });
+          setStatus("ready");
+          fetchBoardData();
+          // Keep the saved "inside" list current, in case the internet drops next.
+          if (hash) {
+            if (data.action === "entry") insideRef.current.add(hash);
+            else insideRef.current.delete(hash);
+            persistInside();
+          }
+        } else {
+          playErrorSound();
+          setStatus("error");
+          setScanResult({
+            // "Already Logged Out" if the system already exited them today (5:31 PM auto
+            // logout / Force Exit), "Library Closed" after the 5:30 PM cut-off,
+            // "Already Scanned" for a repeat scan, otherwise "Access Denied".
+            full_name: data.already_exited ? "Already Logged Out"
+              : data.closed ? "Library Closed"
+              : data.duplicate ? "Already Scanned"
+              : "Access Denied",
+            message: data.message || "This code is not linked to an approved account.",
+            scannedAt,
+          });
+        }
+        setIsProcessing(false);
+        return;
+      } catch {
+        // No answer (internet / server down) → handle this scan offline.
+        setOffline(true);
       }
-    } catch (err) {
-      playErrorSound();
-      setStatus("error");
-      setScanResult({ full_name: "Connection Error", message: "Cannot reach the server.", scannedAt });
     }
 
+    handleOfflineScan(hash, scannedAt);
     setIsProcessing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ignores the SAME QR code for 10 seconds after it was scanned.
+  // Ignores the SAME QR code for 1 second after it was scanned.
   // A phone left on top of the scanner gets read again and again; without this,
   // each read would flip the student between entry and exit.
-  // While the QR stays on the scanner the 10 seconds keep restarting, so it is
+  // While the QR stays on the scanner the 1 second keeps restarting, so it is
   // read once; the student scans again only after removing it.
   const handleScanAction = useCallback((decodedText) => {
     const now = Date.now();
@@ -316,16 +521,32 @@ const Scanner = () => {
               <h1 className="text-[20px] font-bold leading-tight mt-0.5">Scan Your QR Pass</h1>
             </div>
           </div>
-          {/* Right side: scanner connection pill, then the clock */}
-          <div className="flex items-center gap-5 flex-shrink-0">
-          <span className="flex items-center gap-2 text-[12px] font-semibold bg-white/[0.12] px-3 py-1.5 rounded-full">
-            <span
-              className={`w-2 h-2 rounded-full ${scannerState === "connected" ? "animate-pulse" : ""}`}
-              style={{ backgroundColor: pill.dot }}
+          {/* Right side: status pills (offline / clock / scanner), then the clock */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* OFFLINE / SYNCING pill — hover for the full explanation */}
+          {(offlineMode || queueCount > 0) && (
+            <StatusPill
+              dot={offlineMode ? "#F0CD5A" : "#4ADE80"}
+              pulse={!offlineMode}
+              label={offlineMode
+                ? `Offline mode${queueCount ? ` · ${queueCount} to sync` : ""}`
+                : `Syncing ${queueCount} saved ${queueCount === 1 ? "scan" : "scans"}…`}
+              tip={offlineMode
+                ? `Scans are saved on this computer and sent automatically when the connection returns. ${queueCount} ${queueCount === 1 ? "scan" : "scans"} waiting to sync.${
+                    !getScannerKey() ? " Offline mode isn't set up on this computer (no scanner key), so students can't be verified." : !packSavedAt ? " No saved student list yet." : ""}`
+                : "Connection is back. Saved offline scans are being sent to the server."}
             />
-            {pill.text}
-          </span>
-          <div className="text-right">
+          )}
+          {/* Wrong PC clock → offline scans would get the wrong time */}
+          {Math.abs(clockSkewMs) > CLOCK_WARNING_MS && (
+            <StatusPill
+              dot="#F87171"
+              label="Check PC clock"
+              tip={`This computer's clock is off by about ${Math.round(Math.abs(clockSkewMs) / 60000)} minutes. Please correct it so offline scans get the right time.`}
+            />
+          )}
+          <StatusPill dot={pill.dot} pulse={scannerState === "connected"} label={pill.text} />
+          <div className="text-right ml-2">
             <p className="text-[24px] font-bold leading-none tracking-tight tabular-nums">
               {clock}
               <span className="text-[13px] text-white/50 ml-1">:{pad(currentTime.getSeconds())}</span>
@@ -420,6 +641,7 @@ const Scanner = () => {
                     </span>
                   )}
                   <span className="text-[11px] text-gray-400 tabular-nums">
+                    {scanResult?.offline && kind !== "error" ? "Saved offline · " : ""}
                     {scanResult?.scannedAt ? scanResult.scannedAt.toLocaleTimeString("en-US") : "--:--:--"}
                   </span>
                 </div>
@@ -441,6 +663,19 @@ const Scanner = () => {
     </div>
   );
 };
+
+// Small status pill in the header. If "tip" is given, hovering shows it in a bubble below.
+const StatusPill = ({ dot, label, tip, pulse = false }) => (
+  <span className="relative group flex items-center gap-2 text-[12px] font-semibold bg-white/[0.12] px-3 py-1.5 rounded-full cursor-default whitespace-nowrap">
+    <span className={`w-2 h-2 rounded-full ${pulse ? "animate-pulse" : ""}`} style={{ backgroundColor: dot }} />
+    {label}
+    {tip && (
+      <span className="pointer-events-none absolute right-0 top-full mt-2 z-50 w-[280px] whitespace-normal rounded-[10px] bg-white text-gray-700 text-[12px] font-medium leading-relaxed px-3 py-2 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+        {tip}
+      </span>
+    )}
+  </span>
+);
 
 // Simple QR code drawing (color can change for errors).
 const QRIcon = ({ color }) => (

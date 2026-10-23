@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BRAND } from './src/theme/brand';
@@ -14,6 +14,11 @@ import LoginScreen from './src/screens/LoginScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import MyVisitsScreen from './src/screens/MyVisitsScreen';
+import LaunchSplash from './src/components/LaunchSplash';
+
+// Coming back after the app was in the background this long shows the
+// opening animation again (like opening the app fresh).
+const SPLASH_AFTER_AWAY_MS = 30 * 60 * 1000; // 30 minutes
 
 const Stack = createNativeStackNavigator();
 
@@ -23,6 +28,11 @@ export default function App() {
   //   Welcome screen already seen    → Login
   //   first time opening the app     → Welcome (Splash), shown only once per install
   const [firstScreen, setFirstScreen] = useState(null);
+  // Short opening animation (LaunchSplash). Shown every time the app starts,
+  // except the very first time (the full Welcome intro plays then).
+  const [showLaunch, setShowLaunch] = useState(false);
+  const [launchKey, setLaunchKey] = useState(0); // new key = animation plays again from the start
+  const leftAt = useRef(null); // when the app went to the background
 
   // Reads the saved login (from LoginScreen) and the "welcome seen" flag.
   // A student stays logged in until they log out (or their login pass expires /
@@ -30,14 +40,32 @@ export default function App() {
   useEffect(() => {
     AsyncStorage.multiGet(['student', 'student_token', 'welcome_seen'])
       .then(([[, student], [, token], [, welcomeSeen]]) => {
-        if (student && token) setFirstScreen('HomeScreen');
-        else if (welcomeSeen) setFirstScreen('Login');
+        if (student && token) { setFirstScreen('HomeScreen'); setShowLaunch(true); }
+        else if (welcomeSeen) { setFirstScreen('Login'); setShowLaunch(true); }
         else {
           setFirstScreen('Splash');
           AsyncStorage.setItem('welcome_seen', '1').catch(() => {}); // next time, skip it
         }
       })
       .catch(() => setFirstScreen('Splash'));
+  }, []);
+
+  // Remembers when the app was left, and plays the opening animation again
+  // if the student comes back after a long time.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        leftAt.current = Date.now();
+      } else if (state === 'active' && leftAt.current) {
+        const away = Date.now() - leftAt.current;
+        leftAt.current = null;
+        if (away >= SPLASH_AFTER_AWAY_MS) {
+          setLaunchKey((k) => k + 1);
+          setShowLaunch(true);
+        }
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Plain green screen while checking, so nothing flashes.
@@ -61,6 +89,9 @@ export default function App() {
           <Stack.Screen name="MyVisits" component={MyVisitsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
+
+      {/* Opening animation on top of everything; the real screen loads underneath */}
+      {showLaunch && <LaunchSplash key={launchKey} onDone={() => setShowLaunch(false)} />}
     </SafeAreaProvider>
   );
 }

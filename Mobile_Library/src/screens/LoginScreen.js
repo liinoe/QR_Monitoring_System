@@ -474,12 +474,6 @@ export default function LoginScreen({ navigation }) {
                     { borderColor: emailBorderColor, backgroundColor: emailBackground },
                   ]}
                 >
-                  <Ionicons
-                    name="person-outline"
-                    size={17}
-                    color={emailFocused ? colors.primary : colors.textSecondary}
-                    style={styles.inputIcon}
-                  />
                   <TextInput
                     ref={identifierRef}
                     style={styles.input}
@@ -512,12 +506,6 @@ export default function LoginScreen({ navigation }) {
                     { borderColor: passwordBorderColor, backgroundColor: passwordBackground },
                   ]}
                 >
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={17}
-                    color={passwordFocused ? colors.primary : colors.textSecondary}
-                    style={styles.inputIcon}
-                  />
                   <TextInput
                     ref={passwordRef}
                     returnKeyType="go"
@@ -600,8 +588,8 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   cardContent: {
     paddingTop: 32,
@@ -668,12 +656,11 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1.2,
+    borderRadius: 8,
+    borderWidth: 1,
     paddingHorizontal: 14,
     height: 52,
   },
-  inputIcon: { marginRight: 10 },
   input: {
     flex: 1,
     fontSize: 15,
@@ -688,17 +675,12 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: colors.primary,
     height: 54,
-    borderRadius: 16,
+    borderRadius: 8, // flat button, no shadow
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 30,
-    elevation: 2,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
   },
-  buttonDisabled: { opacity: 0.7, shadowOpacity: 0 },
+  buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
 
   footerRow: { flexDirection: 'row', marginTop: 22 },

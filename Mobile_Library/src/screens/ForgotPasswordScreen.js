@@ -67,6 +67,11 @@ export default function ForgotPasswordScreen({ navigation }) {
         body: JSON.stringify({ email: address }),
       });
       const data = await response.json().catch(() => ({}));
+      // Too many reset requests from this network: nothing was sent, so say so.
+      if (response.status === 429 && data.rate_limited) {
+        setErrorText(data.message);
+        return;
+      }
       setSentTo(address);
       setCooldown(data.retry_after_seconds || DEFAULT_COOLDOWN);
     } catch (error) {
@@ -112,9 +117,6 @@ export default function ForgotPasswordScreen({ navigation }) {
               {!sentTo ? (
                 <>
                   {/* FORM */}
-                  <View style={styles.iconWrap}>
-                    <Ionicons name="key-outline" size={26} color={BRAND.green} />
-                  </View>
                   <Text style={styles.title}>Forgot your password?</Text>
                   <Text style={styles.sub}>
                     Enter your CvSU email and we'll send you a link to set a new password.
@@ -122,7 +124,6 @@ export default function ForgotPasswordScreen({ navigation }) {
 
                   <Text style={styles.fieldLabel}>CvSU Email</Text>
                   <View style={[styles.inputRow, focused && styles.inputRowFocused, !!errorText && styles.inputRowError]}>
-                    <Ionicons name="mail-outline" size={18} color={focused ? BRAND.green : colors.gray} style={{ marginRight: 10 }} />
                     <TextInput
                       style={styles.input}
                       placeholder="name@cvsu.edu.ph"
@@ -140,7 +141,6 @@ export default function ForgotPasswordScreen({ navigation }) {
                   </View>
                   {!!errorText && (
                     <View style={styles.errorRow}>
-                      <Ionicons name="alert-circle" size={14} color="#B3261E" />
                       <Text style={styles.errorText}>{errorText}</Text>
                     </View>
                   )}
@@ -161,9 +161,6 @@ export default function ForgotPasswordScreen({ navigation }) {
               ) : (
                 <>
                   {/* LINK SENT */}
-                  <View style={[styles.iconWrap, styles.iconWrapBig]}>
-                    <Ionicons name="mail-open-outline" size={32} color={BRAND.green} />
-                  </View>
                   <Text style={styles.title}>Check your email</Text>
                   <Text style={styles.sub}>
                     If <Text style={styles.strong}>{maskEmail(sentTo)}</Text> is registered, we sent it a link to reset your password.
@@ -171,11 +168,11 @@ export default function ForgotPasswordScreen({ navigation }) {
 
                   <View style={styles.tipBox}>
                     <View style={styles.tipRow}>
-                      <Ionicons name="time-outline" size={15} color="#946800" />
+                      <Text style={styles.tipBullet}>•</Text>
                       <Text style={styles.tipText}>The link works once and expires in 30 minutes.</Text>
                     </View>
                     <View style={styles.tipRow}>
-                      <Ionicons name="folder-open-outline" size={15} color="#946800" />
+                      <Text style={styles.tipBullet}>•</Text>
                       <Text style={styles.tipText}>Don't see it? Check your Spam or Promotions folder.</Text>
                     </View>
                   </View>
@@ -222,8 +219,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff' },
 
   backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: BRAND.mint,
+    width: 40, height: 40, borderRadius: 8, // small square button with a thin border
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
     marginLeft: 16, marginTop: 8,
   },
@@ -234,13 +231,6 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
   },
 
-  iconWrap: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: BRAND.mint,
-    alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'center', marginBottom: 16,
-  },
-  iconWrapBig: { width: 68, height: 68, borderRadius: 34 },
   title: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
   sub: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 20, textAlign: 'center', marginBottom: 26, paddingHorizontal: 6 },
   strong: { fontWeight: '700', color: colors.textPrimary },
@@ -251,8 +241,8 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    height: 52, borderRadius: 14, paddingHorizontal: 14,
-    backgroundColor: '#F7F8F7', borderWidth: 1.2, borderColor: 'transparent',
+    height: 52, borderRadius: 8, paddingHorizontal: 14,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7',
   },
   inputRowFocused: { backgroundColor: '#fff', borderColor: BRAND.green },
   inputRowError: { borderColor: '#B3261E', backgroundColor: '#fff' },
@@ -260,12 +250,13 @@ const styles = StyleSheet.create({
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   errorText: { color: '#B3261E', fontSize: 12.5, flexShrink: 1 },
 
-  tipBox: { backgroundColor: BRAND.goldSoft, borderRadius: 16, padding: 14, gap: 8, marginBottom: 6 },
+  tipBox: { backgroundColor: BRAND.goldSoft, borderRadius: 8, padding: 14, gap: 8, marginBottom: 6 },
+  tipBullet: { fontSize: 12.5, color: '#946800', lineHeight: 18 },
   tipRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   tipText: { flex: 1, fontSize: 12.5, color: '#946800', lineHeight: 18 },
 
   button: {
-    width: '100%', height: 54, borderRadius: 16,
+    width: '100%', height: 54, borderRadius: 8,
     backgroundColor: BRAND.green,
     justifyContent: 'center', alignItems: 'center',
     marginTop: 24,
@@ -274,12 +265,12 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 15.5, letterSpacing: 0.3 },
 
   secondaryBtn: {
-    width: '100%', height: 50, borderRadius: 16,
-    backgroundColor: BRAND.mint,
+    width: '100%', height: 50, borderRadius: 8,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7', // outlined button
     justifyContent: 'center', alignItems: 'center',
     marginTop: 12,
   },
-  secondaryBtnDisabled: { backgroundColor: '#F4F5F4' },
+  secondaryBtnDisabled: { opacity: 0.6 },
   secondaryText: { color: BRAND.green, fontWeight: '700', fontSize: 14.5 },
 
   linkBtn: { alignSelf: 'center', marginTop: 18 },

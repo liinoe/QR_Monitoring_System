@@ -365,7 +365,6 @@ export default function SplashScreen({ navigation }) {
           ) : (
             <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.88}>
               <Text style={styles.primaryBtnText}>Next</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           )}
         </Animated.View>
@@ -412,7 +411,6 @@ export default function SplashScreen({ navigation }) {
               >
                 <TouchableOpacity style={styles.ctaBtn} onPress={handleGetStarted} activeOpacity={0.88}>
                   <Text style={styles.ctaText}>Get Started</Text>
-                  <Ionicons name="arrow-forward" size={18} color={BRAND.deep} style={{ marginLeft: 8 }} />
                 </TouchableOpacity>
               </Animated.View>
             </Animated.View>
@@ -435,7 +433,7 @@ const styles = StyleSheet.create({
   ctaWrap: { position: 'absolute', left: 28, right: 28 },
   ctaBtn: {
     height: 54,
-    borderRadius: 16,
+    borderRadius: 8,
     backgroundColor: '#fff',
     flexDirection: 'row',
     alignItems: 'center',
@@ -464,7 +462,7 @@ const styles = StyleSheet.create({
   featureTile: {
     width: 108,
     height: 108,
-    borderRadius: 28,
+    borderRadius: 16,
     backgroundColor: BRAND.mint,
     alignItems: 'center',
     justifyContent: 'center',
@@ -486,10 +484,10 @@ const styles = StyleSheet.create({
     marginTop: 22,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 6,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#EFF1EF',
+    borderColor: '#E4E4E7',
     gap: 8,
   },
   cvsuLogo: { width: 22, height: 22 },
@@ -502,16 +500,11 @@ const styles = StyleSheet.create({
   primaryBtn: {
     width: '100%',
     height: 54,
-    borderRadius: 16,
+    borderRadius: 8, // flat button, no shadow
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    elevation: 2,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
   },
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
 

@@ -36,7 +36,7 @@ export const AuthInput = ({ id, label, icon, type = "text", error = false, ...pr
         </label>
       )}
       <div
-        className={`flex items-center gap-2 h-[52px] pl-4 pr-2 rounded-[14px] border-[1.2px] transition-all
+        className={`flex items-center gap-2 h-[52px] pl-4 pr-2 rounded-[8px] border-[1.2px] transition-all
           ${error ? "bg-white border-[#B3261E]" : "bg-[#F7F8F7] border-transparent"}
           focus-within:bg-white focus-within:border-[#1B5E20] focus-within:ring-4 focus-within:ring-[#1B5E20]/10`}
       >

@@ -19,6 +19,8 @@
     "buffer": "^6.0.3",
     "expo": "^57.0.20",
     "expo-blur": "~57.0.3",
+    "expo-image-manipulator": "~57.0.21",
+    "expo-image-picker": "~57.0.20",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

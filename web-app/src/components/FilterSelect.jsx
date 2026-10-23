@@ -129,7 +129,7 @@ const FilterSelect = ({
         onClick={toggle}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        className={`flex items-center justify-between gap-2 ${fullWidth ? "w-full" : "min-w-[140px]"} pl-4 pr-3 py-2.5 rounded-[12px] border text-sm font-medium outline-none transition text-left
+        className={`flex items-center justify-between gap-2 ${fullWidth ? "w-full" : "min-w-[140px]"} pl-4 pr-3 py-2.5 rounded-[8px] border text-sm font-medium outline-none transition text-left
           ${open ? "border-[#1B5E20] ring-4 ring-[#1B5E20]/10" : "border-[#E3E7E3] focus:ring-4 focus:ring-[#1B5E20]/10"}
           ${disabled ? "bg-[#F4F5F4] text-gray-400 cursor-not-allowed" : "bg-white text-gray-700 cursor-pointer"}`}
       >
@@ -141,7 +141,7 @@ const FilterSelect = ({
         <div
           ref={listRef}
           style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.minWidth }}
-          className="z-[60] max-w-[min(560px,calc(100vw-32px))] bg-white rounded-[14px] shadow-[0_12px_32px_rgba(11,31,18,0.18)] border border-[#ECEFEC] p-1.5 max-h-[280px] overflow-y-auto"
+          className="z-[60] max-w-[min(560px,calc(100vw-32px))] bg-white rounded-[8px] shadow-md border border-[#ECEFEC] p-1.5 max-h-[280px] overflow-y-auto"
         >
           {options.map((opt, i) => {
             const isSelected = String(opt.value) === String(value);
@@ -151,7 +151,7 @@ const FilterSelect = ({
                 key={String(opt.value)}
                 onClick={() => selectOption(opt)}
                 onMouseEnter={() => setHighlighted(i)}
-                className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-[10px] text-sm text-left transition-colors ${
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-[8px] text-sm text-left transition-colors ${
                   isSelected ? "bg-[#E8F1E9] text-[#1B5E20] font-semibold" : i === highlighted ? "bg-[#F7F8F7] text-gray-800" : "text-gray-600"
                 }`}
               >

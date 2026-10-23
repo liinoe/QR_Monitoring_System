@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Modal, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur'; // install once: npx expo install expo-blur
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
 
@@ -18,12 +17,12 @@ import { BRAND } from '../theme/brand';
  * style can be 'primary' (green), 'secondary' (gray) or 'destructive' (red).
  */
 
-// Icon and colors for each kind of message.
+// Title color for each kind of message (no icons — the title and color say it).
 const TONES = {
-  error:   { icon: 'close-circle',       color: '#DC2626', bg: '#FDECEC' },
-  warning: { icon: 'alert-circle',       color: '#B7791F', bg: '#FBF1CE' },
-  success: { icon: 'checkmark-circle',   color: BRAND.green, bg: BRAND.mint },
-  info:    { icon: 'information-circle', color: BRAND.deep,  bg: BRAND.mint },
+  error:   { color: '#B3261E' },
+  warning: { color: '#8A5A00' },
+  success: { color: BRAND.green },
+  info:    { color: colors.textPrimary },
 };
 
 // Draws the dialog. Normally you don't use this directly — use useAppDialog() below.
@@ -52,10 +51,7 @@ export function AppDialog({ visible, tone = 'info', title, message, buttons, onB
         <View style={[StyleSheet.absoluteFill, styles.dim]} />
 
         <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
-          <View style={[styles.iconWrap, { backgroundColor: look.bg }]}>
-            <Ionicons name={look.icon} size={30} color={look.color} />
-          </View>
-          {!!title && <Text style={styles.title}>{title}</Text>}
+          {!!title && <Text style={[styles.title, { color: look.color }]}>{title}</Text>}
           {!!message && <Text style={styles.message}>{message}</Text>}
 
           <View style={[styles.buttonRow, list.length > 2 && { flexDirection: 'column' }]}>
@@ -117,35 +113,32 @@ export function useAppDialog() {
 const styles = StyleSheet.create({
   backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   dim: { backgroundColor: 'rgba(7, 26, 15, 0.25)' },
+  // Plain card: title and message on the left, buttons at the bottom right.
   card: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 360,
     backgroundColor: '#fff',
-    borderRadius: 22,
-    paddingTop: 24,
-    paddingHorizontal: 22,
-    paddingBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    padding: 20,
+    elevation: 8,
   },
-  iconWrap: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  message: { fontSize: 13.5, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginTop: 8 },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 20, alignSelf: 'stretch' },
+  title: { fontSize: 16.5, fontWeight: '700', color: colors.textPrimary },
+  message: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 20, marginTop: 6 },
+  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 20 },
   button: {
-    flex: 1,
-    height: 46,
-    borderRadius: 14,
+    minWidth: 84,
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     backgroundColor: BRAND.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonSecondary: { backgroundColor: '#EEF0EE' },
-  buttonDestructive: { backgroundColor: '#DC2626' },
-  buttonText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
+  // Secondary = outlined (white with a gray border), like Cancel buttons.
+  buttonSecondary: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7' },
+  buttonDestructive: { backgroundColor: '#B3261E' },
+  buttonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   buttonTextSecondary: { color: colors.textPrimary },
 });

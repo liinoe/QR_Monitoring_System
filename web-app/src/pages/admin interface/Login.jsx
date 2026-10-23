@@ -191,7 +191,7 @@ const Login = () => {
 
             <main className="flex-1 flex items-center justify-center px-4 py-10">
                 <div className="w-full max-w-[420px]">
-                    <div className="bg-white rounded-[24px] px-7 py-8">
+                    <div className="bg-white rounded-[12px] px-7 py-8">
                         {pending ? (
                             // WAITING FOR APPROVAL
                             <div className="text-center">
@@ -204,7 +204,7 @@ const Login = () => {
                                 <div className="inline-flex items-center gap-1.5 mt-4 px-3 py-1.5 rounded-full bg-[#FBF3DC] text-[#946800] text-xs font-bold tabular-nums">
                                     Expires in {pending.secondsLeft}s
                                 </div>
-                                <button type="button" onClick={cancelWaiting} className={`${btn.secondary} w-full h-[50px] mt-6 rounded-[16px]`}>
+                                <button type="button" onClick={cancelWaiting} className={`${btn.secondary} w-full h-[50px] mt-6`}>
                                     Cancel
                                 </button>
                             </div>
@@ -212,17 +212,12 @@ const Login = () => {
                             // SIGN-IN FORM
                             <>
                                 <div className="text-center mb-7">
-                                    <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[#E8F1E9] text-[#1B5E20] flex items-center justify-center">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                        </svg>
-                                    </div>
                                     <h1 className="text-[22px] font-extrabold text-gray-900">Welcome back</h1>
                                     <p className="text-sm text-gray-500 mt-1">Sign in to the library admin dashboard.</p>
                                 </div>
 
                                 {error && (
-                                    <div className="flex items-start gap-2 rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-[13px] font-semibold px-4 py-3 mb-5">
+                                    <div className="flex items-start gap-2 rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-[13px] font-semibold px-4 py-3 mb-5">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="flex-shrink-0 mt-px">
                                             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                                         </svg>
@@ -251,7 +246,7 @@ const Login = () => {
                                         type="submit"
                                         disabled={loading}
                                         style={{ marginTop: 24 }}
-                                        className="w-full h-[52px] rounded-[16px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors disabled:opacity-60"
+                                        className="w-full h-[52px] rounded-[12px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors disabled:opacity-60"
                                     >
                                         {loading ? "Signing in…" : "Sign In"}
                                     </button>

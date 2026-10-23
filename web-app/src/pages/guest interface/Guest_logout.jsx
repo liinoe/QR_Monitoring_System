@@ -109,7 +109,7 @@ const GuestLogout = () => {
               placeholder="Type your full name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className={`${inputClass} pl-12 py-4 shadow-[0_4px_16px_rgba(11,31,18,0.06)] border-transparent`}
+              className={`${inputClass} pl-12 py-4`}
               autoFocus
             />
           </div>
@@ -121,7 +121,7 @@ const GuestLogout = () => {
 
         {/* Error banner */}
         {feedback && (
-          <div className="flex items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
+          <div className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
             <Icon name="alert" size={18} />
             {feedback.message}
           </div>
@@ -151,7 +151,7 @@ const GuestLogout = () => {
                 {filteredGuests.map((g) => (
                   <li key={g.guest_log_id} className="flex items-center gap-4 px-5 py-4">
                     <div
-                      className="w-11 h-11 rounded-[14px] flex items-center justify-center text-sm font-extrabold flex-shrink-0"
+                      className="w-11 h-11 rounded-[8px] flex items-center justify-center text-sm font-extrabold flex-shrink-0"
                       style={{ backgroundColor: BRAND.mint, color: BRAND.green }}
                     >
                       {getInitials(g.full_name)}

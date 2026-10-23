@@ -51,10 +51,11 @@ const VISITOR_TYPES = [
   { id: "student", label: "Student", icon: StudentIcon },
 ];
 
-// Shown only when "Student" is picked. "Other" = another school or another CvSU campus.
+// Shown only when "Student" is picked. JHS / SHS = CvSU's OWN Junior / Senior High School.
+// "Other" = another school or another CvSU campus.
 const STUDENT_TYPES = [
-  { id: "JHS", label: "Junior High (JHS)", value: "Junior High School (JHS)" },
-  { id: "SHS", label: "Senior High (SHS)", value: "Senior High School (SHS)" },
+  { id: "JHS", label: "CvSU Junior High (JHS)", value: "CvSU Junior High School (JHS)" },
+  { id: "SHS", label: "CvSU Senior High (SHS)", value: "CvSU Senior High School (SHS)" },
   { id: "Other", label: "Other", value: "" },
 ];
 
@@ -189,7 +190,7 @@ const GuestEntry = () => {
       <form onSubmit={handleSubmit} className="w-full max-w-[720px] space-y-6">
         {/* Error banner */}
         {feedback && feedback.type === "error" && (
-          <div className="flex items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
+          <div className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-sm font-semibold bg-[#FBDFDB] text-[#B3261E]">
             <Icon name="alert" size={18} />
             {feedback.message}
           </div>
@@ -206,10 +207,10 @@ const GuestEntry = () => {
                   type="button"
                   key={id}
                   onClick={() => setGuestType(id)}
-                  className={`relative flex flex-col items-center justify-center gap-2.5 py-5 rounded-[20px] border-2 transition-all ${
+                  className={`relative flex flex-col items-center justify-center gap-2.5 py-5 rounded-[12px] border transition-all ${
                     active
-                      ? "border-[#1B5E20] bg-white text-[#1B5E20] shadow-[0_6px_18px_rgba(27,94,32,0.15)]"
-                      : "border-transparent bg-white text-gray-400 shadow-[0_4px_16px_rgba(11,31,18,0.06)] hover:text-gray-600"
+                      ? "border-[#1B5E20] bg-white text-[#1B5E20]"
+                      : "border-[#E4E4E7] bg-white text-gray-400 hover:text-gray-600"
                   }`}
                 >
                   {active && (
@@ -218,7 +219,7 @@ const GuestEntry = () => {
                     </span>
                   )}
                   <span
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    className="w-12 h-12 rounded-[12px] flex items-center justify-center"
                     style={{ backgroundColor: active ? BRAND.mint : "#F4F5F4" }}
                   >
                     <TypeIcon />
@@ -245,7 +246,10 @@ const GuestEntry = () => {
             {isStudent ? (
               // Students pick their type instead of typing an affiliation.
               <div>
-                <span className="text-[12px] font-semibold text-gray-600 mb-1.5 block">Student type</span>
+                <span className="text-[12px] font-semibold text-gray-600 block">Student type</span>
+                <span className="text-[11.5px] text-gray-400 mb-2 block">
+                  From another school or campus? Choose Other.
+                </span>
                 {/* Same pill buttons as "Purpose of visit" */}
                 <div className="flex flex-wrap gap-2.5">
                   {STUDENT_TYPES.map((t) => {
@@ -340,9 +344,13 @@ const GuestEntry = () => {
             Review & Log Visit
             <Icon name="arrow" size={18} />
           </button>
-          <p className="flex items-center justify-center gap-1.5 text-center text-[11.5px] text-gray-400 mt-3">
-            <Icon name="shield" size={13} />
-            Your information is recorded securely and used only for library access monitoring.
+          {/* Privacy note (Data Privacy Act of 2012) — guests give their name and affiliation too */}
+          <p className="flex items-start justify-center gap-1.5 text-center text-[11.5px] leading-relaxed text-gray-400 mt-3 max-w-[560px] mx-auto">
+            <span>
+              Privacy notice: your name, affiliation and purpose of visit are used only to record library visits and
+              usage statistics, are seen only by library staff, and are not shared with others (Data Privacy Act of 2012).
+              Questions? Email cvsulibrary@cvsu.edu.ph.
+            </span>
           </p>
         </div>
       </form>
@@ -365,7 +373,7 @@ const GuestEntry = () => {
           </>
         }
       >
-        <div className="rounded-[16px] bg-[#F7F8F7] divide-y divide-[#ECEFEC]">
+        <div className="rounded-[12px] bg-[#F7F8F7] divide-y divide-[#ECEFEC]">
           <DetailRow label="Visitor type" value={VISITOR_TYPES.find((v) => v.id === guestType)?.label || guestType} />
           <DetailRow label="Name" value={`${firstName} ${lastName}`} />
           <DetailRow label={!isStudent ? "Affiliation" : studentType === "Other" ? "School / Campus" : "Student type"} value={getAffiliation()} />
@@ -386,7 +394,7 @@ const GuestEntry = () => {
         }
       >
         {/* Gold reminder banner */}
-        <div className="flex items-start gap-3 rounded-[16px] p-4" style={{ backgroundColor: BRAND.goldSoft, color: "#946800" }}>
+        <div className="flex items-start gap-3 rounded-[12px] p-4" style={{ backgroundColor: BRAND.goldSoft, color: "#946800" }}>
           <Icon name="time" size={20} className="flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold">Don't forget to log out!</p>
@@ -409,7 +417,7 @@ const GuestEntry = () => {
         </button>
 
         {showHowTo && (
-          <div className="space-y-3 mt-3 rounded-[16px] bg-[#F7F8F7] p-4">
+          <div className="space-y-3 mt-3 rounded-[12px] bg-[#F7F8F7] p-4">
             {HOW_TO_STEPS.map((step, i) => (
               <div key={i} className="flex gap-3">
                 <div className="w-6 h-6 rounded-full text-[#1B5E20] text-xs font-bold flex items-center justify-center flex-shrink-0" style={{ backgroundColor: BRAND.mint }}>

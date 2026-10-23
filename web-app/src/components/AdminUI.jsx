@@ -39,7 +39,7 @@ export const COLLEGE_COLORS = {
 
 // White card with a thin border and rounded corners.
 export const Card = ({ className = "", children }) => (
-  <div className={`bg-white rounded-[20px] border border-[#ECEFEC] ${className}`}>{children}</div>
+  <div className={`bg-white rounded-[12px] border border-[#ECEFEC] ${className}`}>{children}</div>
 );
 
 // Card title + optional small gray note on the right or below.
@@ -69,7 +69,7 @@ export const Pill = ({ tone = "gray", children, dot = false }) => {
   const t = tones[tone] || tones.gray;
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap"
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-bold whitespace-nowrap"
       style={{ backgroundColor: t.bg, color: t.fg }}
     >
       {dot && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: t.fg }} />}
@@ -91,17 +91,19 @@ export const InfoTip = ({ text }) => (
 //   color   color of the big number
 //   footer  a Pill or short text under the number
 //   tooltip explanation shown on the "i" icon
+// Compact on purpose: pages like Logs and Registrations are about the TABLE,
+// so the cards stay small and leave room for the records below.
 export const KpiCard = ({ label, value, unit, color = "#111827", footer, tooltip }) => (
-  <Card className="p-5 flex flex-col">
+  <Card className="px-4 py-3.5 flex flex-col">
     <div className="flex items-start justify-between gap-2">
-      <p className="text-[12.5px] font-semibold text-gray-500">{label}</p>
+      <p className="text-[12px] font-semibold text-gray-500">{label}</p>
       {tooltip && <InfoTip text={tooltip} />}
     </div>
-    <p className="text-[36px] font-extrabold leading-none mt-3 tabular-nums" style={{ color }}>
+    <p className="text-[26px] font-extrabold leading-none mt-1.5 tabular-nums" style={{ color }}>
       {value}
-      {unit && <span className="text-[16px] font-bold text-gray-400 ml-1">{unit}</span>}
+      {unit && <span className="text-[13px] font-bold text-gray-400 ml-1">{unit}</span>}
     </p>
-    <div className="mt-3 min-h-[24px] flex items-center">{footer}</div>
+    <div className="mt-2 min-h-[22px] flex items-center">{footer}</div>
   </Card>
 );
 
@@ -121,7 +123,7 @@ export const ChartTooltip = ({ active, payload, label, unit = "" }) => {
   if (!active || !payload || payload.length === 0) return null;
   const item = payload[0];
   return (
-    <div className="rounded-[12px] bg-[#0E3B1F] text-white text-xs px-3 py-2 shadow-xl">
+    <div className="rounded-[8px] bg-[#0E3B1F] text-white text-xs px-3 py-2 shadow-md">
       <p className="font-semibold">{label || item.name}</p>
       <p className="text-white/80 mt-0.5">
         {item.value} {unit}
@@ -140,7 +142,7 @@ export const Avatar = ({ name, guest = false }) => {
       : `${parts[0][0]}${parts.length > 1 ? parts[parts.length - 1][0] : ""}`.toUpperCase();
   return (
     <div
-      className="w-10 h-10 rounded-[12px] flex items-center justify-center text-[13px] font-extrabold flex-shrink-0"
+      className="w-10 h-10 rounded-[8px] flex items-center justify-center text-[13px] font-extrabold flex-shrink-0"
       style={guest ? { backgroundColor: BRAND.goldSoft, color: BRAND.goldText } : { backgroundColor: BRAND.mint, color: BRAND.green }}
     >
       {initials}
@@ -156,7 +158,7 @@ export const Avatar = ({ name, guest = false }) => {
 export const TimeOutCell = ({ inside, time, forced }) => {
   if (inside) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F1E9] text-[#1B5E20]">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-bold bg-[#E8F1E9] text-[#1B5E20]">
         <span className="w-1.5 h-1.5 rounded-full bg-[#1B5E20] animate-pulse" />
         Inside
       </span>
@@ -167,7 +169,7 @@ export const TimeOutCell = ({ inside, time, forced }) => {
       {time || "—"}
       {forced && (
         <HoverTooltip label="Forced exit (5:31 PM auto-logout or Force Exit All). Not counted in the average stay.">
-          <span className="px-2 py-0.5 rounded-full bg-[#F1F3F1] text-gray-500 text-[10px] font-bold cursor-help">Auto</span>
+          <span className="px-2 py-0.5 rounded-[6px] bg-[#F1F3F1] text-gray-500 text-[10px] font-bold cursor-help">Auto</span>
         </HoverTooltip>
       )}
     </span>
@@ -186,13 +188,13 @@ export const EmptyState = ({ text }) => (
 // Shared button styles (same shapes as the guest kiosk buttons).
 export const btn = {
   primary:
-    "inline-flex items-center justify-center gap-2 bg-[#1B5E20] hover:bg-[#164a1a] text-white text-sm font-semibold px-5 py-2.5 rounded-[12px] transition-colors disabled:opacity-60",
+    "inline-flex items-center justify-center gap-2 bg-[#1B5E20] hover:bg-[#164a1a] text-white text-sm font-semibold px-5 py-2.5 rounded-[8px] transition-colors disabled:opacity-60",
   secondary:
-    "inline-flex items-center justify-center gap-2 bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] text-sm font-semibold px-5 py-2.5 rounded-[12px] transition-colors disabled:opacity-60",
+    "inline-flex items-center justify-center gap-2 bg-white border border-[#E4E4E7] hover:bg-[#F4F4F5] text-gray-800 text-sm font-semibold px-5 py-2.5 rounded-[8px] transition-colors disabled:opacity-60",
   danger:
-    "inline-flex items-center justify-center gap-2 bg-[#B3261E] hover:bg-[#9a2019] text-white text-sm font-semibold px-5 py-2.5 rounded-[12px] transition-colors disabled:opacity-60",
+    "inline-flex items-center justify-center gap-2 bg-[#B3261E] hover:bg-[#9a2019] text-white text-sm font-semibold px-5 py-2.5 rounded-[8px] transition-colors disabled:opacity-60",
   dangerSoft:
-    "inline-flex items-center justify-center gap-2 bg-[#FBDFDB] hover:bg-[#f7cdc7] text-[#B3261E] text-sm font-semibold px-4 py-2.5 rounded-[12px] transition-colors disabled:opacity-60",
+    "inline-flex items-center justify-center gap-2 bg-[#FBDFDB] hover:bg-[#f7cdc7] text-[#B3261E] text-sm font-semibold px-4 py-2.5 rounded-[8px] transition-colors disabled:opacity-60",
 };
 
 // Page title row: big title, gray subtitle, and optional buttons on the right.
@@ -239,18 +241,12 @@ export const Dialog = ({ open, tone = "warning", title, message, footer }) => {
   // even when it's opened from inside the sidebar or the sticky header.
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-[#071A0F]/40 backdrop-blur-sm">
-      <div className="w-full max-w-[420px] bg-white rounded-[24px] shadow-2xl p-7">
-        <div className="flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: t.bg, color: t.fg }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              {t.icon}
-            </svg>
-          </div>
-          <h3 className="text-[19px] font-bold text-gray-900">{title}</h3>
+      <div className="w-full max-w-[420px] bg-white rounded-[12px] shadow-lg p-7">
+        <div className="flex flex-col">
+          <h3 className="text-[18px] font-bold" style={{ color: tone === "success" ? "#111827" : t.fg }}>{title}</h3>
           {message && <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{message}</p>}
         </div>
-        {footer && <div className="mt-6 flex gap-3 [&>*]:flex-1">{footer}</div>}
+        {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
       </div>
     </div>,
     document.body
@@ -275,7 +271,7 @@ export const RegStatusPill = ({ status }) => {
   const t = REG_STATUS_STYLES[status] || { bg: "#F1F3F1", fg: "#6B7280", label: status || "—" };
   return (
     <span
-      className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap"
+      className="inline-flex items-center px-2 py-0.5 rounded-[6px] text-[11px] font-bold whitespace-nowrap"
       style={{ backgroundColor: t.bg, color: t.fg }}
     >
       {t.label}

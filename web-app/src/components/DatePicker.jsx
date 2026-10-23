@@ -96,7 +96,7 @@ const DatePicker = ({ value, onChange, min, max, rangeStart, rangeEnd, disabled 
         type="button"
         onClick={toggle}
         disabled={disabled}
-        className={`w-full flex items-center justify-between gap-2 pl-3.5 pr-3 py-2.5 rounded-[12px] border text-sm text-left outline-none transition
+        className={`w-full flex items-center justify-between gap-2 pl-3.5 pr-3 py-2.5 rounded-[8px] border text-sm text-left outline-none transition
           ${open ? "border-[#1B5E20] ring-4 ring-[#1B5E20]/10" : "border-[#E3E7E3]"}
           ${disabled ? "bg-[#F4F5F4] text-gray-400 cursor-not-allowed" : "bg-white text-gray-800 cursor-pointer"}`}
       >
@@ -107,7 +107,7 @@ const DatePicker = ({ value, onChange, min, max, rangeStart, rangeEnd, disabled 
       {open && pos && (
         <div
           style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom }}
-          className="z-[60] w-[288px] bg-white rounded-[18px] border border-[#ECEFEC] shadow-[0_12px_32px_rgba(11,31,18,0.18)] p-4"
+          className="z-[60] w-[288px] bg-white rounded-[12px] border border-[#ECEFEC] shadow-md p-4"
         >
           {/* Month + arrows */}
           <div className="flex items-center justify-between mb-3">

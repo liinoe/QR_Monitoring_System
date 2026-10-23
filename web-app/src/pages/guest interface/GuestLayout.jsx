@@ -191,7 +191,7 @@ export const GuestLayout = ({ title, subtitle, onBack, children }) => {
 
 // White card with the app's soft shadow and big rounded corners.
 export const Card = ({ className = "", children }) => (
-  <div className={`bg-white rounded-[20px] shadow-[0_4px_16px_rgba(11,31,18,0.06)] ${className}`}>{children}</div>
+  <div className={`bg-white rounded-[12px] border border-[#E4E4E7] ${className}`}>{children}</div>
 );
 
 // Small gray uppercase heading above a card (like "ACCOUNT DETAILS" in the app).
@@ -209,25 +209,18 @@ const TONES = {
 
 // Centered pop-up with a blurred background, like the app's AppDialog.
 //   tone     'success' | 'warning' | 'error' | 'info'
-//   icon     optional icon name to override the tone's icon
 //   footer   the buttons row
-export const Dialog = ({ open, tone = "info", icon, title, message, children, footer, maxWidth = 440 }) => {
+export const Dialog = ({ open, tone = "info", title, message, children, footer, maxWidth = 440 }) => {
   if (!open) return null;
   const t = TONES[tone] || TONES.info;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-[#071A0F]/40 backdrop-blur-sm">
       <div
-        className="w-full bg-white rounded-[24px] shadow-2xl p-7 animate-[fadeIn_0.2s_ease-out]"
+        className="w-full bg-white rounded-[12px] shadow-lg p-7 animate-[fadeIn_0.2s_ease-out]"
         style={{ maxWidth }}
       >
-        <div className="flex flex-col items-center text-center">
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
-            style={{ backgroundColor: t.bg, color: t.fg }}
-          >
-            <Icon name={icon || t.icon} size={26} />
-          </div>
-          <h3 className="text-[19px] font-bold text-gray-900">{title}</h3>
+        <div className="flex flex-col">
+          <h3 className="text-[19px] font-bold" style={{ color: tone === "error" || tone === "warning" ? t.fg : "#111827" }}>{title}</h3>
           {message && <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{message}</p>}
         </div>
         {children && <div className="mt-5">{children}</div>}
@@ -240,15 +233,15 @@ export const Dialog = ({ open, tone = "info", icon, title, message, children, fo
 // Button styles shared by all guest pages.
 export const btn = {
   primary:
-    "flex-1 inline-flex items-center justify-center gap-2 bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3.5 px-6 rounded-[14px] transition-colors disabled:opacity-60",
+    "flex-1 inline-flex items-center justify-center gap-2 bg-[#1B5E20] hover:bg-[#164a1a] text-white font-semibold py-3.5 px-6 rounded-[8px] transition-colors disabled:opacity-60",
   secondary:
-    "flex-1 inline-flex items-center justify-center gap-2 bg-[#E8F1E9] hover:bg-[#dbe9dc] text-[#1B5E20] font-semibold py-3.5 px-6 rounded-[14px] transition-colors disabled:opacity-60",
+    "flex-1 inline-flex items-center justify-center gap-2 bg-white border border-[#E4E4E7] hover:bg-[#F4F4F5] text-gray-800 font-semibold py-3.5 px-6 rounded-[8px] transition-colors disabled:opacity-60",
   danger:
-    "flex-1 inline-flex items-center justify-center gap-2 bg-[#B3261E] hover:bg-[#9a2019] text-white font-semibold py-3.5 px-6 rounded-[14px] transition-colors disabled:opacity-60",
+    "flex-1 inline-flex items-center justify-center gap-2 bg-[#B3261E] hover:bg-[#9a2019] text-white font-semibold py-3.5 px-6 rounded-[8px] transition-colors disabled:opacity-60",
 };
 
 // Text input style shared by all guest pages.
 export const inputClass =
-  "w-full bg-white border border-[#E3E7E3] rounded-[14px] px-4 py-3 text-[15px] text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10";
+  "w-full bg-white border border-[#E3E7E3] rounded-[8px] px-4 py-3 text-[15px] text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10";
 
 export default GuestLayout;

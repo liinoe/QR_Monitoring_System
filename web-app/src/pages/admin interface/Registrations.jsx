@@ -309,6 +309,15 @@ const Registrations = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedRequests = filteredRequests.slice(startIndex, startIndex + itemsPerPage);
 
+
+  // "Where am I?" label next to the page title, built from the filters in use,
+  // e.g. "Pending" or "Approved · CEIT · "2023"". Updates as filters change.
+  const viewLabel = [
+    statusFilter === "All" ? "All requests" : statusFilter,
+    collegeFilter !== "All Colleges" ? collegeFilter : null,
+    searchTerm.trim() ? `"${searchTerm.trim()}"` : null,
+  ].filter(Boolean).join(" · ");
+
   return (
     <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
       <Header />
@@ -316,23 +325,33 @@ const Registrations = () => {
         <Sidebar />
         <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
           <PageTitle
-            title="Registrations"
+            title={
+              <>
+                Registrations
+                {/* Current view, so staff always know which requests they're looking at */}
+                <span className="text-gray-400 font-semibold text-[20px]"> — {viewLabel}</span>
+              </>
+            }
             subtitle="Approve, reject, or review student registrations."
-            right={<Pill tone="green">{currentPeriod || "Loading semester..."}</Pill>}
           />
 
           {/* Small notice when new registrations arrive while the page is open */}
           {newCount > 0 && (
-            <div className="flex items-center gap-2 bg-[#E8F1E9] text-[#1B5E20] text-sm font-semibold px-4 py-2.5 rounded-[14px]">
+            <div className="flex items-center gap-2 bg-[#E8F1E9] text-[#1B5E20] text-sm font-semibold px-4 py-2.5 rounded-[8px]">
               <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse" />
               {newCount === 1 ? "1 new registration received" : `${newCount} new registrations received`}
             </div>
           )}
 
-          {/* KPI CARDS (this semester only) */}
+          {/* KPI CARDS (this semester only). They summarize the whole semester and
+              do NOT change with the status tabs below — the label says so. */}
           <div>
-          <SectionLabel>This semester</SectionLabel>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+          {/* Label on the left, the semester pill on the right — same row */}
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] ml-1">This semester's summary</p>
+            <Pill tone="green">{currentPeriod || "Loading semester..."}</Pill>
+          </div>
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <KpiCard
               label="Pending"
               value={pendingCount}
@@ -383,7 +402,7 @@ const Registrations = () => {
           </div>
 
           {/* TABLE (no overflow-hidden on the outer box, so dropdowns aren't cut off) */}
-          <div className="bg-white rounded-[20px] border border-[#ECEFEC]">
+          <div className="bg-white rounded-[12px] border border-[#ECEFEC]">
             <div className="overflow-x-auto rounded-t-[20px]">
               <table className="responsive-table w-full text-sm">
                 <thead>

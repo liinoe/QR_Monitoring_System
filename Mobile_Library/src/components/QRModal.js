@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     backgroundColor: '#fff',
-    borderRadius: 24,
+    borderRadius: 12,
     padding: 24,
     paddingTop: 48,
     alignItems: 'center',
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
   qrWrap: {
     padding: 16,
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 8,
     borderWidth: 2,
     borderColor: colors.grayLight,
   },

@@ -166,6 +166,20 @@ const StudentLogs = () => {
     })(),
   }[dateFilter];
 
+
+  // "Where am I?" label shown next to the page title, built from the filters in use,
+  // e.g. "Inside · Today" or "All · CEIT · October 2026". Updates as filters change.
+  const monthName = (() => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleString([], { month: "long", year: "numeric" });
+  })();
+  const viewLabel = [
+    statusFilter === "All" ? "All logs" : statusFilter,
+    collegeFilter !== "All Colleges" ? collegeFilter : null,
+    dateFilter === "This Month" ? monthName : dateFilter,
+    searchTerm.trim() ? `"${searchTerm.trim()}"` : null,
+  ].filter(Boolean).join(" · ");
+
   return (
     <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
       <Header />
@@ -173,12 +187,18 @@ const StudentLogs = () => {
         <Sidebar />
         <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
           <PageTitle
-            title="Student Logs"
+            title={
+              <>
+                Student Logs
+                {/* Current view, so staff always know which records they're looking at */}
+                <span className="text-gray-400 font-semibold text-[20px]"> — {viewLabel}</span>
+              </>
+            }
             subtitle="Students' library entry and exit records."
           />
 
           {/* KPI CARDS */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <KpiCard
               label={`Total Logs${dateSuffix}`}
               value={totalFiltered}

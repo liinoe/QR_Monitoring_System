@@ -300,7 +300,7 @@ const Dashboard = () => {
           {/* KPI CARDS */}
           <div>
             <SectionLabel>Today</SectionLabel>
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
               <KpiCard
                 label="Total Visits Today"
                 value={totalVisitorsToday}

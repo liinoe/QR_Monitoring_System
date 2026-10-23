@@ -130,7 +130,6 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding,
   if (isOffline) {
     body = (
       <View style={styles.chartOfflineWrap}>
-        <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
         <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
       </View>
     );
@@ -206,20 +205,14 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding,
 
         <View style={styles.footerStatsRow}>
           <View style={styles.footerStatItem}>
-            <View style={[styles.footerStatIconWrap, { backgroundColor: BRAND.goldSoft }]}>
-              <Ionicons name="people-outline" size={15} color="#A9720B" />
-            </View>
-            <View style={{ marginLeft: 10 }}>
+            <View>
               <Text style={styles.footerStatLabel}>Busiest</Text>
               <Text style={styles.footerStatValue}>{hourRange(data.peak_start, 2)}</Text>
             </View>
           </View>
           <View style={styles.footerVerticalDivider} />
           <View style={styles.footerStatItem}>
-            <View style={styles.footerStatIconWrap}>
-              <Ionicons name="leaf-outline" size={15} color={colors.primary} />
-            </View>
-            <View style={{ marginLeft: 10 }}>
+            <View>
               <Text style={styles.footerStatLabel}>Quietest</Text>
               <Text style={styles.footerStatValue}>{data.quiet_start != null ? hourRange(data.quiet_start, data.quiet_end - data.quiet_start) : '—'}</Text>
             </View>
@@ -468,7 +461,6 @@ export default function HomeScreen({ navigation }) {
 
       {isOffline && (
         <View style={[styles.offlineBanner, { paddingHorizontal: layout.horizontalPadding }]}>
-          <Ionicons name="cloud-offline-outline" size={15} color="#946800" />
           <Text style={styles.offlineBannerText}>
             You're offline — your QR pass still works, but live library data can't be updated.
           </Text>
@@ -487,9 +479,6 @@ export default function HomeScreen({ navigation }) {
         {/* NOT REGISTERED */}
         {isNotRegistered && (
           <View style={[styles.registerCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
-            <View style={styles.registerIconWrap}>
-              <Ionicons name="person-add-outline" size={32} color={colors.primary} />
-            </View>
             <Text style={styles.registerTitle}>No Library Account Found</Text>
             <Text style={styles.registerSub}>
               Register your student profile to access the library and get your QR pass.
@@ -500,7 +489,6 @@ export default function HomeScreen({ navigation }) {
               activeOpacity={0.88}
             >
               <Text style={styles.registerBtnText}>Register Now</Text>
-              <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
           </View>
         )}
@@ -509,9 +497,6 @@ export default function HomeScreen({ navigation }) {
         {needsRenewal && (
           <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.statusRow}>
-              <View style={styles.lockIconWrap}>
-                <Ionicons name="refresh-outline" size={24} color="#946800" />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Renewal Required</Text>
                 <Text style={styles.pendingSubText}>
@@ -523,7 +508,6 @@ export default function HomeScreen({ navigation }) {
                   activeOpacity={0.88}
                 >
                   <Text style={styles.renewBtnText}>Renew Registration</Text>
-                  <Ionicons name="arrow-forward" size={15} color="#fff" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -534,9 +518,6 @@ export default function HomeScreen({ navigation }) {
         {isExpired && (
           <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.statusRow}>
-              <View style={styles.lockIconWrap}>
-                <Ionicons name="calendar-outline" size={24} color="#946800" />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Semester Ended</Text>
                 <Text style={styles.pendingSubText}>
@@ -555,9 +536,6 @@ export default function HomeScreen({ navigation }) {
         {isPending && (
           <View style={[styles.statusCard, styles.lockedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.statusRow}>
-              <View style={styles.lockIconWrap}>
-                <Ionicons name="time-outline" size={24} color="#946800" />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Access Restricted</Text>
                 <Text style={styles.pendingSubText}>Your registration is pending admin approval.</Text>
@@ -576,9 +554,6 @@ export default function HomeScreen({ navigation }) {
         {isRejected && (
           <View style={[styles.statusCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.statusRow}>
-              <View style={styles.rejectedIconWrap}>
-                <Ionicons name="close-circle-outline" size={24} color="#B3261E" />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectedTitle}>Registration Rejected</Text>
                 {/* Guidance depends on the reason (see utils/rejection.js) */}
@@ -593,7 +568,6 @@ export default function HomeScreen({ navigation }) {
                   activeOpacity={0.88}
                 >
                   <Text style={styles.resubmitBtnText}>{rejectionGuide.buttonLabel}</Text>
-                  <Ionicons name="arrow-forward" size={15} color="#fff" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -605,16 +579,12 @@ export default function HomeScreen({ navigation }) {
         {isDeactivated && (
           <View style={[styles.statusCard, styles.rejectedCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <View style={styles.statusRow}>
-              <View style={styles.rejectedIconWrap}>
-                <Ionicons name="ban-outline" size={24} color="#B3261E" />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectedTitle}>Account Deactivated</Text>
                 <Text style={styles.rejectedSubText}>
                   {studentData?.status_reason || 'Your account access has been deactivated.'}
                 </Text>
                 <View style={styles.contactBadge}>
-                  <Ionicons name="information-circle-outline" size={13} color="#7F1D1D" />
                   <Text style={styles.contactBadgeText}>Please visit the library front desk to resolve this</Text>
                 </View>
               </View>
@@ -629,7 +599,6 @@ export default function HomeScreen({ navigation }) {
                 semester, except the headcount, which is marked "Live". */}
             {!!(analytics?.period_label || peakHours?.period_label) && (
               <View style={[styles.periodBanner, { width: layout.contentWidth }]}>
-                <Ionicons name="calendar-outline" size={14} color={BRAND.green} />
                 <Text style={styles.periodBannerText}>
                   <Text style={styles.periodBannerStrong}>{analytics?.period_label || peakHours?.period_label}</Text>
                   {'  ·  '}stats for this semester
@@ -645,7 +614,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
                 {isOffline ? (
                   <>
-                    <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
                     <Text style={styles.kpiOfflineText}>Needs internet connection</Text>
                   </>
                 ) : (
@@ -665,7 +633,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
                 {isOffline ? (
                   <>
-                    <Ionicons name="cloud-offline-outline" size={20} color="#B0B4B1" style={{ marginTop: 8 }} />
                     <Text style={styles.kpiOfflineText}>Needs internet connection</Text>
                   </>
                 ) : (
@@ -691,7 +658,6 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.statusText}>Approved</Text>
                 </View>
                 <View style={styles.enlargeContainer}>
-                  <Ionicons name="expand-outline" size={13} color={colors.textSecondary} />
                   <Text style={styles.enlargeText}>Tap to enlarge</Text>
                 </View>
               </View>
@@ -735,7 +701,6 @@ export default function HomeScreen({ navigation }) {
 
               {isOffline ? (
                 <View style={styles.chartOfflineWrap}>
-                  <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
                   <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
                 </View>
               ) : analytics ? (
@@ -766,20 +731,14 @@ export default function HomeScreen({ navigation }) {
 
               <View style={styles.footerStatsRow}>
                 <View style={styles.footerStatItem}>
-                  <View style={styles.footerStatIconWrap}>
-                    <Ionicons name="calendar-outline" size={15} color={colors.primary} />
-                  </View>
-                  <View style={{ marginLeft: 10 }}>
+                  <View>
                     <Text style={styles.footerStatLabel}>Frequent Visit</Text>
                     <Text style={styles.footerStatValue}>{isOffline ? 'N/A' : (analytics ? analytics.frequent_day : '--')}</Text>
                   </View>
                 </View>
                 <View style={styles.footerVerticalDivider} />
                 <View style={styles.footerStatItem}>
-                  <View style={styles.footerStatIconWrap}>
-                    <Ionicons name="time-outline" size={15} color={colors.primary} />
-                  </View>
-                  <View style={{ marginLeft: 10 }}>
+                  <View>
                     <Text style={styles.footerStatLabel}>Avg. Stay Duration</Text>
                     <Text style={styles.footerStatValue}>
                       {isOffline ? 'N/A' : (analytics ? formatStayRange(analytics.avg_stay_hours) : '--')}
@@ -804,7 +763,6 @@ export default function HomeScreen({ navigation }) {
 
               {isOffline ? (
                 <View style={styles.chartOfflineWrap}>
-                  <Ionicons name="cloud-offline-outline" size={22} color="#B0B4B1" />
                   <Text style={styles.chartOfflineText}>Cannot be viewed — needs internet connection</Text>
                 </View>
               ) : !analytics ? (
@@ -842,12 +800,10 @@ const colors = {
   cardBorder: '#EFF1EF',
 };
 
+// Cards use a thin border instead of a drop shadow (cleaner, flatter look).
 const CARD_SHADOW = {
-  elevation: 2,
-  shadowColor: '#0B1F12',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.05,
-  shadowRadius: 12,
+  borderWidth: 1,
+  borderColor: '#E4E4E7',
 };
 
 const styles = StyleSheet.create({
@@ -869,7 +825,7 @@ const styles = StyleSheet.create({
   iconBtn: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 10,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -893,7 +849,7 @@ const styles = StyleSheet.create({
 
   registerCard: {
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 12,
     alignItems: 'center',
     ...CARD_SHADOW,
   },
@@ -914,7 +870,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: 13,
     paddingHorizontal: 26,
-    borderRadius: 14,
+    borderRadius: 8,
   },
   registerBtnText: { color: '#fff', fontWeight: '700', fontSize: 14.5 },
 
@@ -922,7 +878,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 12,
     ...CARD_SHADOW,
   },
   qrTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', lineHeight: 20 },
@@ -933,7 +889,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryMuted,
     paddingVertical: 4,
     paddingHorizontal: 10,
-    borderRadius: 10,
+    borderRadius: 6,
     marginTop: 9,
   },
   statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 6 },
@@ -948,7 +904,7 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
   },
 
-  statusCard: { borderRadius: 20, borderWidth: 1 },
+  statusCard: { borderRadius: 12, borderWidth: 1 },
   statusRow: { flexDirection: 'row', alignItems: 'flex-start' },
 
   lockedCard: { backgroundColor: '#FFFBEF', borderColor: '#F5E7BC' },
@@ -970,7 +926,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 12,
+    borderRadius: 6,
     marginTop: 12,
   },
   badgeDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C99A1E', marginRight: 6 },
@@ -981,7 +937,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#A9720B',
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     marginTop: 13,
     alignSelf: 'flex-start',
   },
@@ -1006,7 +962,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#B3261E',
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     marginTop: 13,
     alignSelf: 'flex-start',
   },
@@ -1018,7 +974,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 10,
+    borderRadius: 6,
     marginTop: 12,
     gap: 6,
     maxWidth: '100%',
@@ -1026,7 +982,7 @@ const styles = StyleSheet.create({
   contactBadgeText: { color: '#8A362F', fontWeight: '600', fontSize: 11.5, flexShrink: 1 },
 
   kpiRow: { flexDirection: 'row', gap: 12 },
-  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 18, padding: 18, ...CARD_SHADOW },
+  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 16, ...CARD_SHADOW },
   kpiLabel: { fontSize: 11.5, color: colors.textSecondary, fontWeight: '600' },
   kpiValue: { fontSize: 26, color: colors.primary, fontWeight: '800', marginTop: 6 },
   kpiSub: { fontSize: 10, color: '#B0B4B1', marginTop: 4 },
@@ -1034,14 +990,14 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#2E9E44', marginRight: 5 },
   livePillText: { fontSize: 10, color: '#8A8F8B', fontWeight: '600' },
 
-  chartCard: { backgroundColor: '#fff', borderRadius: 20, ...CARD_SHADOW },
+  chartCard: { backgroundColor: '#fff', borderRadius: 12, ...CARD_SHADOW },
 
   peakHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   peakBasis: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   peakSub: { fontSize: 11.5, color: '#B0B4B1', marginTop: 3, marginBottom: 14 },
   peakNowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   peakNowLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  crowdPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10 },
+  crowdPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
   crowdDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   crowdText: { fontSize: 12, fontWeight: '700' },
   peakChartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: PEAK_BAR_MAX + 40 },

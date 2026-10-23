@@ -1,7 +1,6 @@
 import React from 'react';
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
 
@@ -22,13 +21,14 @@ const PRIVACY_SECTIONS = [
     bullets: [
       'Your name, student number, CvSU email, phone number, sex and address.',
       'Your college, program and year level.',
+      'A photo of your Registration Form, to verify your enrollment.',
       'The date and time of each library entry and exit.',
     ],
   },
   {
     heading: 'Why we collect it',
     bullets: [
-      'To verify that you are a CvSU student and create your QR pass.',
+      'To verify that you are an enrolled CvSU student (using your registration form) and create your QR pass.',
       'To record your library visits.',
       'To produce library usage statistics, such as peak hours and visits per college.',
     ],
@@ -46,11 +46,14 @@ const PRIVACY_SECTIONS = [
     bullets: [
       'Data is sent over secure connections (HTTPS) and stored in a protected database.',
       'Passwords are encrypted and are never visible to library staff.',
+      'Registration form photos are stored privately and can only be opened by signed-in library staff.',
     ],
   },
   {
     heading: 'How long it is kept',
-    text: 'Your information is kept while you are an active library user.',
+    text:
+      'Your information is kept while you are an active library user. Your registration form photo is deleted ' +
+      'as soon as library staff approve or reject your registration.',
   },
   {
     heading: 'Your rights',
@@ -101,9 +104,6 @@ export default function PrivacyNoticeModal({ visible, onClose }) {
         <View style={[styles.card, { maxHeight: height * 0.85 }]}>
           {/* Title */}
           <View style={styles.titleRow}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={BRAND.green} />
-            </View>
             <Text style={styles.title}>Privacy Notice and Terms of Use</Text>
           </View>
 
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '100%', maxWidth: 480, alignSelf: 'center' },
+  card: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E4E4E7', padding: 20, width: '100%', maxWidth: 480, alignSelf: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   iconWrap: {
     width: 36, height: 36, borderRadius: 18,
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     marginTop: 12,
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: 8,
     paddingVertical: 13,
     alignItems: 'center',
   },

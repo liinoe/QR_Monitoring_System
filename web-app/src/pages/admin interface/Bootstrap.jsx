@@ -94,15 +94,10 @@ const Bootstrap = () => {
 
             <main className="flex-1 flex items-center justify-center px-4 py-10">
                 <div className="w-full max-w-[420px]">
-                    <div className="bg-white rounded-[24px] px-7 py-8">
+                    <div className="bg-white rounded-[12px] px-7 py-8">
                         {done ? (
                             // SUCCESS
                             <div className="text-center animate-[fadeIn_.18s_ease-out]">
-                                <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[#E8F1E9] text-[#1B5E20] flex items-center justify-center">
-                                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="20 6 9 17 4 12" />
-                                    </svg>
-                                </div>
                                 <h1 className="text-[22px] font-extrabold text-gray-900">You're all set</h1>
                                 <p className="text-sm text-gray-500 mt-2 leading-relaxed">
                                     The Super Admin account for <span className="font-semibold text-gray-800">{form.email.trim().toLowerCase()}</span> was created.
@@ -111,7 +106,7 @@ const Bootstrap = () => {
                                 <button
                                     type="button"
                                     onClick={() => navigate("/login", { replace: true })}
-                                    className="w-full h-[52px] mt-6 rounded-[16px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors"
+                                    className="w-full h-[52px] mt-6 rounded-[12px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors"
                                 >
                                     Go to Sign In
                                 </button>
@@ -120,13 +115,6 @@ const Bootstrap = () => {
                             // SETUP FORM
                             <>
                                 <div className="text-center mb-7">
-                                    <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[#E8F1E9] text-[#1B5E20] flex items-center justify-center">
-                                        {/* person with a plus: "create the first account" */}
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                                            <line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" />
-                                        </svg>
-                                    </div>
                                     <h1 className="text-[22px] font-extrabold text-gray-900">Initial setup</h1>
                                     <p className="text-sm text-gray-500 mt-1 leading-relaxed">
                                         No admin account exists yet. Create the first <span className="font-semibold text-gray-700">Super Admin</span> to get started.
@@ -134,7 +122,7 @@ const Bootstrap = () => {
                                 </div>
 
                                 {error && (
-                                    <div className="flex items-start gap-2 rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-[13px] font-semibold px-4 py-3 mb-5">
+                                    <div className="flex items-start gap-2 rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-[13px] font-semibold px-4 py-3 mb-5">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="flex-shrink-0 mt-px">
                                             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                                         </svg>
@@ -181,7 +169,7 @@ const Bootstrap = () => {
                                         type="submit"
                                         disabled={loading}
                                         style={{ marginTop: 24 }}
-                                        className="w-full h-[52px] rounded-[16px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors disabled:opacity-60"
+                                        className="w-full h-[52px] rounded-[12px] bg-[#1B5E20] hover:bg-[#164a1a] text-white text-[15px] font-bold tracking-wide transition-colors disabled:opacity-60"
                                     >
                                         {loading ? "Creating account…" : "Create Super Admin"}
                                     </button>

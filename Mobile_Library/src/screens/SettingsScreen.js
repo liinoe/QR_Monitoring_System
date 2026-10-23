@@ -190,7 +190,6 @@ export default function SettingsScreen({ navigation }) {
               <Text style={styles.profileSub}>{studentData?.student_number || '—'}</Text>
               {status && (
                 <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
-                  <Ionicons name={status.icon} size={13} color={status.color} />
                   <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                 </View>
               )}
@@ -211,9 +210,6 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.card}>
           {details.map((d, i) => (
             <View key={d.label} style={[styles.detailRow, i < details.length - 1 && styles.rowDivider]}>
-              <View style={styles.rowIconWrap}>
-                <Ionicons name={d.icon} size={16} color={BRAND.green} />
-              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.detailLabel}>{d.label}</Text>
                 <Text style={styles.detailValue}>{d.value || '—'}</Text>
@@ -314,9 +310,6 @@ export default function SettingsScreen({ navigation }) {
 function SettingsRow({ icon, label, value, onPress, divider }) {
   const content = (
     <>
-      <View style={styles.rowIconWrap}>
-        <Ionicons name={icon} size={16} color={BRAND.green} />
-      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.rowLabel}>{label}</Text>
         {!!value && <Text style={styles.rowValue}>{value}</Text>}
@@ -333,12 +326,10 @@ function SettingsRow({ icon, label, value, onPress, divider }) {
 }
 
 // Soft shadow used by the white cards.
+// Cards use a thin border instead of a drop shadow (cleaner, flatter look).
 const CARD_SHADOW = {
-  elevation: 2,
-  shadowColor: '#0B1F12',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.05,
-  shadowRadius: 12,
+  borderWidth: 1,
+  borderColor: '#E4E4E7',
 };
 
 const styles = StyleSheet.create({
@@ -386,7 +377,7 @@ const styles = StyleSheet.create({
   },
   sectionHint: { fontSize: 11.5, color: '#A3A8A4', lineHeight: 16, marginTop: 8, marginHorizontal: 4 },
 
-  card: { backgroundColor: '#fff', borderRadius: 18, ...CARD_SHADOW },
+  card: { backgroundColor: '#fff', borderRadius: 12, ...CARD_SHADOW },
 
   detailRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 12 },
   detailLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },

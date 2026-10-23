@@ -12,14 +12,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
-export default function DropdownField({ label, value, onChange, options, placeholder, disabled }) {
+// required={true} adds a red * after the label.
+export default function DropdownField({ label, value, onChange, options, placeholder, disabled, required }) {
   const [open, setOpen] = useState(false);
   // Keeps the last choices above the phone's bottom navigation bar.
   const insets = useSafeAreaInsets();
 
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label}{required && <Text style={{ color: '#DC2626' }}> *</Text>}</Text>
       <TouchableOpacity
         style={[styles.field, disabled && styles.fieldDisabled]}
         onPress={() => !disabled && setOpen(true)}
@@ -79,7 +80,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
@@ -93,8 +94,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
     padding: 16,
     maxHeight: '70%',
   },

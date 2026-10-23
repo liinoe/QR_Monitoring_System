@@ -97,7 +97,6 @@ export default function MyVisitsScreen({ navigation }) {
           ListHeaderComponent={
             error ? (
               <View style={styles.errorBox}>
-                <Ionicons name="cloud-offline-outline" size={16} color="#B3261E" />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : visits.length > 0 ? (
@@ -107,7 +106,6 @@ export default function MyVisitsScreen({ navigation }) {
           ListEmptyComponent={
             !error ? (
               <View style={styles.empty}>
-                <Ionicons name="library-outline" size={28} color="#B0B4B1" />
                 <Text style={styles.emptyText}>No visits yet this semester.</Text>
                 <Text style={styles.emptyHint}>Scan your QR pass at the library entrance to log a visit.</Text>
               </View>
@@ -152,9 +150,9 @@ const styles = StyleSheet.create({
   summary: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, marginLeft: 4 },
 
   // The list looks like one white card: each row is a slice of it.
-  cardSlice: { backgroundColor: '#fff', paddingHorizontal: 16 },
-  cardTop: { borderTopLeftRadius: 18, borderTopRightRadius: 18 },
-  cardBottom: { borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
+  cardSlice: { backgroundColor: '#fff', paddingHorizontal: 16, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#E4E4E7' },
+  cardTop: { borderTopLeftRadius: 12, borderTopRightRadius: 12, borderTopWidth: 1 },
+  cardBottom: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12, borderBottomWidth: 1 },
 
   errorBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

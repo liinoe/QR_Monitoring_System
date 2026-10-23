@@ -169,6 +169,7 @@ CREATE TABLE `registration_requests` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `address` varchar(255) DEFAULT NULL,
   `sex` enum('male','female','prefer_not_to_say') DEFAULT NULL,
+  `cor_public_id` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`request_id`),
   KEY `approved_by` (`approved_by`),
   CONSTRAINT `registration_requests_ibfk_1` FOREIGN KEY (`approved_by`) REFERENCES `admins` (`admin_id`)

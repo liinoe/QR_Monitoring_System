@@ -30,7 +30,7 @@ const CollegeLabel = ({ college }) => (
 
 // Same input look as the guest kiosk / mobile app.
 const inputClass =
-  "w-full bg-white border border-[#E3E7E3] rounded-[12px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
+  "w-full bg-white border border-[#E3E7E3] rounded-[8px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
 
 // Phone helpers (same rules as the mobile Register screen).
 // Keeps only the 10 digits after +63 (accepts "09...", "63..." or "9...").
@@ -57,12 +57,24 @@ const displayNameOf = (s) =>
     ? `${s.first_name} ${s.middle_name ? s.middle_name.charAt(0).toUpperCase() + ". " : ""}${s.surname}`
     : s.full_name || "—";
 
+// "Sort by" choices for the student table.
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest first" },
+  { value: "surname_az", label: "Surname (A–Z)" },
+  { value: "surname_za", label: "Surname (Z–A)" },
+  { value: "number", label: "Student no. (ascending)" },
+];
+
+// Surname used for alphabetical sorting (old records only have full_name → its last word).
+const surnameOf = (s) => (s.surname || (s.full_name || "").trim().split(/\s+/).pop() || "").toLowerCase();
+
 // Admin page for correcting an approved student's details (e.g. after a program shift).
 const ManageStudents = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("All Colleges");
+  const [sortBy, setSortBy] = useState("newest"); // see SORT_OPTIONS
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [editing, setEditing] = useState(null);
@@ -227,10 +239,20 @@ const ManageStudents = () => {
     return matchesSearch && matchesCollege;
   });
 
+  // Puts the rows in the chosen order (surname ties are broken by first name).
+  filtered.sort((a, b) => {
+    if (sortBy === "newest") return new Date(b.created_at) - new Date(a.created_at);
+    if (sortBy === "number") return (a.student_number || "").localeCompare(b.student_number || "");
+    const byName =
+      surnameOf(a).localeCompare(surnameOf(b)) ||
+      (a.first_name || "").toLowerCase().localeCompare((b.first_name || "").toLowerCase());
+    return sortBy === "surname_za" ? -byName : byName;
+  });
+
   // Go back to page 1 whenever a filter changes.
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, collegeFilter, rowsPerPage]);
+  }, [searchTerm, collegeFilter, sortBy, rowsPerPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -260,10 +282,14 @@ const ManageStudents = () => {
               <option value="All Colleges">All Colleges</option>
               {COLLEGE_FILTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </FilterSelect>
+            {/* Sort order of the table */}
+            <FilterSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{`Sort: ${o.label}`}</option>)}
+            </FilterSelect>
           </div>
 
           {/* TABLE (no overflow-hidden on the outer box, so dropdowns aren't cut off) */}
-          <div className="bg-white rounded-[20px] border border-[#ECEFEC]">
+          <div className="bg-white rounded-[12px] border border-[#ECEFEC]">
             <div className="overflow-x-auto rounded-t-[20px]">
               <table className="responsive-table w-full text-sm">
                 <thead>
@@ -333,7 +359,7 @@ const ManageStudents = () => {
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={closeEdit}>
           <div
-            className="w-full max-w-[560px] max-h-[90vh] overflow-y-auto bg-white rounded-[24px] shadow-2xl"
+            className="w-full max-w-[560px] max-h-[90vh] overflow-y-auto bg-white rounded-[12px] shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: student number in bold, name in gray */}
@@ -347,7 +373,7 @@ const ManageStudents = () => {
 
             <form onSubmit={handleSave} className="px-7 pb-7 space-y-5">
               {error && (
-                <div className="flex items-center gap-2 rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">
+                <div className="flex items-center gap-2 rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">
                   {error}
                 </div>
               )}
@@ -446,7 +472,7 @@ const ManageStudents = () => {
 const FormSection = ({ title, children }) => (
   <div>
     <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] mb-2 ml-1">{title}</p>
-    <div className="rounded-[16px] bg-[#F7F8F7] p-4 space-y-3">{children}</div>
+    <div className="rounded-[12px] bg-[#F7F8F7] p-4 space-y-3">{children}</div>
   </div>
 );
 
@@ -464,7 +490,7 @@ const PhoneInput = ({ value, onChange, check }) => {
   return (
     <div>
       <div
-        className={`flex items-center bg-white border rounded-[12px] transition focus-within:ring-4 ${
+        className={`flex items-center bg-white border rounded-[8px] transition focus-within:ring-4 ${
           invalid
             ? "border-[#B3261E] focus-within:ring-[#B3261E]/10"
             : "border-[#E3E7E3] focus-within:border-[#1B5E20] focus-within:ring-[#1B5E20]/10"

@@ -160,6 +160,20 @@ const GuestLogs = () => {
     totalLogsFooter = <span className="text-xs text-gray-500">{logs.length} records overall</span>;
   }
 
+
+  // "Where am I?" label shown next to the page title, built from the filters in use,
+  // e.g. "Inside · Today" or "All · CEIT · October 2026". Updates as filters change.
+  const monthName = (() => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleString([], { month: "long", year: "numeric" });
+  })();
+  const viewLabel = [
+    statusFilter === "All" ? "All logs" : statusFilter,
+    visitorTypeFilter !== "All Types" ? (VISITOR_TYPE_OPTIONS.find((o) => o.value === visitorTypeFilter)?.label || visitorTypeFilter) : null,
+    dateFilter === "This Month" ? monthName : dateFilter,
+    searchTerm.trim() ? `"${searchTerm.trim()}"` : null,
+  ].filter(Boolean).join(" · ");
+
   return (
     <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
       <Header />
@@ -167,12 +181,18 @@ const GuestLogs = () => {
         <Sidebar />
         <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
           <PageTitle
-            title="Guest Logs"
+            title={
+              <>
+                Guest Logs
+                {/* Current view, so staff always know which records they're looking at */}
+                <span className="text-gray-400 font-semibold text-[20px]"> — {viewLabel}</span>
+              </>
+            }
             subtitle="Guests' library entry and exit records."
           />
 
           {/* KPI CARDS */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <KpiCard
               label={totalLogsLabel}
               value={kpiData.length}

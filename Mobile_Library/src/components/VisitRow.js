@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
 
@@ -56,9 +55,6 @@ export default function VisitRow({ visit, divider }) {
 
   return (
     <View style={[styles.row, divider && styles.divider]}>
-      <View style={styles.iconWrap}>
-        <Ionicons name={inside ? 'enter-outline' : 'exit-outline'} size={16} color={BRAND.green} />
-      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.date}>{formatVisitDate(visit.time_in || visit.visit_date)}</Text>
         <Text style={styles.times}>

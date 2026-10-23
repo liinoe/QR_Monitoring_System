@@ -177,7 +177,7 @@ const Sidebar = () => {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsOpen(false)}
-                className={`w-full h-[44px] flex items-center gap-3 px-3 rounded-[12px] text-[14.5px] transition-colors
+                className={`w-full h-[44px] flex items-center gap-3 px-3 rounded-[8px] text-[14.5px] transition-colors
                   ${isActive
                     ? "is-active bg-[#E8F1E9] text-[#1B5E20] font-bold"
                     : "text-gray-600 font-medium hover:bg-[#F7F8F7] hover:text-[#1B5E20]"}`}
@@ -198,7 +198,7 @@ const Sidebar = () => {
       {/* Signed-in admin + Log Out */}
       {admin && (
         <div className="p-4">
-          <div className="rounded-[16px] bg-[#F7F8F7] p-3">
+          <div className="rounded-[12px] bg-[#F7F8F7] p-3">
             <div className="flex items-center gap-3">
               <Avatar name={admin.name} />
               <div className="flex-1 min-w-0">
@@ -220,7 +220,7 @@ const Sidebar = () => {
             <button
               type="button"
               onClick={() => setShowChangePassword(true)}
-              className="mt-2 w-full flex items-center gap-2 px-2 py-2 rounded-[10px] text-[13px] font-semibold text-gray-600 hover:bg-[#E8F1E9] hover:text-[#1B5E20] transition-colors"
+              className="mt-2 w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-[13px] font-semibold text-gray-600 hover:bg-[#E8F1E9] hover:text-[#1B5E20] transition-colors"
             >
               <MenuIcon name="key" size={15} />
               Change password

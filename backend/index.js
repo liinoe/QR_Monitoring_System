@@ -11,14 +11,20 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { verifyToken, requireSuperAdmin } = require('./middleware/auth');
+const { checkCorImage, uploadCor, corViewUrl, deleteCor } = require('./corStorage');
+const { otpLimiter, registerLimiter, forgotPasswordLimiter, loginLimiter, guestLimiter, availabilityLimiter } = require('./rateLimits');
 
 const app = express();
+// Render sits in front of this server (a proxy). This lets the rate limits see
+// each visitor's real IP address instead of Render's.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // maxAge: the browser remembers the CORS permission for 10 minutes instead of asking
 // (an extra "preflight" request) before almost every admin request.
 app.use(cors({ maxAge: 600 }));
-app.use(express.json());
+// 4 MB limit: registrations now include a compressed COR photo (~150 KB).
+app.use(express.json({ limit: '4mb' }));
 
 // Serves /public/reset-password.html and any other static assets. This is
 // what the "one-time link" in the reset email actually opens — a plain
@@ -203,6 +209,33 @@ async function ensurePrivacyConsentColumn() {
 }
 ensurePrivacyConsentColumn().catch((err) => console.error('ensurePrivacyConsentColumn error:', err.message));
 
+// Adds registration_requests.cor_public_id if it isn't there yet: the Cloudinary ID
+// of the student's COR photo. Cleared (NULL) once the photo is deleted after review.
+async function ensureCorColumn() {
+    const [cols] = await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'registration_requests' AND COLUMN_NAME = 'cor_public_id'`
+    );
+    if (cols.length === 0) {
+        await db.query('ALTER TABLE registration_requests ADD COLUMN cor_public_id VARCHAR(255) NULL');
+    }
+}
+ensureCorColumn().catch((err) => console.error('ensureCorColumn error:', err.message));
+
+// Deletes the COR photo of a registration request (after approve / reject) and
+// clears its ID. Never blocks the approval if Cloudinary is unreachable.
+async function removeCorForRequest(requestId) {
+    try {
+        const [[row]] = await db.query('SELECT cor_public_id FROM registration_requests WHERE request_id = ?', [requestId]);
+        if (row && row.cor_public_id) {
+            await deleteCor(row.cor_public_id);
+            await db.query('UPDATE registration_requests SET cor_public_id = NULL WHERE request_id = ?', [requestId]);
+        }
+    } catch (err) {
+        console.error('removeCorForRequest error:', err.message);
+    }
+}
+
 // Turns a code into its SHA-256 hash (what we store and compare).
 const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
 
@@ -343,7 +376,7 @@ app.get('/api/settings/current-period', async (req, res) => {
 // SEND OTP — the app calls this when the student taps Submit on a new registration.
 // Emails a 6-digit code to the CvSU email. The registration itself is only saved
 // once the correct code is sent with it to /api/register.
-app.post('/api/register/send-otp', async (req, res) => {
+app.post('/api/register/send-otp', otpLimiter, async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const student_number = String(req.body.student_number || '');
     if (!CVSU_EMAIL_REGEX.test(email)) {
@@ -383,7 +416,7 @@ app.post('/api/register/send-otp', async (req, res) => {
     }
 });
 
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', registerLimiter, async (req, res) => {
     const {
         surname, first_name, middle_name,
         phone_number, address, sex,
@@ -406,6 +439,11 @@ app.post('/api/register', async (req, res) => {
     // The student must agree to the Privacy Notice before we keep their details.
     if (req.body.privacy_consent !== true) {
         return res.status(400).json({ message: "Please read and agree to the Privacy Notice and Terms of Use." });
+    }
+    // A photo of the COR is required (proof of enrollment for the student number).
+    const corError = checkCorImage(req.body.cor_image);
+    if (corError) {
+        return res.status(400).json({ message: corError });
     }
     if (!VALID_SEX_VALUES.includes(sex)) {
         return res.status(400).json({ message: "Invalid value for sex." });
@@ -459,6 +497,8 @@ app.post('/api/register', async (req, res) => {
             // fresh attempt, not a duplicate. Full info is re-collected in
             // case whatever caused the rejection needs correcting.
             if (existingStudent.status === 'rejected') {
+                // Upload the COR photo FIRST, so a failed upload changes nothing.
+                const corId = await uploadCor(req.body.cor_image, student_number);
                 await db.query(
                     `UPDATE students SET
                         full_name = ?, surname = ?, first_name = ?, middle_name = ?,
@@ -477,11 +517,11 @@ app.post('/api/register', async (req, res) => {
                         full_name, surname, first_name, middle_name,
                         email, phone_number, address, sex,
                         student_number, college, program, year_level, period,
-                        approval_status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                        approval_status, created_at, cor_public_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW(), ?)`,
                     [full_name, surname, first_name, middle_name || null,
                      email, phone_number, address, sex,
-                     student_number, college, program, year_level, currentPeriod]
+                     student_number, college, program, year_level, currentPeriod, corId]
                 );
 
                 await db.query('DELETE FROM email_verifications WHERE email = ?', [email]); // code used up
@@ -498,17 +538,18 @@ app.post('/api/register', async (req, res) => {
             });
         }
 
-        // Brand new student
+        // Brand new student. Store the COR photo first (Cloudinary); only its ID goes in the database.
+        const corId = await uploadCor(req.body.cor_image, student_number);
         await db.query(
             `INSERT INTO registration_requests (
                 full_name, surname, first_name, middle_name,
                 email, phone_number, address, sex,
                 student_number, college, program, year_level, period,
-                approval_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                approval_status, created_at, cor_public_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW(), ?)`,
             [full_name, surname, first_name, middle_name || null,
              email, phone_number, address, sex,
-             student_number, college, program, year_level, currentPeriod]
+             student_number, college, program, year_level, currentPeriod, corId]
         );
 
         await db.query(
@@ -527,6 +568,9 @@ app.post('/api/register', async (req, res) => {
         res.status(201).json({ message: "Registration submitted successfully!" });
     } catch (err) {
         console.error(err);
+        if (err.corUpload) {
+            return res.status(502).json({ message: "We couldn't save your registration form photo. Please try again." });
+        }
         res.status(500).json({ error: "Database transaction error during entry configuration." });
     }
 });
@@ -535,7 +579,7 @@ app.post('/api/register', async (req, res) => {
 // Only says yes/no, a reason ("registered" / "deactivated") and a message;
 // never returns whose account it is.
 // A previously REJECTED account counts as free, since /api/register lets it resubmit.
-app.get('/api/register/check-student-number/:student_number', async (req, res) => {
+app.get('/api/register/check-student-number/:student_number', availabilityLimiter, async (req, res) => {
     const { student_number } = req.params;
     if (!/^\d{9}$/.test(student_number)) {
         return res.status(400).json({ available: false, message: "Student number must be exactly 9 digits." });
@@ -544,6 +588,11 @@ app.get('/api/register/check-student-number/:student_number', async (req, res) =
         const [rows] = await db.query('SELECT status FROM students WHERE student_number = ?', [student_number]);
         if (rows.length === 0) {
             return res.json({ available: true, message: "Student number is available." });
+        }
+        // ?for_change=1 → a rejected student correcting their number: ANY existing
+        // account with this number means it's taken.
+        if (req.query.for_change === '1') {
+            return res.json({ available: false, reason: "taken", message: "This student number is already used by another account." });
         }
         const status = rows[0].status;
         if (status === 'rejected') {
@@ -562,7 +611,7 @@ app.get('/api/register/check-student-number/:student_number', async (req, res) =
 // Live check for the mobile Register screen: is this CvSU email free?
 // ?student_number=... lets a student re-registering after a rejection reuse
 // their own email. Only answers yes/no; never says whose account it is.
-app.get('/api/register/check-email/:email', async (req, res) => {
+app.get('/api/register/check-email/:email', availabilityLimiter, async (req, res) => {
     const email = String(req.params.email || '').trim().toLowerCase();
     const { student_number } = req.query;
     if (!CVSU_EMAIL_REGEX.test(email)) {
@@ -594,7 +643,7 @@ app.get('/api/register/check-email/:email', async (req, res) => {
 // Live check for the mobile Register screen: is this phone number free?
 // ?student_number=... lets a student re-registering after a rejection reuse
 // their own phone. Only answers yes/no; never says whose number it is.
-app.get('/api/register/check-phone/:phone_number', async (req, res) => {
+app.get('/api/register/check-phone/:phone_number', availabilityLimiter, async (req, res) => {
     const { phone_number } = req.params;
     const { student_number } = req.query;
     if (!/^\+639\d{9}$/.test(phone_number)) {
@@ -706,6 +755,41 @@ function verifyStudentToken(req, res, next) {
 // The mobile app sends the full, corrected form with the student's login pass,
 // so only the logged-in account owner can resubmit (no password needed).
 // Only rejected accounts can use this; the account goes back to "pending".
+// ---------------------------------------------------------------------------
+// FIXING A WRONG STUDENT NUMBER (on resubmit)
+// A rejected student may correct their student number ONLY if the account was
+// never approved (no visit logs, no approved / expired / deactivated request).
+// An approved student's number was already verified, so it stays locked.
+// ---------------------------------------------------------------------------
+async function canChangeStudentNumber(userId, studentNumber) {
+    const [[{ logs }]] = await db.query('SELECT COUNT(*) AS logs FROM student_logs WHERE user_id = ?', [userId]);
+    const [[{ verified }]] = await db.query(
+        `SELECT COUNT(*) AS verified FROM registration_requests
+         WHERE student_number = ? AND approval_status IN ("approved", "expired", "deactivated")`,
+        [studentNumber]
+    );
+    return logs === 0 && verified === 0;
+}
+
+// Changes a student number everywhere it's stored, inside the given transaction
+// connection. Finds every table with a student_number column, so nothing is left
+// pointing to the old number. Foreign-key checks are paused only for this
+// connection while the rows are updated together, then turned back on.
+async function moveStudentNumber(conn, oldNumber, newNumber) {
+    const [tables] = await conn.query(
+        `SELECT TABLE_NAME AS t FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'student_number'`
+    );
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    try {
+        for (const { t } of tables) {
+            await conn.query(`UPDATE \`${t}\` SET student_number = ? WHERE student_number = ?`, [newNumber, oldNumber]);
+        }
+    } finally {
+        await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+    }
+}
+
 app.put('/api/registration/:student_number', verifyStudentToken, async (req, res) => {
     const { student_number } = req.params;
     // The login pass must belong to this same student.
@@ -736,6 +820,14 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
     if (!isValidYearLevel(college, year_level)) {
         return res.status(400).json({ message: "Invalid year level for the selected college." });
     }
+    if (!namesAreValid(surname, first_name, middle_name)) {
+        return res.status(400).json({ message: NAME_RULE_MESSAGE });
+    }
+    // A new COR photo is required when resubmitting too.
+    const corError = checkCorImage(req.body.cor_image);
+    if (corError) {
+        return res.status(400).json({ message: corError });
+    }
 
     try {
         const [rows] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
@@ -747,6 +839,24 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
         if (student.status !== 'rejected') {
             return res.status(409).json({ message: "Only rejected registrations can be resubmitted." });
         }
+
+        // Did the student correct their student number?
+        const newNumber = String(req.body.new_student_number || '').trim();
+        const changingNumber = newNumber !== '' && newNumber !== student_number;
+        if (changingNumber) {
+            if (!/^\d{9}$/.test(newNumber)) {
+                return res.status(400).json({ message: "Student number must be exactly 9 digits." });
+            }
+            if (!(await canChangeStudentNumber(student.user_id, student_number))) {
+                return res.status(403).json({ message: "Your student number was already verified, so it can't be changed here. Please visit the library front desk." });
+            }
+            const [taken] = await db.query('SELECT user_id FROM students WHERE student_number = ? LIMIT 1', [newNumber]);
+            if (taken.length > 0) {
+                return res.status(400).json({ message: "This student number is already used by another account." });
+            }
+        }
+        // The number this registration will use from now on.
+        const finalNumber = changingNumber ? newNumber : student_number;
 
         // Email and phone must not belong to someone else.
         const [emailOwner] = await db.query(
@@ -763,8 +873,19 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
         const currentPeriod = await getCurrentPeriod();
         const full_name = buildFullName(first_name, middle_name, surname);
 
+        // Upload the new COR photo FIRST, so a failed upload changes nothing.
+        const corId = await uploadCor(req.body.cor_image, finalNumber);
+
+        // Everything below is saved together (all or nothing).
+        const conn = await db.getConnection();
+        try {
+        await conn.beginTransaction();
+
+        // Corrected student number → update it in every table first.
+        if (changingNumber) await moveStudentNumber(conn, student_number, finalNumber);
+
         // Replace the student's details and send them back to "pending".
-        await db.query(
+        await conn.query(
             `UPDATE students SET
                 full_name = ?, surname = ?, first_name = ?, middle_name = ?,
                 email = ?, phone_number = ?, address = ?, sex = ?,
@@ -773,25 +894,43 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
              WHERE student_number = ?`,
             [full_name, surname, first_name, middle_name || null,
              email, phone_number, address, sex,
-             college, program, year_level, currentPeriod, student_number]
+             college, program, year_level, currentPeriod, finalNumber]
         );
 
-        // New request row so it shows up as Pending on the admin Registrations page.
-        await db.query(
+        // New request row so it shows up as Pending on the admin Registrations page,
+        // with the new COR photo (stored in Cloudinary; only its ID is saved here).
+        await conn.query(
             `INSERT INTO registration_requests (
                 full_name, surname, first_name, middle_name,
                 email, phone_number, address, sex,
                 student_number, college, program, year_level, period,
-                approval_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                approval_status, created_at, cor_public_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW(), ?)`,
             [full_name, surname, first_name, middle_name || null,
              email, phone_number, address, sex,
-             student_number, college, program, year_level, currentPeriod]
+             finalNumber, college, program, year_level, currentPeriod, corId]
         );
 
-        res.json({ success: true, message: "Registration resubmitted! Please wait for admin approval." });
+        await conn.commit();
+        } catch (err) {
+            await conn.rollback();
+            await deleteCor(corId); // nothing was saved, so don't keep the photo
+            throw err;
+        } finally {
+            conn.release();
+        }
+
+        // A new student number needs a new login pass (the old one has the old number).
+        res.json({
+            success: true,
+            message: "Registration resubmitted! Please wait for admin approval.",
+            ...(changingNumber ? { student_number: finalNumber, token: issueStudentToken(finalNumber) } : {}),
+        });
     } catch (err) {
         console.error("Resubmit error:", err.message);
+        if (err.corUpload) {
+            return res.status(502).json({ message: "We couldn't save your registration form photo. Please try again." });
+        }
         res.status(500).json({ message: "Could not resubmit right now. Please try again." });
     }
 });
@@ -810,6 +949,11 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
     if (!isValidYearLevel(college, year_level)) {
         return res.status(400).json({ message: "Invalid year level for the selected college." });
     }
+    // A photo of this semester's COR is required for renewal too.
+    const corError = checkCorImage(req.body.cor_image);
+    if (corError) {
+        return res.status(400).json({ message: corError });
+    }
 
     try {
         const [existing] = await db.query('SELECT * FROM students WHERE student_number = ?', [student_number]);
@@ -823,6 +967,16 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
         }
         const currentPeriod = await getCurrentPeriod();
 
+        // Store the new COR photo. If they already sent one for this semester's
+        // pending renewal, that older photo is deleted (only the latest is kept).
+        const corId = await uploadCor(req.body.cor_image, student_number);
+        const [oldCors] = await db.query(
+            `SELECT cor_public_id FROM registration_requests
+             WHERE student_number = ? AND period = ? AND approval_status = "pending" AND cor_public_id IS NOT NULL`,
+            [student_number, currentPeriod]
+        );
+        for (const old of oldCors) await deleteCor(old.cor_public_id);
+
         await db.query(
             `UPDATE students SET
                 college = ?, program = ?, year_level = ?,
@@ -833,9 +987,9 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
 
         const [result] = await db.query(
             `UPDATE registration_requests 
-             SET college = ?, program = ?, year_level = ?, created_at = NOW()
+             SET college = ?, program = ?, year_level = ?, created_at = NOW(), cor_public_id = ?
              WHERE student_number = ? AND period = ? AND approval_status = "pending"`,
-            [college, program, year_level, student_number, currentPeriod]
+            [college, program, year_level, corId, student_number, currentPeriod]
         );
 
         // No existing pending row for this period was found to update —
@@ -846,17 +1000,20 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
                     full_name, surname, first_name, middle_name,
                     email, phone_number, address, sex,
                     student_number, college, program, year_level, period,
-                    approval_status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW())`,
+                    approval_status, created_at, cor_public_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW(), ?)`,
                 [student.full_name, student.surname, student.first_name, student.middle_name,
                  student.email, student.phone_number, student.address, student.sex,
-                 student_number, college, program, year_level, currentPeriod]
+                 student_number, college, program, year_level, currentPeriod, corId]
             );
         }
 
         res.status(201).json({ message: "Renewal submitted! Please wait for admin approval." });
     } catch (err) {
         console.error("Renewal error:", err.message);
+        if (err.corUpload) {
+            return res.status(502).json({ message: "We couldn't save your registration form photo. Please try again." });
+        }
         res.status(500).json({ error: "Database transaction error during renewal." });
     }
 });
@@ -865,7 +1022,7 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
 // practice. Distinct from the forgot-password flow below: this is for a
 // student who remembers their password and wants to change it; the
 // forgot-password flow is for someone who's actually locked out.
-app.post('/api/student/change-password', async (req, res) => {
+app.post('/api/student/change-password', loginLimiter, async (req, res) => {
     const { student_number, current_password, new_password } = req.body;
     if (!student_number || !current_password || !new_password) {
         return res.status(400).json({ message: "All fields are required." });
@@ -926,7 +1083,7 @@ const RESET_DAILY_LIMIT = 5;
 // If the student is still in the cooldown (or hit today's limit), no new
 // email is sent, but the reply looks the same, so it still can't be used
 // to find out which emails are registered.
-app.post('/api/student/forgot-password', async (req, res) => {
+app.post('/api/student/forgot-password', forgotPasswordLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email || !email.trim()) {
         return res.status(400).json({ message: "Please enter your email address." });
@@ -1201,6 +1358,22 @@ app.get('/api/admin/registrations/summary', verifyToken, async (req, res) => {
 
 // Approves a registration: marks the student "approved" and gives them a new
 // random QR code (their library pass). Also records which admin approved it.
+// VIEW A STUDENT'S COR (any signed-in admin or library staff).
+// Returns a temporary link (10 minutes) to the photo; the photo itself stays private.
+app.get('/api/admin/registrations/:request_id/cor', verifyToken, async (req, res) => {
+    try {
+        const [[row]] = await db.query('SELECT cor_public_id FROM registration_requests WHERE request_id = ?', [req.params.request_id]);
+        if (!row) return res.status(404).json({ message: "Request not found." });
+        if (!row.cor_public_id) {
+            return res.status(404).json({ message: "No registration form photo for this request (already reviewed, or sent before the registration form upload was required)." });
+        }
+        res.json({ url: corViewUrl(row.cor_public_id) });
+    } catch (err) {
+        console.error("View COR error:", err.message);
+        res.status(500).json({ message: "Could not load the registration form photo." });
+    }
+});
+
 app.post('/api/admin/approve', verifyToken, async (req, res) => {
     const { request_id } = req.body;
     const admin_id = req.admin.admin_id; // trust the token, not the request body
@@ -1222,6 +1395,7 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
             'UPDATE registration_requests SET approval_status = "approved", approved_by = ?, approved_at = NOW() WHERE request_id = ?',
             [admin_id, request_id]
         );
+        await removeCorForRequest(request_id); // COR checked → delete the photo
 
         res.json({ success: true, message: "Approved successfully!" });
     } catch (err) {
@@ -1253,6 +1427,7 @@ app.post('/api/admin/reject', verifyToken, async (req, res) => {
             'UPDATE registration_requests SET approval_status = "rejected", reason = ? WHERE request_id = ?',
             [reason.trim(), request_id]
         );
+        await removeCorForRequest(request_id); // COR checked → delete the photo
 
         res.json({ success: true, message: "Registration rejected." });
     } catch (err) {
@@ -1336,7 +1511,7 @@ app.post('/api/logs/scan', async (req, res) => {
 
         const student = students[0];
 
-        // Repeat-scan guard: if this student entered or exited in the last 10 seconds,
+        // Repeat-scan guard: if this student entered or exited in the last 1 second,
         // ignore the scan (e.g. a phone left on the scanner gets read again and again).
         // The scanner page also ignores repeats; this catches it even after a page reload.
         const [[recent]] = await db.query(
@@ -1448,7 +1623,7 @@ app.patch('/api/logs/force-exit-all', verifyToken, async (req, res) => {
 // STUDENT LOGIN — mobile app, separate from admin login.
 // Students can log in with their CvSU email OR their 9-digit student number.
 // ("email" is still accepted too, so older app versions keep working.)
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const identifier = String(req.body.identifier || req.body.email || '').trim().toLowerCase();
   const { password } = req.body;
   if (!identifier || !password) {
@@ -1594,7 +1769,7 @@ async function issueAdminSession(admin, info) {
 
 // Admin sign-in: checks email + password, then either signs in right away
 // or (if the account is open in another browser) creates an approval request.
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required." });
@@ -2104,6 +2279,9 @@ app.get('/api/student/profile/:student_number', verifyStudentToken, async (req, 
         return res.status(404).json({ message: 'Student profile not found.' });
         }
         const { password: _omit, ...safeStudent } = students[0];
+        // Rejected and never approved → the Resubmit form lets them fix the student number.
+        safeStudent.can_change_student_number =
+            safeStudent.status === 'rejected' && (await canChangeStudentNumber(safeStudent.user_id, student_number));
         return res.status(200).json(safeStudent);
 
     } catch (error) {
@@ -2155,7 +2333,7 @@ app.patch('/api/logs/void/:log_id', verifyToken, requireSuperAdmin, async (req, 
 });
 
 // GUEST ENTRY LOGGING
-app.post('/api/guests/log', async (req, res) => {
+app.post('/api/guests/log', guestLimiter, async (req, res) => {
     const { guest_type, first_name, last_name, affiliation, purpose, other_purpose } = req.body;
 
     if (!guest_type || !first_name || !last_name) {
@@ -2224,7 +2402,7 @@ app.get('/api/guests/inside', async (req, res) => {
 // (which stays admin-only) so this can't be used to prematurely exit
 // someone else's visit outside the guest's own action, beyond picking
 // their own name off the inside list.
-app.patch('/api/guests/self-exit/:guest_log_id', async (req, res) => {
+app.patch('/api/guests/self-exit/:guest_log_id', guestLimiter, async (req, res) => {
     const { guest_log_id } = req.params;
     try {
         const [result] = await db.query(
@@ -2665,6 +2843,9 @@ const closeStaleLogs = async () => {
 closeStaleLogs(); // once when the server starts
 // …and every day at 12:05 AM, in case the server stayed on but missed 5:31 PM.
 cron.schedule('5 0 * * *', closeStaleLogs, { timezone: 'Asia/Manila' });
+
+// Offline mode for the entrance scanner (offline pack + syncing saved scans).
+require('./offlineScanner')(app, { db });
 
 // Starts the server. '0.0.0.0' lets phones on the same Wi-Fi reach it.
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

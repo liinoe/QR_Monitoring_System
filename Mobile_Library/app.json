@@ -2,7 +2,7 @@
   "expo": {
     "name": "QLess",
     "slug": "qless",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
@@ -28,7 +28,14 @@
       "favicon": "./assets/icon.png"
     },
     "plugins": [
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "QLess needs access to your photos so you can upload your Registration Form.",
+          "cameraPermission": "QLess needs the camera so you can take a photo of your Registration Form."
+        }
+      ]
     ],
     "icon": "./assets/icon.png",
     "extra": {

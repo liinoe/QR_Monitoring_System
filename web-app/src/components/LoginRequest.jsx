@@ -89,7 +89,7 @@ const LoginRequestWatcher = () => {
 
      return (
      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-[420px] bg-white rounded-[12px] shadow-xl p-6 font-sans">
+          <div className="w-full max-w-[420px] bg-white rounded-[8px] shadow-md p-6 font-sans">
           <div className="flex items-center gap-3 mb-4">
                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-lg font-bold">
                !

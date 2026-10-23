@@ -18,7 +18,7 @@ const TERM_NAMES = { "1st": "1st Semester", "2nd": "2nd Semester", Midyear: "Mid
 
 // Same input look as the other admin forms.
 const inputClass =
-  "w-full bg-white border border-[#E3E7E3] rounded-[12px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
+  "w-full bg-white border border-[#E3E7E3] rounded-[8px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
 
 // "2026-08-10" → a Date at local midnight (avoids timezone shifts).
 const toDate = (ymd) => {
@@ -366,7 +366,7 @@ const Settings = () => {
 
                 {/* Undo banner: shows during the break, up to 7 days after a semester ended */}
                 {calendar?.undo && (
-                  <div className="flex items-center justify-between gap-4 flex-wrap rounded-[16px] bg-[#FBF1CE] px-5 py-4">
+                  <div className="flex items-center justify-between gap-4 flex-wrap rounded-[12px] bg-[#FBF1CE] px-5 py-4">
                     <div>
                       <p className="text-sm font-bold text-[#946800]">
                         {calendar.undo.name} ended on {formatDay(calendar.undo.end_date)} · {calendar.undo.affected_count} {calendar.undo.affected_count === 1 ? "pass" : "passes"} expired
@@ -385,7 +385,7 @@ const Settings = () => {
                 )}
 
                 {/* How it works */}
-                <div className="rounded-[14px] bg-[#F7F8F7] px-4 py-3 text-xs text-gray-600 leading-relaxed">
+                <div className="rounded-[8px] bg-[#F7F8F7] px-4 py-3 text-xs text-gray-600 leading-relaxed">
                   <span className="font-bold text-gray-800">How it works: </span>
                   the day after a semester's <b>end date</b>, every approved QR pass expires automatically. On the next
                   semester's <b>start date</b>, students can renew in the app and you approve them on the Registrations page.
@@ -448,8 +448,8 @@ const Settings = () => {
                 />
 
                 {showForm && (
-                  <form onSubmit={handleCreateStaff} className="rounded-[16px] bg-[#F7F8F7] p-4 mb-5 space-y-3">
-                    {error && <div className="rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{error}</div>}
+                  <form onSubmit={handleCreateStaff} className="rounded-[12px] bg-[#F7F8F7] p-4 mb-5 space-y-3">
+                    {error && <div className="rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{error}</div>}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <input name="name" placeholder="Full Name" required value={form.name} onChange={handleFormChange} className={inputClass} />
                       <input name="email" type="email" placeholder="Email" required value={form.email} onChange={handleFormChange} className={inputClass} />
@@ -469,13 +469,22 @@ const Settings = () => {
 
                 <div className="responsive-table-container">
                   <table className="responsive-table settings-staff-table w-full text-sm">
+                    {/* Fixed column widths so the columns spread evenly and the
+                        action buttons sit in their own narrow column on the right */}
+                    <colgroup>
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "17%" }} />
+                    </colgroup>
                     <thead>
                       <tr className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em] border-b border-[#F1F3F1]">
                         <th className="pb-3 text-left">Name</th>
                         <th className="pb-3 text-left">Email</th>
                         <th className="pb-3 text-left">Role</th>
                         <th className="pb-3 text-left">Status</th>
-                        <th className="pb-3 text-left">Password</th>
                         <th className="pb-3 text-left">Created</th>
                         <th className="pb-3 text-right"><span className="sr-only">Actions</span></th>
                       </tr>
@@ -491,18 +500,15 @@ const Settings = () => {
                           <td className="py-3">
                             {s.is_archived ? <Pill tone="gray">Archived</Pill> : <Pill tone="green">Active</Pill>}
                           </td>
-                          <td className="py-3">
-                            {s.password_is_temp ? <Pill tone="gold">Given by admin</Pill> : <Pill tone="gray">Own password</Pill>}
-                          </td>
                           <td className="py-3 text-gray-500 tabular-nums">{new Date(s.created_at).toLocaleDateString()}</td>
                           <td className="py-3 text-right">
                             {s.admin_id === myId ? (
-                              <span className="text-xs text-gray-400">You</span>
+                              <span className="inline-block text-xs text-gray-400 px-3 py-1.5">You</span>
                             ) : s.is_archived ? (
                               <button
                                 type="button"
                                 onClick={() => setToArchive({ type: "restore", staff: s })}
-                                className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[10px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
+                                className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[8px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
                               >
                                 Restore
                               </button>
@@ -511,14 +517,14 @@ const Settings = () => {
                                 <button
                                   type="button"
                                   onClick={() => setToReset(s)}
-                                  className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[10px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
+                                  className="text-[13px] font-semibold text-[#1B5E20] px-3 py-1.5 rounded-[8px] hover:bg-[#E8F1E9] transition-colors whitespace-nowrap"
                                 >
                                   Reset password
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setToArchive({ type: "archive", staff: s })}
-                                  className="text-[13px] font-semibold text-[#B3261E] px-3 py-1.5 rounded-[10px] hover:bg-[#FBDFDB] transition-colors whitespace-nowrap"
+                                  className="text-[13px] font-semibold text-[#B3261E] px-3 py-1.5 rounded-[8px] hover:bg-[#FBDFDB] transition-colors whitespace-nowrap"
                                 >
                                   Archive
                                 </button>
@@ -582,27 +588,22 @@ const Settings = () => {
       {/* GENERATED PASSWORD — shown once, after creating or resetting an account */}
       {issued && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm">
-          <div className="w-full max-w-[420px] bg-white rounded-[24px] shadow-2xl p-7">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-full bg-[#E8F1E9] text-[#1B5E20] flex items-center justify-center mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="7.5" cy="15.5" r="5.5" /><path d="m21 2-9.6 9.6" /><path d="m15.5 7.5 3 3L22 7l-3-3" />
-                </svg>
-              </div>
+          <div className="w-full max-w-[420px] bg-white rounded-[12px] shadow-lg p-7">
+            <div className="flex flex-col">
               <h3 className="text-[19px] font-bold text-gray-900">{issued.title}</h3>
               <p className="text-sm text-gray-500 mt-1">
                 Password for <span className="font-semibold text-gray-800">{issued.email}</span>
               </p>
             </div>
 
-            <div className="mt-5 flex items-center gap-2 rounded-[14px] bg-[#F7F8F7] pl-4 pr-2 h-[56px]">
+            <div className="mt-5 flex items-center gap-2 rounded-[8px] bg-[#F7F8F7] pl-4 pr-2 h-[56px]">
               <span className="flex-1 font-mono text-[19px] font-bold tracking-[0.12em] text-gray-900 select-all">{issued.password}</span>
               <button type="button" onClick={copyPassword} className={copied ? btn.secondary : btn.primary}>
                 {copied ? "✓ Copied" : "Copy"}
               </button>
             </div>
 
-            <p className="mt-4 rounded-[14px] bg-[#FBF3DC] text-[#946800] text-[12.5px] leading-relaxed px-4 py-3 text-center">
+            <p className="mt-4 rounded-[8px] bg-[#FBF3DC] text-[#946800] text-[12.5px] leading-relaxed px-4 py-3 text-center">
               Copy it now. It won't be shown again. After signing in, they can keep it or change it to their own.
             </p>
 
@@ -614,13 +615,13 @@ const Settings = () => {
       {/* ADD / EDIT SEMESTER POP-UP */}
       {semForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={() => setSemForm(null)}>
-          <form onSubmit={handleSaveSemester} onClick={(e) => e.stopPropagation()} className="w-full max-w-[480px] bg-white rounded-[24px] shadow-2xl p-7 space-y-5">
+          <form onSubmit={handleSaveSemester} onClick={(e) => e.stopPropagation()} className="w-full max-w-[480px] bg-white rounded-[12px] shadow-lg p-7 space-y-5">
             <div>
               <h3 className="text-[19px] font-bold text-gray-900">{semForm.mode === "add" ? "Add Semester" : "Edit Semester Dates"}</h3>
               <p className="text-sm text-gray-500 mt-1">Use the dates from the official school calendar.</p>
             </div>
 
-            {semError && <div className="rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{semError}</div>}
+            {semError && <div className="rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{semError}</div>}
 
             {/* Term + academic year (locked when editing) */}
             <div className="grid grid-cols-2 gap-3">
@@ -661,7 +662,7 @@ const Settings = () => {
             </div>
 
             {/* Preview of the name students will see */}
-            <div className="rounded-[14px] bg-[#E8F1E9] px-4 py-3">
+            <div className="rounded-[8px] bg-[#E8F1E9] px-4 py-3">
               <p className="text-[11px] font-bold text-[#1B5E20] uppercase tracking-[0.06em]">Shown as</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">{buildName(semForm.term, semForm.ay_start)}</p>
               {semForm.start_date && semForm.end_date && semForm.end_date > semForm.start_date && (
@@ -714,7 +715,7 @@ const Settings = () => {
       {/* UNDO POP-UP: pick the correct end date, then reopen */}
       {undoOpen && calendar?.undo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={() => setUndoOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[440px] bg-white rounded-[24px] shadow-2xl p-7 space-y-5">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[440px] bg-white rounded-[12px] shadow-lg p-7 space-y-5">
             <div>
               <h3 className="text-[19px] font-bold text-gray-900">Undo End of Semester</h3>
               <p className="text-sm text-gray-500 mt-1">
@@ -722,7 +723,7 @@ const Settings = () => {
                 with the same QR code — nothing to do on their side.
               </p>
             </div>
-            {undoError && <div className="rounded-[12px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{undoError}</div>}
+            {undoError && <div className="rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{undoError}</div>}
             <div className="flex flex-col gap-1.5">
               <span className="text-[12px] font-semibold text-gray-600">What's the correct end date?</span>
               <DatePicker

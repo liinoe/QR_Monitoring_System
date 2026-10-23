@@ -26,6 +26,7 @@ import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { useAppDialog } from '../components/AppDialog';
 import { getRejectionGuide } from '../utils/rejection';
 import PrivacyNoticeModal from '../components/PrivacyNoticeModal';
+import CorUploadField from '../components/CorUploadField';
 
 // Maps what the student picks ("Male") to what the database stores ("male").
 const sexLabelToValue = {
@@ -139,6 +140,12 @@ export default function RegisterScreen({ navigation, route }) {
   // Privacy Notice: has the student ticked "I agree", and is the notice pop-up open?
   // (Renewal doesn't ask again — no new personal details are collected.)
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  // Photo of the COR (proof of enrollment): { uri, base64 } or null. Required.
+  const [corPhoto, setCorPhoto] = useState(null);
+  // RESUBMIT: the student number the account has now, and whether it may be corrected
+  // (only for accounts that were never approved — the server decides).
+  const [originalStudentNumber, setOriginalStudentNumber] = useState('');
+  const [canChangeNumber, setCanChangeNumber] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
 
   const [form, setForm] = useState({
@@ -265,6 +272,8 @@ export default function RegisterScreen({ navigation, route }) {
           year_level: p.year_level || '',
         }));
         setRejectionReason(p.status_reason || '');
+        setOriginalStudentNumber(p.student_number || student_number);
+        setCanChangeNumber(!!p.can_change_student_number);
       } catch {
         showDialog({ tone: 'error', title: "Couldn't Load Your Details", message: 'Check your connection and try again.' });
       } finally {
@@ -274,16 +283,22 @@ export default function RegisterScreen({ navigation, route }) {
   }, [isResubmit]);
 
   // Live check: is this student number already registered? (runs once all 9 digits are typed)
+  // Resubmit: only checked when they changed it (for_change=1 → any existing account = taken).
+  const numberChanged = isResubmit && canChangeNumber && form.student_number !== originalStudentNumber;
   const numberCheck = useAvailabilityCheck(
-    !isRenewal && !isResubmit && form.student_number.length === 9
-      ? `${API_URL}/api/register/check-student-number/${form.student_number}`
+    !isRenewal && form.student_number.length === 9 && (!isResubmit || numberChanged)
+      ? `${API_URL}/api/register/check-student-number/${form.student_number}${numberChanged ? '?for_change=1' : ''}`
       : null
   );
+
+  // The account's own number, so the email/phone checks don't flag the student's
+  // own saved email/phone as "taken" (matters when they're correcting their number).
+  const ownNumber = isResubmit ? (originalStudentNumber || form.student_number) : form.student_number;
 
   // Live check: is this CvSU email already registered? (runs once the format is correct)
   const emailCheck = useAvailabilityCheck(
     !isRenewal && CVSU_EMAIL_REGEX.test(form.email.trim())
-      ? `${API_URL}/api/register/check-email/${encodeURIComponent(form.email.trim().toLowerCase())}?student_number=${form.student_number}`
+      ? `${API_URL}/api/register/check-email/${encodeURIComponent(form.email.trim().toLowerCase())}?student_number=${ownNumber}`
       : null
   );
 
@@ -292,7 +307,7 @@ export default function RegisterScreen({ navigation, route }) {
   // isn't blocked by their own old record.
   const phoneCheck = useAvailabilityCheck(
     !isRenewal && /^\+639\d{9}$/.test(form.phone_number)
-      ? `${API_URL}/api/register/check-phone/${encodeURIComponent(form.phone_number)}?student_number=${form.student_number}`
+      ? `${API_URL}/api/register/check-phone/${encodeURIComponent(form.phone_number)}?student_number=${ownNumber}`
       : null
   );
 
@@ -373,6 +388,10 @@ export default function RegisterScreen({ navigation, route }) {
       showDialog({ tone: 'warning', title: 'Missing info', message: 'Please complete all academic info fields.' });
       return false;
     }
+    if (!corPhoto) {
+      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo of this semester's Registration Form." });
+      return false;
+    }
     // Step 3: Account
     if (!CVSU_EMAIL_REGEX.test(form.email.trim())) {
       showDialog({ tone: 'error', title: 'Invalid Email', message: 'Please use your CvSU email ending in @cvsu.edu.ph.' });
@@ -413,6 +432,10 @@ export default function RegisterScreen({ navigation, route }) {
       showDialog({ tone: 'warning', title: 'Missing info', message: 'Please complete all academic info fields.' });
       return false;
     }
+    if (!corPhoto) {
+      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo of this semester's Registration Form." });
+      return false;
+    }
     return true;
   };
 
@@ -432,6 +455,7 @@ export default function RegisterScreen({ navigation, route }) {
   // Clears the whole form after a successful registration.
   const resetForm = () => {
     setAgreedToPrivacy(false);
+    setCorPhoto(null);
     setForm({
       surname: '', first_name: '', middle_name: '',
       email: '', phone_number: '', address: '', sexLabel: '',
@@ -470,6 +494,10 @@ export default function RegisterScreen({ navigation, route }) {
         setOtpStep(true);
         setOtpCode('');
         setResendIn(result.retry_after_seconds || 60);
+      } else if (response.status === 429 && result.rate_limited) {
+        // Too many code requests from this network (server-wide limit), not the 1-minute wait.
+        if (otpStep) setOtpError(result.message);
+        else showAfterReview({ tone: 'error', title: 'Too Many Requests', message: result.message });
       } else if (response.status === 429) {
         // A code was sent less than a minute ago — it still works, so just show the code screen.
         setOtpStep(true);
@@ -504,6 +532,7 @@ export default function RegisterScreen({ navigation, route }) {
         year_level: form.year_level,
         otp: otpCode,
         privacy_consent: agreedToPrivacy, // the server saves when they agreed
+        cor_image: corPhoto?.base64,      // COR photo (deleted after staff review)
       };
 
       setOtpBusy(true);
@@ -560,6 +589,7 @@ export default function RegisterScreen({ navigation, route }) {
         college: form.college,
         program: form.program,
         year_level: form.year_level,
+        cor_image: corPhoto?.base64, // this semester's COR photo
       };
 
       // Sent with the student's login pass, so only they can renew their own account.
@@ -604,10 +634,14 @@ export default function RegisterScreen({ navigation, route }) {
         college: form.college,
         program: form.program,
         year_level: form.year_level,
+        cor_image: corPhoto?.base64, // new COR photo
+        ...(numberChanged ? { new_student_number: form.student_number } : {}),
       };
       // The login pass saved at login proves to the server it's really this student.
       const token = await AsyncStorage.getItem('student_token');
-      const response = await fetch(`${API_URL}/api/registration/${form.student_number}`, {
+      // The address uses the CURRENT number (the one in the login pass);
+      // a corrected number is sent separately as new_student_number.
+      const response = await fetch(`${API_URL}/api/registration/${originalStudentNumber || form.student_number}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -619,6 +653,14 @@ export default function RegisterScreen({ navigation, route }) {
       const result = await response.json();
 
       if (response.ok) {
+        // Student number was corrected: save the new login pass and number on this phone.
+        if (result.token && result.student_number) {
+          const stored = JSON.parse((await AsyncStorage.getItem('student')) || '{}');
+          await AsyncStorage.setItem('student_token', result.token);
+          await AsyncStorage.setItem('student', JSON.stringify({ ...stored, student_number: result.student_number }));
+          await AsyncStorage.removeItem('cached_profile');
+          setOriginalStudentNumber(result.student_number);
+        }
         showAfterReview({
           tone: 'success',
           title: 'Registration Resubmitted',
@@ -679,7 +721,7 @@ export default function RegisterScreen({ navigation, route }) {
             ? 'Confirm your academic info for this semester.'
             : isResubmit
               ? 'Your details are filled in. Fix what was wrong, then submit again.'
-              : 'Fill in all required fields.'}
+              : 'Fields marked with * are required.'}
         </Text>
         {currentPeriod ? (
           <Text style={styles.headerPeriod}>{isRenewal ? 'Renewing for' : 'Registering for'}: {currentPeriod}</Text>
@@ -700,7 +742,6 @@ export default function RegisterScreen({ navigation, route }) {
           {/* RENEWAL: shows whose account is being renewed */}
           {isRenewal && renewalStudent && (
             <View style={[styles.renewalBanner, { width: layout.contentWidth }]}>
-              <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
               <Text style={styles.renewalBannerText}>
                 Renewing for {renewalStudent.full_name} ({renewalStudent.student_number})
               </Text>
@@ -710,12 +751,16 @@ export default function RegisterScreen({ navigation, route }) {
           {/* RESUBMIT: why the admin rejected it (saved when they rejected) */}
           {isResubmit && (
             <View style={[styles.rejectBanner, { width: layout.contentWidth }]}>
-              <Ionicons name="alert-circle" size={20} color="#B3261E" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rejectBannerTitle}>Why your registration was rejected</Text>
                 <Text style={styles.rejectBannerText}>
                   {loadingProfile ? 'Loading…' : getRejectionGuide(rejectionReason, currentPeriod).message}
                 </Text>
+                {/* The admin's exact reason, in italics (same as the Home screen card).
+                    "Other" reasons are already shown word-for-word in the message above. */}
+                {!loadingProfile && !!rejectionReason && getRejectionGuide(rejectionReason, currentPeriod).kind !== 'other' && (
+                  <Text style={styles.rejectBannerReason}>Reason: {rejectionReason}</Text>
+                )}
                 {!loadingProfile && getRejectionGuide(rejectionReason, currentPeriod).noEditsNeeded && (
                   <Text style={styles.rejectBannerHint}>Just review your details below and tap Continue.</Text>
                 )}
@@ -736,6 +781,7 @@ export default function RegisterScreen({ navigation, route }) {
                 {/* Name fields turn red with a hint if they contain numbers or symbols */}
                 <Field
                   label="Surname"
+                  required
                   value={form.surname}
                   onChangeText={(v) => update('surname', v)}
                   placeholder="Dela Cruz"
@@ -745,6 +791,7 @@ export default function RegisterScreen({ navigation, route }) {
                 {!isValidName(form.surname) && <Text style={styles.nameHint}>{NAME_RULE_MESSAGE}</Text>}
                 <Field
                   label="First Name"
+                  required
                   value={form.first_name}
                   onChangeText={(v) => update('first_name', v)}
                   placeholder="Juan"
@@ -773,12 +820,14 @@ export default function RegisterScreen({ navigation, route }) {
                 </View>
                 <Field
                   label="Address"
+                  required
                   value={form.address}
                   onChangeText={(v) => update('address', v)}
                   placeholder="Street, Barangay, City/Municipality"
                 />
                 <DropdownField
                   label="Sex"
+                  required
                   value={form.sexLabel}
                   onChange={(v) => update('sexLabel', v)}
                   options={sexOptions}
@@ -802,8 +851,9 @@ export default function RegisterScreen({ navigation, route }) {
                 <Field
                   ref={studentNumberRef}
                   selectTextOnFocus
-                  editable={!isResubmit}
-                  label={isResubmit ? 'Student Number (can’t be changed)' : 'Student Number (9 digits)'}
+                  editable={!isResubmit || canChangeNumber}
+                  label={isResubmit && !canChangeNumber ? 'Student Number (can’t be changed)' : 'Student Number (9 digits)'}
+                  required
                   value={form.student_number}
                   onChangeText={(v) => update('student_number', v.replace(/\D/g, ''))}
                   placeholder="202300001"
@@ -813,10 +863,17 @@ export default function RegisterScreen({ navigation, route }) {
                   style={numberCheck.state !== 'idle' ? { marginBottom: 6 } : undefined}
                 />
                 <LiveCheck check={numberCheck} />
+                {/* Resubmit: they may correct a wrong number; it must match the COR they upload */}
+                {isResubmit && canChangeNumber && (
+                  <Text style={styles.fieldHint}>
+                    Typed the wrong number before? You can correct it here. It must match your registration form.
+                  </Text>
+                )}
                 </View>
               )}
               <DropdownField
                 label="College"
+                required
                 value={form.college}
                 onChange={updateCollege}
                 options={colleges}
@@ -824,6 +881,7 @@ export default function RegisterScreen({ navigation, route }) {
               />
               <DropdownField
                 label="Program"
+                required
                 value={form.program}
                 onChange={(v) => update('program', v)}
                 options={availablePrograms}
@@ -832,10 +890,17 @@ export default function RegisterScreen({ navigation, route }) {
               />
               <DropdownField
                 label="Year Level"
+                required
                 value={form.year_level}
                 onChange={(v) => update('year_level', v)}
                 options={availableYearLevels}
                 placeholder="Select year level"
+              />
+              {/* Proof of enrollment — required for new registration, resubmit and renewal */}
+              <CorUploadField
+                value={corPhoto}
+                onChange={setCorPhoto}
+                onError={(message) => showDialog({ tone: 'error', title: 'Registration Form', message })}
               />
             </View>
           </View>
@@ -854,6 +919,7 @@ export default function RegisterScreen({ navigation, route }) {
                   <Field
                     ref={emailRef}
                     label="CvSU Email Address"
+                    required
                     value={form.email}
                     onChangeText={(v) => update('email', v)}
                     placeholder="name@cvsu.edu.ph"
@@ -876,6 +942,7 @@ export default function RegisterScreen({ navigation, route }) {
                   <>
                     <PasswordField
                       label="Password"
+                      required
                       value={form.password}
                       onChangeText={(v) => update('password', v)}
                       placeholder="8+ characters, A–Z, a–z, 0–9"
@@ -886,6 +953,7 @@ export default function RegisterScreen({ navigation, route }) {
                     {form.password.length > 0 && <PasswordRulesCheck password={form.password} />}
                     <PasswordField
                       label="Confirm Password"
+                      required
                       value={form.confirmPassword}
                       onChangeText={(v) => update('confirmPassword', v)}
                       placeholder="Re-enter your password"
@@ -993,7 +1061,8 @@ export default function RegisterScreen({ navigation, route }) {
               </TouchableOpacity>
               <TouchableOpacity disabled={resendIn > 0 || otpBusy} onPress={requestOtp}>
                 <Text style={[styles.otpLink, (resendIn > 0 || otpBusy) && { color: colors.textSecondary }]}>
-                  {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                  {/* Nothing is sent automatically — a new code goes out only when this is tapped */}
+                  {resendIn > 0 ? `New code available in ${resendIn}s` : 'Send a new code'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1013,7 +1082,6 @@ export default function RegisterScreen({ navigation, route }) {
                   style={styles.otpEditEmail}
                   hitSlop={8}
                 >
-                  <Ionicons name="create-outline" size={14} color={colors.primary} />
                   <Text style={styles.otpLink}>Edit email</Text>
                 </TouchableOpacity>
               </View>
@@ -1037,6 +1105,7 @@ export default function RegisterScreen({ navigation, route }) {
               <SummaryRow label="College" value={form.college} />
               <SummaryRow label="Program" value={form.program} />
               <SummaryRow label="Year Level" value={form.year_level} />
+              <SummaryRow label="Registration Form" value={corPhoto ? 'Attached' : 'Missing'} />
               {!isRenewal && <SummaryRow label="CvSU Email" value={form.email.trim().toLowerCase()} />}
               {isRenewal && currentPeriod && <SummaryRow label="Semester" value={currentPeriod} />}
             </ScrollView>
@@ -1082,7 +1151,7 @@ const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange,
 
   return (
     <View style={[styles.phoneFieldWrap, hasMessage && { marginBottom: 6 }]}>
-      <Text style={styles.fieldLabel}>Phone Number</Text>
+      <Text style={styles.fieldLabel}>Phone Number<Text style={{ color: '#DC2626' }}> *</Text></Text>
       <View style={[styles.phoneInput, ((hasInput && !isComplete) || taken) && styles.phoneInputInvalid]}>
         <Text style={styles.countryCode}>+63</Text>
         <TextInput
@@ -1102,11 +1171,11 @@ const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange,
 
 // A labeled text input. Pass invalid={true} to show a red border.
 // forwardRef lets a screen grab the input (e.g. to focus it from code).
-// editable={false} shows it grayed out (locked).
-const Field = forwardRef(function Field({ label, invalid, style, ...rest }, ref) {
+// editable={false} shows it grayed out (locked). required={true} adds a red *.
+const Field = forwardRef(function Field({ label, invalid, style, required, ...rest }, ref) {
   return (
     <View style={[{ marginBottom: 16 }, style]}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>{label}{required && <Text style={{ color: '#DC2626' }}> *</Text>}</Text>
       <TextInput
         ref={ref}
         style={[styles.input, invalid && styles.inputInvalid, rest.editable === false && styles.inputLocked]}
@@ -1130,14 +1199,14 @@ function LiveCheck({ check }) {
     );
   }
   const look = {
-    available: { icon: 'checkmark-circle', color: colors.primary, text: check.message },
-    taken: { icon: 'close-circle', color: '#DC2626', text: check.message },
-    unknown: { icon: 'alert-circle-outline', color: '#946800', text: check.message },
+    available: { color: colors.primary, text: check.message },
+    taken: { color: '#DC2626', text: check.message },
+    unknown: { color: '#946800', text: check.message },
   }[check.state];
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 2 }}>
-      <Ionicons name={look.icon} size={14} color={look.color} />
-      <Text style={{ fontSize: 12, color: look.color, marginLeft: 6, flexShrink: 1 }}>{look.text}</Text>
+      {/* Colored text only (no icon) */}
+      <Text style={{ fontSize: 12, color: look.color, flexShrink: 1 }}>{look.text}</Text>
     </View>
   );
 }
@@ -1145,23 +1214,22 @@ function LiveCheck({ check }) {
 // Live message under the email field: gray hint, red error, or green "valid".
 function EmailCheck({ feedback }) {
   const look = {
-    hint: { icon: 'information-circle-outline', color: colors.textSecondary },
-    error: { icon: 'close-circle', color: '#DC2626' },
-    ok: { icon: 'checkmark-circle', color: colors.primary },
+    hint: { color: colors.textSecondary },
+    error: { color: '#DC2626' },
+    ok: { color: colors.primary },
   }[feedback.state];
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 2 }}>
-      <Ionicons name={look.icon} size={14} color={look.color} />
-      <Text style={{ fontSize: 12, color: look.color, marginLeft: 6, flexShrink: 1 }}>{feedback.text}</Text>
+      <Text style={{ fontSize: 12, color: look.color, flexShrink: 1 }}>{feedback.text}</Text>
     </View>
   );
 }
 
 // Password input with a show/hide eye button.
-function PasswordField({ label, visible, onToggle, ...rest }) {
+function PasswordField({ label, visible, onToggle, required, ...rest }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>{label}{required && <Text style={{ color: '#DC2626' }}> *</Text>}</Text>
       <View style={styles.passwordInputRow}>
         <TextInput
           style={styles.passwordInput}
@@ -1207,12 +1275,7 @@ export function PasswordRulesCheck({ password }) {
 export function PasswordLengthCheck({ met }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -8, marginBottom: 16, marginLeft: 2 }}>
-      <Ionicons
-        name={met ? 'checkmark-circle' : 'ellipse-outline'}
-        size={14}
-        color={met ? colors.primary : colors.gray}
-      />
-      <Text style={{ fontSize: 12, color: met ? colors.primary : colors.textSecondary, marginLeft: 6 }}>
+      <Text style={{ fontSize: 12, color: met ? colors.primary : colors.textSecondary }}>
         At least 8 characters
       </Text>
     </View>
@@ -1224,12 +1287,7 @@ export function PasswordLengthCheck({ met }) {
 export function PasswordMatchCheck({ matches }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -8, marginBottom: 16, marginLeft: 2 }}>
-      <Ionicons
-        name={matches ? 'checkmark-circle' : 'close-circle'}
-        size={14}
-        color={matches ? colors.primary : '#DC2626'}
-      />
-      <Text style={{ fontSize: 12, color: matches ? colors.primary : '#DC2626', marginLeft: 6 }}>
+      <Text style={{ fontSize: 12, color: matches ? colors.primary : '#DC2626' }}>
         {matches ? 'Passwords match' : 'Passwords do not match'}
       </Text>
     </View>
@@ -1257,7 +1315,8 @@ const styles = StyleSheet.create({
 
   renewalBanner: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: BRAND.mint,
-    borderRadius: 14, padding: 14, marginBottom: 16, gap: 8,
+    borderRadius: 8, padding: 14, marginBottom: 16, gap: 8,
+    borderWidth: 1, borderColor: '#CFE3D2',
   },
   renewalBannerText: { fontSize: 13, color: colors.primaryDark || colors.primary, fontWeight: '600', flex: 1 },
 
@@ -1265,19 +1324,16 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 18,
     marginLeft: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1, // thin border instead of a shadow
+    borderColor: '#E4E4E7',
   },
   stepHeading: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
+  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.textPrimary },
   inputInvalid: { borderColor: '#DC2626' },
   nameHint: { fontSize: 12, color: '#DC2626', marginBottom: 14, marginLeft: 2 },
   inputLocked: { backgroundColor: '#F1F3F1', color: colors.textSecondary },
@@ -1285,17 +1341,16 @@ const styles = StyleSheet.create({
   rejectBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     backgroundColor: '#FDF3F2', borderWidth: 1, borderColor: '#F5CFC9',
-    borderRadius: 14, padding: 14, marginBottom: 16,
+    borderRadius: 8, padding: 14, marginBottom: 16,
   },
   rejectBannerTitle: { fontSize: 13, fontWeight: '700', color: '#B3261E' },
   rejectBannerText: { fontSize: 13, color: '#8A362F', marginTop: 3, lineHeight: 18 },
+  rejectBannerReason: { fontSize: 12, color: '#A8554E', marginTop: 6, fontStyle: 'italic' },
   rejectBannerHint: { fontSize: 12, color: '#8A362F', marginTop: 6, fontWeight: '600' },
   phoneFieldWrap: { marginBottom: 16 },
   phoneInput: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border,
-    backgroundColor: '#fff', borderRadius: 14, paddingLeft: 14, paddingRight: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04,
-    shadowRadius: 5, elevation: 1,
+    backgroundColor: '#fff', borderRadius: 8, paddingLeft: 14, paddingRight: 8,
   },
   phoneInputInvalid: { borderColor: '#DC2626' },
   countryCode: { color: colors.primary, fontSize: 14, fontWeight: '600', paddingRight: 12, borderRightWidth: 1, borderRightColor: colors.border },
@@ -1308,7 +1363,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 4,
   },
@@ -1318,22 +1373,22 @@ const styles = StyleSheet.create({
   // Privacy Notice checkbox row above Continue / Cancel
   consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginLeft: 12, marginBottom: 14 },
   checkbox: {
-    width: 20, height: 20, borderRadius: 5, marginTop: 1,
+    width: 20, height: 20, borderRadius: 4, marginTop: 1,
     borderWidth: 1.5, borderColor: colors.gray, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
   },
   checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   consentText: { flex: 1, fontSize: 13, lineHeight: 19, color: colors.textSecondary },
   consentLink: { color: colors.primary, fontWeight: '700', textDecorationLine: 'underline' },
-  btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
+  btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
   confirmBtn: { backgroundColor: colors.primary },
   disabledBtn: { backgroundColor: '#AAB8AC' },
   confirmText: { color: '#fff', fontWeight: '700' },
-  cancelBtn: { backgroundColor: colors.grayLight },
+  cancelBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7' }, // outlined
   cancelText: { color: colors.textPrimary, fontWeight: '700' },
 
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalSheet: { backgroundColor: '#fff', borderRadius: 20, padding: 20 },
+  modalSheet: { backgroundColor: '#fff', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#E4E4E7' },
   modalTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 },
   modalNote: { fontSize: 12, color: colors.textSecondary, marginTop: 12, lineHeight: 17 },
   otpText: { fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 14 },
@@ -1342,7 +1397,7 @@ const styles = StyleSheet.create({
   otpLinks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   otpLink: { fontSize: 13, fontWeight: '700', color: colors.primary },
   // "Didn't get the code?" box shown after 60 seconds on the code screen
-  otpHelpBox: { marginTop: 14, backgroundColor: BRAND.goldSoft, borderRadius: 12, padding: 12 },
+  otpHelpBox: { marginTop: 14, backgroundColor: BRAND.goldSoft, borderRadius: 8, padding: 12 },
   otpHelpText: { fontSize: 12.5, lineHeight: 18, color: '#7A5A08' },
   otpEditEmail: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start' },
 

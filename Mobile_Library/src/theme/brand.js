@@ -7,4 +7,5 @@ export const BRAND = {
   mint: '#E8F1E9',      // soft icon backgrounds
 };
 
-export const HEADER_RADIUS = 26;
+// Headers are flat (no rounded bottom corners) for a cleaner, more formal look.
+export const HEADER_RADIUS = 0;

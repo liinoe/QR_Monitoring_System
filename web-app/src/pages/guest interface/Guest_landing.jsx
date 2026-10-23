@@ -54,14 +54,14 @@ const ActionCard = ({ icon, title, caption, active, onHover, onClick }) => (
     onClick={onClick}
     onMouseEnter={onHover}
     onFocus={onHover}
-    className={`relative overflow-hidden text-left rounded-[24px] p-7 transition-all duration-200 hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-[#1B5E20]/20 ${
-      active ? "text-white shadow-[0_12px_28px_rgba(14,59,31,0.28)]" : "text-gray-900 shadow-[0_4px_16px_rgba(11,31,18,0.06)]"
+    className={`relative overflow-hidden text-left rounded-[12px] p-7 transition-all duration-200 hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-[#1B5E20]/20 ${
+      active ? "text-white border border-[#1B5E20]" : "text-gray-900 border border-[#E4E4E7]"
     }`}
     style={{ backgroundColor: active ? BRAND.green : "#FFFFFF" }}
   >
     <ScanFrame size={68} arm={16}>
       <div
-        className="w-12 h-12 rounded-2xl flex items-center justify-center transition-colors duration-200"
+        className="w-12 h-12 rounded-[12px] flex items-center justify-center transition-colors duration-200"
         style={active ? { backgroundColor: "rgba(255,255,255,0.14)", color: "#FFFFFF" } : { backgroundColor: BRAND.mint, color: BRAND.green }}
       >
         <Icon name={icon} size={24} />

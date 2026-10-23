@@ -64,7 +64,7 @@ const CalendarReminder = ({ semesters: given, inSettings = false }) => {
   }`;
 
   return (
-    <div className={`flex items-center justify-between gap-4 flex-wrap rounded-[16px] px-5 py-4 ${isBreak ? "bg-[#FBDFDB]" : "bg-[#FBF1CE]"}`}>
+    <div className={`flex items-center justify-between gap-4 flex-wrap rounded-[12px] px-5 py-4 ${isBreak ? "bg-[#FBDFDB]" : "bg-[#FBF1CE]"}`}>
       <div className="flex items-start gap-3 min-w-0">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isBreak ? "#B3261E" : "#946800"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
           <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />

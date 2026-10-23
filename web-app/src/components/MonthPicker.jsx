@@ -85,14 +85,14 @@ const MonthPicker = ({ value, onChange, max, className = "" }) => {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 pl-4 pr-3 py-2.5 rounded-[12px] bg-white text-sm font-medium text-gray-700 border border-[#E3E7E3] outline-none focus:ring-4 focus:ring-[#1B5E20]/10 transition cursor-pointer"
+        className="flex items-center gap-2 pl-4 pr-3 py-2.5 rounded-[8px] bg-white text-sm font-medium text-gray-700 border border-[#E3E7E3] outline-none focus:ring-4 focus:ring-[#1B5E20]/10 transition cursor-pointer"
       >
         {formatLabel(value)}
         <CalendarIcon />
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-2 right-0 bg-white rounded-[16px] shadow-[0_12px_32px_rgba(11,31,18,0.14)] p-3 w-[250px]">
+        <div className="absolute z-30 mt-2 right-0 bg-white rounded-[12px] shadow-md p-3 w-[250px]">
           <div className="flex items-center justify-between mb-2 px-1">
             <button type="button" onClick={() => setViewYear((y) => y - 1)} className="p-1 rounded-full hover:bg-[#F7F8F7] text-gray-500 transition-colors">
               <ChevronLeft />

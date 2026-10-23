@@ -7,9 +7,10 @@ import FilterTabs from "../../components/FilterTabs";
 import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import StatBarList from "../../components/StatBarList";
 import HoverTooltip from "../../components/HoverTooltip";
-import { authFetch } from "../../auth";
+import { authFetch, getAdmin } from "../../auth";
+import { buildAnalyticsPdf } from "../../components/AnalyticsReport";
 import useChangeWatcher from "../../components/useChangeWatcher";
-import { BRAND, PageTitle, Card, CardTitle, SectionLabel, KpiCard, TrendPill, ChartTooltip, EmptyState } from "../../components/AdminUI";
+import { BRAND, PageTitle, Card, CardTitle, SectionLabel, KpiCard, TrendPill, ChartTooltip, EmptyState, Dialog, btn } from "../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -256,6 +257,18 @@ const Analytics = () => {
   const [periodType, setPeriodType] = useState("Month");
   const [selectedPeriod, setSelectedPeriod] = useState(monthKey(new Date()));
   const [semesters, setSemesters] = useState([]); // academic calendar from Settings
+  // Report: busy flag while the PDF is being made, the preview pop-up
+  // ({ url, fileName } of the finished PDF), and an error pop-up if it fails.
+  const [exporting, setExporting] = useState(false);
+  const [reportPreview, setReportPreview] = useState(null);
+  const [exportError, setExportError] = useState("");
+
+  // Closes the preview and frees the PDF from the browser's memory.
+  const closeReportPreview = () => {
+    if (reportPreview) URL.revokeObjectURL(reportPreview.url);
+    setReportPreview(null);
+  };
+
 
   // Loads the academic calendar once (for the "Semester" filter).
   useEffect(() => {
@@ -614,6 +627,104 @@ const Analytics = () => {
       .slice(0, 5);
   }, [periodLogs]);
 
+  // "View Report": collects the totals shown on this page (for the selected period),
+  // makes the PDF and opens it in a preview first. Downloading is a separate button.
+  // Nothing is sent to the server.
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      const periodLabelText = getPeriodLabel(periodType, selectedPeriod, semesters);
+      const studentTotal = periodLogs.length;
+      const guestTotal = periodGuestLogs.length;
+
+      // Visits per library hour (7 AM–6 PM), added up from the heatmap.
+      const hourRows = HOURS.map((h, i) => {
+        const count = heatmapMatrix.reduce((sum, row) => sum + row[i], 0);
+        return [`${formatHour(h)} - ${formatHour(h + 1)}`, count];
+      });
+      // Visits per weekday, added up from the heatmap.
+      const dayRows = WEEKDAY_FULL.map((day, i) => [day, heatmapMatrix[i].reduce((a, b) => a + b, 0)]);
+
+      const pdf = await buildAnalyticsPdf({
+        periodLabel: periodLabelText,
+        generatedBy: getAdmin()?.name,
+        summary: [
+          ["Total visits (students + guests)", totalVisits],
+          ["Student visits", studentTotal],
+          ["Guest visits", guestTotal],
+          ["Unique students (each counted once)", totalUniqueStudents],
+          ["New students / Returning students", `${newCount} / ${returningCount}`],
+          ["Average daily visits", avgDailyVisits],
+          ["Peak hour (busiest 2-hour window)", peakLabel],
+          ["Busiest day(s)", busiestDaysLabel.replace(" busiest", "")],
+          ["Average stay duration", `${avgStay} hr`],
+          ["Forced exits (not counted in average stay)", forcedExitCount],
+          [
+            `Change in total visits vs ${previousPeriodLabel || "previous period"}`,
+            visitsTrend === null ? "No data in previous period" : `${visitsTrend > 0 ? "+" : ""}${visitsTrend}%`,
+          ],
+        ],
+        // Listed in pairs: each pair is printed side by side in the PDF.
+        sections: [
+          {
+            title: trendTitle.charAt(0).toUpperCase() + trendTitle.slice(1),
+            note: "Students and guests",
+            head: [periodType === WEEK ? "Day" : periodType === "Month" ? "Week" : "Month", "Visits"],
+            rows: trendData.map((t) => [t.name, t.visits]),
+          },
+          {
+            title: "Visits by College",
+            note: "Students only",
+            head: ["College", "Visits"],
+            rows: collegeChartData.map((c) => [c.name, c.value]),
+          },
+          {
+            title: "Visits by Hour",
+            note: "Students and guests, based on time in",
+            head: ["Hour", "Visits"],
+            rows: hourRows,
+          },
+          {
+            title: "Visits by Day of the Week",
+            note: "Students and guests",
+            head: ["Day", "Visits"],
+            rows: dayRows,
+          },
+          {
+            title: "Top 5 Programs",
+            note: "Students only",
+            head: ["Program", "Visits"],
+            rows: programChartData.map((p) => [p.name, p.value]),
+          },
+          {
+            title: "Gender",
+            note: "Students only, by visit",
+            head: ["Sex", "Visits"],
+            rows: genderChartData.map((g) => [g.name, g.value]),
+          },
+          {
+            title: "Guest Types",
+            head: ["Guest type", "Visits"],
+            rows: [...guestTypeChartData].sort((a, b) => b.value - a.value).map((g) => [g.name, g.value]),
+            empty: "No guest visits for this period.",
+          },
+          {
+            title: "Top 5 Visiting Students",
+            note: "Shown by student number only",
+            head: ["Student No.", "College", "Visits", "Avg stay"],
+            rows: topStudents.map((s) => [s.studentNumber, s.college, s.visits, s.avgStay === "--" ? "--" : `${s.avgStay} hr`]),
+          },
+        ],
+      });
+      setReportPreview(pdf); // open the preview
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setExportError("The report couldn't be created. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const topCollegeName = collegeChartData[0]?.name;
   const topProgramName = programChartData[0]?.name;
   const topGenderEntry = [...genderChartData].sort((a, b) => b.value - a.value)[0];
@@ -636,6 +747,13 @@ const Analytics = () => {
                     <option key={p} value={p}>{getPeriodLabel(periodType, p, semesters)}</option>
                   ))}
                 </FilterSelect>
+                {/* Opens a preview of the report for the selected period (download from there) */}
+                <button type="button" onClick={handleExportPdf} disabled={exporting} className={btn.secondary}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />
+                  </svg>
+                  {exporting ? "Preparing..." : "View Report"}
+                </button>
               </>
             }
           />
@@ -643,7 +761,7 @@ const Analytics = () => {
           {/* KPI CARDS */}
           <div>
             <SectionLabel>{getPeriodLabel(periodType, selectedPeriod, semesters)}</SectionLabel>
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
               <KpiCard
                 label={`Total Visits (${periodShort})`}
                 value={totalVisits}
@@ -853,6 +971,45 @@ const Analytics = () => {
           </div>
         </main>
       </div>
+
+      {/* REPORT PREVIEW — look at the PDF first; download or print from the viewer */}
+      {reportPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={closeReportPreview}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[920px] h-[90vh] bg-white rounded-[12px] shadow-lg flex flex-col overflow-hidden"
+          >
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-[#F1F3F1]">
+              <div className="min-w-0">
+                <h3 className="text-[17px] font-bold text-gray-900">Library Usage Report</h3>
+                <p className="text-xs text-gray-500 truncate">{getPeriodLabel(periodType, selectedPeriod, semesters)}</p>
+              </div>
+              {/* Close only — download / print use the PDF viewer's own buttons below */}
+              <button
+                type="button"
+                onClick={closeReportPreview}
+                aria-label="Close"
+                className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-gray-500 hover:bg-[#F1F3F1] hover:text-gray-800 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            {/* The browser's own PDF viewer shows the report */}
+            <iframe title="Report preview" src={reportPreview.url} className="flex-1 w-full bg-[#F4F5F4]" />
+          </div>
+        </div>
+      )}
+
+      {/* Shown only if the PDF couldn't be made */}
+      <Dialog
+        open={!!exportError}
+        tone="error"
+        title="Export Failed"
+        message={exportError}
+        footer={<button onClick={() => setExportError("")} className={btn.primary}>OK</button>}
+      />
     </div>
   );
 };
