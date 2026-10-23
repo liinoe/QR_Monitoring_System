@@ -36,7 +36,7 @@ const Section = ({ title, children }) => (
 // The student's COR photo. Asks the server for a temporary link (valid 10 minutes)
 // each time the pop-up opens; the photo itself is private. Click it to open full size.
 const CorSection = ({ request }) => {
-  const [state, setState] = useState({ loading: !!request.cor_public_id, url: null, error: "" });
+  const [state, setState] = useState({ loading: !!request.cor_public_id, url: null, pdfUrl: null, error: "" });
 
   useEffect(() => {
     if (!request.cor_public_id) return undefined;
@@ -45,10 +45,11 @@ const CorSection = ({ request }) => {
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (res.ok && data.url) setState({ loading: false, url: data.url, error: "" });
-        else setState({ loading: false, url: null, error: data.message || "Could not load the registration form photo." });
+        // pdf_url is only there when the student uploaded a PDF (url is then its first page)
+        if (res.ok && data.url) setState({ loading: false, url: data.url, pdfUrl: data.pdf_url || null, error: "" });
+        else setState({ loading: false, url: null, pdfUrl: null, error: data.message || "Could not load the registration form photo." });
       })
-      .catch(() => !cancelled && setState({ loading: false, url: null, error: "Can't reach the server." }));
+      .catch(() => !cancelled && setState({ loading: false, url: null, pdfUrl: null, error: "Can't reach the server." }));
     return () => { cancelled = true; };
   }, [request.request_id, request.cor_public_id]);
 
@@ -67,16 +68,24 @@ const CorSection = ({ request }) => {
   if (state.error) return <p className="text-sm text-[#B3261E]">{state.error}</p>;
   return (
     <div>
-      <a href={state.url} target="_blank" rel="noreferrer" title="Open full size">
+      <a href={state.pdfUrl || state.url} target="_blank" rel="noreferrer" title={state.pdfUrl ? "Open the PDF" : "Open full size"}>
         <img
           src={state.url}
           alt="Registration Form"
           className="w-full max-h-[360px] object-contain rounded-[8px] bg-white border border-[#E3E7E3]"
         />
       </a>
+      {/* PDF upload: the picture above is page 1, this opens the whole file */}
+      {state.pdfUrl && (
+        <a href={state.pdfUrl} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-semibold text-[#1B5E20] hover:underline">
+          Open PDF
+        </a>
+      )}
       <p className="text-xs text-gray-500 mt-2">
         Check that the name, student number, college and program match before approving.
-        Click the photo to open it full size. It is deleted after you approve or reject.
+        {state.pdfUrl
+          ? " The student uploaded a PDF; page 1 is shown above. It is deleted after you approve or reject."
+          : " Click the photo to open it full size. It is deleted after you approve or reject."}
       </p>
     </div>
   );

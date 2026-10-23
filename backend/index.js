@@ -1367,7 +1367,7 @@ app.get('/api/admin/registrations/:request_id/cor', verifyToken, async (req, res
         if (!row.cor_public_id) {
             return res.status(404).json({ message: "No registration form photo for this request (already reviewed, or sent before the registration form upload was required)." });
         }
-        res.json({ url: corViewUrl(row.cor_public_id) });
+        res.json(corViewUrl(row.cor_public_id)); // { url, pdf_url }
     } catch (err) {
         console.error("View COR error:", err.message);
         res.status(500).json({ message: "Could not load the registration form photo." });

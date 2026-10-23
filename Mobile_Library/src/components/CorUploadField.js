@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { File } from 'expo-file-system'; // already part of Expo (no extra install)
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
@@ -9,6 +10,12 @@ import { BRAND } from '../theme/brand';
 // (usually 150–300 KB) — still clear enough for staff to read the COR.
 const MAX_WIDTH = 1400;
 const QUALITY = 0.6;
+// A PDF can't be made smaller on the phone, so big ones are refused (the server allows about 2 MB).
+const MAX_PDF_BYTES = 2 * 1024 * 1024;
+
+// "1.2 MB" / "340 KB"
+const formatSize = (bytes) =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 // Makes a smaller copy of the photo and returns { uri, base64 }.
 async function shrinkPhoto(uri) {
@@ -19,9 +26,10 @@ async function shrinkPhoto(uri) {
   return { uri: saved.uri, base64: saved.base64 };
 }
 
-// "Registration Form" field: take a photo or pick one from the
-// gallery, then shows a preview with "Change" and "Remove".
-// value = { uri, base64 } or null. onError(message) shows a pop-up on the screen.
+// "Registration Form" field: take a photo, pick one from the gallery, or
+// upload a PDF (for students who already have the file). Then shows a preview
+// with "Change" and "Remove".
+// value = { uri, base64 } for a photo, { uri, base64, kind: 'pdf', name, size } for a PDF, or null. onError(message) shows a pop-up on the screen.
 export default function CorUploadField({ value, onChange, onError, invalid }) {
   const [busy, setBusy] = useState(false);
 
@@ -53,18 +61,62 @@ export default function CorUploadField({ value, onChange, onError, invalid }) {
     }
   };
 
+  // Picks a PDF from the phone's files and reads it (no shrinking possible).
+  const pickPdf = async () => {
+    try {
+      // Opens the phone's file picker, showing PDFs only
+      const picked = await File.pickFileAsync({ mimeTypes: 'application/pdf' });
+      if (picked.canceled || !picked.result) return;
+      const file = picked.result;
+      if (file.size && file.size > MAX_PDF_BYTES) {
+        onError?.(`This PDF is ${formatSize(file.size)}. The limit is 2 MB. Please take a photo of your registration form instead.`);
+        return;
+      }
+      setBusy(true);
+      const base64 = await file.base64();
+      onChange({ uri: file.uri, base64, kind: 'pdf', name: file.name || 'Registration Form.pdf', size: file.size || 0 });
+    } catch (err) {
+      console.error('COR PDF error:', err);
+      onError?.('Could not use that PDF. Please try again, or take a photo instead.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={styles.label}>Registration Form<Text style={{ color: '#DC2626' }}> *</Text></Text>
       <Text style={styles.hint}>
-        A clear photo of this semester's registration form, showing your name and student number. Library staff use it to
-        verify your enrollment, and it is deleted after review.
+        A clear photo or PDF (2 MB max) of this semester's registration form, showing your name and student number.
+        Library staff use it to verify your enrollment, and it is deleted after review.
       </Text>
 
       {busy ? (
         <View style={[styles.box, styles.center]}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.busyText}>Preparing photo...</Text>
+          <Text style={styles.busyText}>Preparing file...</Text>
+        </View>
+      ) : value?.kind === 'pdf' ? (
+        // Chosen PDF: file name and size (no picture preview for PDFs)
+        <View style={styles.previewWrap}>
+          <View style={styles.pdfInfo}>
+            <Text style={styles.pdfTag}>PDF</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pdfName} numberOfLines={1}>{value.name}</Text>
+              {!!value.size && <Text style={styles.pdfSize}>{formatSize(value.size)}</Text>}
+            </View>
+          </View>
+          <View style={styles.previewActions}>
+            <TouchableOpacity onPress={pickPdf} style={styles.smallBtn}>
+              <Text style={styles.smallBtnText}>Change</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => pick(true)} style={styles.smallBtn}>
+              <Text style={styles.smallBtnText}>Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onChange(null)} style={styles.smallBtn}>
+              <Text style={[styles.smallBtnText, { color: '#B3261E' }]}>Remove</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : value ? (
         // Preview of the chosen photo
@@ -94,6 +146,12 @@ export default function CorUploadField({ value, onChange, onError, invalid }) {
           </TouchableOpacity>
         </View>
       )}
+      {/* For students who already have their registration form as a PDF */}
+      {!busy && !value && (
+        <TouchableOpacity onPress={pickPdf} style={styles.pdfLink} hitSlop={8}>
+          <Text style={styles.pdfLinkText}>Have it as a PDF? Upload PDF</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -116,5 +174,14 @@ const styles = StyleSheet.create({
   // Three plain text buttons under the photo
   previewActions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#E4E4E7' },
   smallBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  pdfInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  pdfTag: {
+    fontSize: 11, fontWeight: '800', color: '#B3261E', backgroundColor: '#FDF3F2',
+    borderWidth: 1, borderColor: '#F5CFC9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden',
+  },
+  pdfName: { fontSize: 13.5, fontWeight: '600', color: colors.textPrimary },
+  pdfSize: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  pdfLink: { alignSelf: 'flex-start', marginTop: 10 },
+  pdfLinkText: { fontSize: 12.5, fontWeight: '700', color: colors.primary },
   smallBtnText: { fontSize: 12.5, fontWeight: '700', color: colors.primary },
 });

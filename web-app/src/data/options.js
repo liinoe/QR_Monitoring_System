@@ -142,3 +142,9 @@ export const programsByCollege = {
     'Teaching Certificate Program',
   ],
 };
+
+// Show colleges and programs in A–Z order in every dropdown.
+// (Sorted here once, so the lists above can stay in any order.)
+const byName = (a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' });
+colleges.sort(byName);
+Object.values(programsByCollege).forEach((list) => list.sort(byName));

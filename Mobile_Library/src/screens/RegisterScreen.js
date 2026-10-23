@@ -389,7 +389,7 @@ export default function RegisterScreen({ navigation, route }) {
       return false;
     }
     if (!corPhoto) {
-      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo of this semester's Registration Form." });
+      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo or PDF of this semester's Registration Form." });
       return false;
     }
     // Step 3: Account
@@ -433,7 +433,7 @@ export default function RegisterScreen({ navigation, route }) {
       return false;
     }
     if (!corPhoto) {
-      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo of this semester's Registration Form." });
+      showDialog({ tone: 'warning', title: 'Registration Form Required', message: "Please upload a photo or PDF of this semester's Registration Form." });
       return false;
     }
     return true;
