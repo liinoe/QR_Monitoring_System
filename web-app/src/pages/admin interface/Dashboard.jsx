@@ -75,9 +75,9 @@ const formatActivityTime = (dateStr) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalToday: "Counts every entry — students and guests — with today's date, whether or not they've exited yet. A student who enters twice counts as 2 visits; the 'different students' number counts each student once.",
-  currentlyInside: "Live count of every log (students + guests) currently marked as \"inside\" right now.",
-  pending: "Number of student registration requests awaiting admin approval on the Registrations page.",
+  totalToday: "All entries of students and guests today, including those still inside. If a student comes in twice, it counts as 2 visits. The number below counts each student only once.",
+  currentlyInside: "Students and guests who are in the library right now. Updates by itself.",
+  pending: "Student registrations waiting for you to approve or reject. Open Registrations to review them.",
 };
 
 // Admin home page: today's numbers, this week's charts and the latest entries.

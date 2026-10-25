@@ -13,6 +13,7 @@ import ManageStudents from "./pages/admin interface/ManageStudents";
 import { ProtectedRoute, SuperAdminRoute } from "./components/ProtectedRoute";
 import GuestLanding from "./pages/guest interface/Guest_landing";
 import GuestLogout from "./pages/guest interface/Guest_logout";
+import NotFound from "./pages/NotFound";
 
 function App() {
   return (
@@ -37,6 +38,9 @@ function App() {
 
         {/* Super admin only  */}
         <Route path="/settings" element={<SuperAdminRoute><Settings /></SuperAdminRoute>} />
+
+        {/* Any other address (typo, old link) → "Page not found" instead of a blank page */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>
   );

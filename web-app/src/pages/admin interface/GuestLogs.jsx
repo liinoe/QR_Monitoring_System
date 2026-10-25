@@ -32,9 +32,9 @@ const VISITOR_TYPE_OPTIONS = [
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalLogs: "Counts every guest entry log matching your current search, status, visitor type, and date filters.",
-  currentlyInside: "Live count of the filtered guest logs currently marked as \"inside\" right now.",
-  alreadyExited: "Number of filtered guest logs currently marked as \"exited.\"",
+  totalLogs: "Number of guest visits in the list below (based on your search and filters).",
+  currentlyInside: "Guests in the list who haven't logged out yet.",
+  alreadyExited: "Guests in the list who already logged out.",
 };
 
 // This month as "YYYY-MM" (default + latest choice for the month picker).

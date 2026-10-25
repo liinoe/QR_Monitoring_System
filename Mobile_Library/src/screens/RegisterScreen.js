@@ -176,6 +176,7 @@ export default function RegisterScreen({ navigation, route }) {
   const [otpCode, setOtpCode] = useState('');
   const [otpError, setOtpError] = useState('');
   const [otpBusy, setOtpBusy] = useState(false);      // sending a code or submitting
+  const submittingRef = useRef(false); // blocks a second tap while a renewal/resubmission is being sent
   const [resendIn, setResendIn] = useState(0);        // seconds until "Resend code" works
   // Styled pop-up used instead of the phone's plain alert (see components/AppDialog.js).
   const { dialog, showDialog } = useAppDialog();
@@ -692,10 +693,23 @@ export default function RegisterScreen({ navigation, route }) {
   };
 
   // "Submit" in the review pop-up: sends a renewal, a resubmission, or a new registration.
-  const handleFinalSubmit = () => {
-    if (isRenewal) submitRenewal();
-    else if (isResubmit) submitResubmit();
-    else requestOtp(); // new registration: verify the email first, then submitRegistration()
+  // Renewal / resubmission: the button stays disabled (spinner) until the server answers,
+  // so tapping twice can't send it twice (the photo upload can take a few seconds).
+  const handleFinalSubmit = async () => {
+    if (!isRenewal && !isResubmit) {
+      requestOtp(); // new registration: verify the email first, then submitRegistration()
+      return;
+    }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setOtpBusy(true);
+    try {
+      if (isRenewal) await submitRenewal();
+      else await submitResubmit();
+    } finally {
+      submittingRef.current = false;
+      setOtpBusy(false);
+    }
   };
 
   // "Cancel" button: renewal / resubmit go back to Home (still logged in);

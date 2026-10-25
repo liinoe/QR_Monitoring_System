@@ -27,7 +27,7 @@ const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected"
 const REJECT_REASONS = [
   "Not enrolled in the current semester",
   "Information does not match university records",
-  "Details are unclear or invalid (e.g. name, address)",
+  "Registration form is unclear or incorrect", // blurry, cut off, old semester, or not theirs
   "Other (specify below)",
 ];
 
@@ -296,7 +296,12 @@ const Registrations = () => {
   }, [searchTerm, statusFilter, collegeFilter, itemsPerPage]);
 
   // KPI numbers for this semester. "Pending" includes pending renewals.
-  const pendingCount = currentPeriodRequests.filter((r) => r.approval_status === "pending").length;
+  // "Pending" card = waiting for the ADMIN's decision (has Approve / Reject buttons),
+  // the same number as the sidebar badge. Renewals the student hasn't sent yet are
+  // counted separately (shown as a gray note), since there's nothing to review.
+  const isAwaitingStudent = (r) => !r.college || r.college === "—";
+  const pendingCount = currentPeriodRequests.filter((r) => r.approval_status === "pending" && !isAwaitingStudent(r)).length;
+  const awaitingStudentCount = currentPeriodRequests.filter((r) => r.approval_status === "pending" && isAwaitingStudent(r)).length;
   const approvedCount = currentPeriodRequests.filter((r) => r.approval_status === "approved").length;
   const rejectedCount = currentPeriodRequests.filter((r) => r.approval_status === "rejected").length;
   const totalCount = currentPeriodRequests.length;
@@ -356,7 +361,16 @@ const Registrations = () => {
               label="Pending"
               value={pendingCount}
               color={pendingCount > 0 ? BRAND.goldText : "#9CA3AF"}
-              footer={pendingCount > 0 ? <Pill tone="gold">Needs review</Pill> : <Pill tone="green">All caught up</Pill>}
+              footer={
+                <div className="flex items-center gap-2 flex-wrap">
+                  {pendingCount > 0 ? <Pill tone="gold">Needs review</Pill> : <Pill tone="green">All caught up</Pill>}
+                  {awaitingStudentCount > 0 && (
+                    <span className="text-xs text-gray-500">
+                      + {awaitingStudentCount} renewal{awaitingStudentCount === 1 ? "" : "s"} waiting for students
+                    </span>
+                  )}
+                </div>
+              }
             />
             <KpiCard
               label="Approved"

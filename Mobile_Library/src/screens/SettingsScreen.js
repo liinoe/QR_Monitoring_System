@@ -36,6 +36,12 @@ const LIBRARY_INFO = {
   youtube: 'https://www.youtube.com/@cvsulibrary',
   website: 'https://library.cvsu.edu.ph/landing/',
 };
+// Official brand colors for the social media icons (so they're easy to recognize).
+const SOCIAL_COLORS = {
+  facebook: '#1877F2',
+  youtube: '#FF0000',
+};
+
 // Read straight from app.json, so the version shown always matches the installed build.
 const APP_VERSION = appConfig.expo.version;
 
@@ -230,8 +236,8 @@ export default function SettingsScreen({ navigation }) {
         {/* SUPPORT */}
         <Text style={styles.sectionLabel}>Support</Text>
         <View style={styles.card}>
-          <SettingsRow icon="time-outline" label="Library Hours" value={LIBRARY_INFO.hours} divider />
-          <SettingsRow icon="location-outline" label="Address" value={LIBRARY_INFO.address} />
+          <SettingsRow icon="time-outline" showIcon label="Library Hours" value={LIBRARY_INFO.hours} divider />
+          <SettingsRow icon="location-outline" showIcon label="Address" value={LIBRARY_INFO.address} />
         </View>
 
         {/* CONTACT THE LIBRARY — each row opens the app/site */}
@@ -239,6 +245,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.card}>
           <SettingsRow
             icon="mail-outline"
+            showIcon
             label="Email"
             value={LIBRARY_INFO.email}
             onPress={() => openLink(`mailto:${LIBRARY_INFO.email}`)}
@@ -246,6 +253,8 @@ export default function SettingsScreen({ navigation }) {
           />
           <SettingsRow
             icon="logo-facebook"
+            showIcon
+            iconColor={SOCIAL_COLORS.facebook}
             label="Facebook / Messenger"
             value={LIBRARY_INFO.facebookName}
             onPress={() => openLink(LIBRARY_INFO.facebookUrl)}
@@ -253,6 +262,8 @@ export default function SettingsScreen({ navigation }) {
           />
           <SettingsRow
             icon="logo-youtube"
+            showIcon
+            iconColor={SOCIAL_COLORS.youtube}
             label="YouTube"
             value="@cvsulibrary"
             onPress={() => openLink(LIBRARY_INFO.youtube)}
@@ -260,6 +271,7 @@ export default function SettingsScreen({ navigation }) {
           />
           <SettingsRow
             icon="globe-outline"
+            showIcon
             label="Website"
             value="library.cvsu.edu.ph"
             onPress={() => openLink(LIBRARY_INFO.website)}
@@ -307,9 +319,16 @@ export default function SettingsScreen({ navigation }) {
 }
 
 // One tappable or informational row: icon · label (+ value underneath) · chevron.
-function SettingsRow({ icon, label, value, onPress, divider }) {
+// showIcon: draws the icon on the left (used for the library's info and social links).
+// iconColor: icon color (brand color for Facebook / YouTube; green by default).
+function SettingsRow({ icon, showIcon, iconColor, label, value, onPress, divider }) {
   const content = (
     <>
+      {showIcon && !!icon && (
+        <View style={styles.rowIconWrap}>
+          <Ionicons name={icon} size={18} color={iconColor || BRAND.green} />
+        </View>
+      )}
       <View style={{ flex: 1 }}>
         <Text style={styles.rowLabel}>{label}</Text>
         {!!value && <Text style={styles.rowValue}>{value}</Text>}
@@ -386,8 +405,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, gap: 12 },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: '#F1F3F1' },
   rowIconWrap: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: BRAND.mint,
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#F4F4F5', // light gray square behind each icon
     alignItems: 'center', justifyContent: 'center',
   },
   rowLabel: { fontSize: 14.5, color: colors.textPrimary, fontWeight: '500' },

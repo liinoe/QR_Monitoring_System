@@ -8,8 +8,14 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// How long the same QR code is ignored after a scan (1 second).
-const SAME_CODE_COOLDOWN_MS = 1000;
+// Repeat-scan rules (only for the SAME QR code; different students are never blocked):
+//   RESTING_MS          reads less than 1 second apart = the phone is still on the scanner
+//                       → ignored silently (no message, no sound)
+//   ALREADY_SCANNED_MS  scanned again within 5 seconds of a recorded entry/exit
+//                       → "Already Scanned" (nothing new is recorded). After 5 seconds
+//                       the next scan counts again (e.g. an exit).
+const RESTING_MS = 1000;
+const ALREADY_SCANNED_MS = 5000;
 // ---- Offline mode (see components/offlineScanner.js) ----
 const PACK_REFRESH_MS = 5 * 60 * 1000;   // re-download the student list every 5 minutes while online
 const SYNC_RETRY_MS = 15 * 1000;         // while offline, try to reconnect / sync every 15 seconds
@@ -72,6 +78,8 @@ const RESULT_TONES = {
   entry:   { bg: "#F3F9F4", well: "#E8F1E9", fg: "#1B5E20", pillBg: "#1B5E20", pillFg: "#FFFFFF" },
   exit:    { bg: "#FFFBEF", well: "#FBF1CE", fg: "#946800", pillBg: "#946800", pillFg: "#FFFFFF" },
   error:   { bg: "#FEF6F5", well: "#FBDFDB", fg: "#B3261E", pillBg: "#B3261E", pillFg: "#FFFFFF" },
+  // Calm gray-blue: "you're already recorded" is not an error
+  already: { bg: "#F5F7FA", well: "#E5EAF0", fg: "#475569", pillBg: "#475569", pillFg: "#FFFFFF" },
   offline: { bg: "#FEF6F5", well: "#FBDFDB", fg: "#B3261E", pillBg: "#B3261E", pillFg: "#FFFFFF" },
 };
 
@@ -86,6 +94,9 @@ const SCANNER_PILLS = {
 // (it types the code + Enter). Shows the result and the live board.
 const Scanner = () => {
   const [scanResult, setScanResult] = useState(null);
+  // The last few results (newest first), shown under the result card so a student
+  // still sees theirs when the next person scans right after them.
+  const [recentResults, setRecentResults] = useState([]);
   const [status, setStatus] = useState("searching");
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -97,7 +108,9 @@ const Scanner = () => {
 
   const lastKeyTimeRef = useRef(Date.now());
   const audioCtxRef = useRef(null);
-  const lastScanRef = useRef({ code: null, time: 0 });
+  // Recent scans per QR code: { lastSeen, recordedAt, recorded: { action, name, at } }
+  // (see RESTING_MS / ALREADY_SCANNED_MS at the top)
+  const recentScansRef = useRef(new Map());
 
   // ---- Offline mode state ----
   // offlineMode: the server can't be reached, so scans are checked and saved on this PC.
@@ -204,6 +217,35 @@ const Scanner = () => {
   const playExitSound = () => {
     playTone(523.25, 0.12, "sine", 0);
     playTone(392.0, 0.18, "sine", 0.12);
+  };
+
+  // One soft short beep for "Already Scanned" (not the error buzz).
+  const playNoticeSound = () => {
+    playTone(587.33, 0.14, "sine", 0, 0.18);
+  };
+
+  // Shows a scan result on the card AND adds it to the "Recent scans" list.
+  const showScan = (result) => {
+    setScanResult(result);
+    const label = result.already ? "ALREADY SCANNED"
+      : result.action === "entry" ? "ENTRY"
+      : result.action === "exit" ? "EXIT"
+      : (result.full_name || "DENIED").toUpperCase(); // e.g. ACCESS DENIED, LIBRARY CLOSED
+    const kind = result.already ? "already" : result.action === "entry" ? "entry" : result.action === "exit" ? "exit" : "error";
+    const who = result.already ? (result.full_name === "Already Scanned" ? "—" : result.full_name) : (result.student_number || "—");
+    setRecentResults((list) => [
+      { id: `${Date.now()}-${Math.random()}`, kind, label, who, at: result.scannedAt || new Date(), offline: !!result.offline },
+      ...list,
+    ].slice(0, 4));
+  };
+
+  // Remembers that this QR code's entry/exit was recorded (for the 5-second rule).
+  const markRecorded = (code, action, name, at) => {
+    const entry = recentScansRef.current.get(code);
+    if (entry) {
+      entry.recordedAt = Date.now();
+      entry.recorded = { action, name, at };
+    }
   };
 
   // Low buzz for a failed scan.
@@ -314,12 +356,12 @@ const Scanner = () => {
   // OFFLINE SCAN: checks the code against the saved student list, decides
   // entry / exit from the saved "inside" list, saves it to the queue (synced
   // later), and shows the same result screen as online.
-  const handleOfflineScan = (hash, scannedAt) => {
+  const handleOfflineScan = (hash, scannedAt, code) => {
     const pack = packRef.current;
     const showError = (title, message) => {
       playErrorSound();
       setStatus("error");
-      setScanResult({ full_name: title, message, scannedAt });
+      showScan({ full_name: title, message, scannedAt });
     };
 
     if (!pack || !hash) {
@@ -373,8 +415,9 @@ const Scanner = () => {
 
     if (action === "entry") playEntrySound();
     else playExitSound();
-    setScanResult({ action, student_number: studentNumber, program, scannedAt, offline: true });
+    showScan({ action, student_number: studentNumber, program, scannedAt, offline: true });
     setStatus("ready");
+    markRecorded(code, action, studentNumber, scannedAt);
     showLocalBoard();
   };
 
@@ -404,8 +447,10 @@ const Scanner = () => {
         if (response.ok) {
           if (data.action === "entry") playEntrySound();
           else playExitSound();
-          setScanResult({ ...data, scannedAt });
+          showScan({ ...data, scannedAt });
           setStatus("ready");
+          // The "Already Scanned" card shows the student number only (not the name).
+          markRecorded(decodedText, data.action, data.student_number, scannedAt);
           fetchBoardData();
           // Keep the saved "inside" list current, in case the internet drops next.
           if (hash) {
@@ -413,16 +458,20 @@ const Scanner = () => {
             else insideRef.current.delete(hash);
             persistInside();
           }
+        } else if (data.duplicate) {
+          // The server caught a repeat (e.g. the page was reloaded) → same calm card.
+          playNoticeSound();
+          setStatus("already");
+          showScan({ already: true, full_name: "Already Scanned", message: data.message, scannedAt });
         } else {
           playErrorSound();
           setStatus("error");
-          setScanResult({
+          showScan({
             // "Already Logged Out" if the system already exited them today (5:31 PM auto
             // logout / Force Exit), "Library Closed" after the 5:30 PM cut-off,
-            // "Already Scanned" for a repeat scan, otherwise "Access Denied".
+            // otherwise "Access Denied".
             full_name: data.already_exited ? "Already Logged Out"
               : data.closed ? "Library Closed"
-              : data.duplicate ? "Already Scanned"
               : "Access Denied",
             message: data.message || "This code is not linked to an approved account.",
             scannedAt,
@@ -436,26 +485,49 @@ const Scanner = () => {
       }
     }
 
-    handleOfflineScan(hash, scannedAt);
+    handleOfflineScan(hash, scannedAt, decodedText);
     setIsProcessing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ignores the SAME QR code for 1 second after it was scanned.
-  // A phone left on top of the scanner gets read again and again; without this,
-  // each read would flip the student between entry and exit.
-  // While the QR stays on the scanner the 1 second keeps restarting, so it is
-  // read once; the student scans again only after removing it.
+  // Decides what to do with a scan, using the repeat-scan rules at the top.
+  // Each QR code is remembered separately, so student A never blocks student B.
   const handleScanAction = useCallback((decodedText) => {
     const now = Date.now();
-    const isRepeat = decodedText === lastScanRef.current.code && now - lastScanRef.current.time < SAME_CODE_COOLDOWN_MS;
-    if (isRepeat) {
-      lastScanRef.current.time = now; // still on the scanner → keep ignoring
-      return;
-    }
-    lastScanRef.current = { code: decodedText, time: now };
+    const recent = recentScansRef.current;
     setScannerState("connected"); // a scan came in, so the scanner clearly works
+
+    // Forget codes that haven't been seen for a while (keeps the list small).
+    for (const [code, entry] of recent) {
+      if (now - entry.lastSeen > ALREADY_SCANNED_MS && now - (entry.recordedAt || 0) > ALREADY_SCANNED_MS) recent.delete(code);
+    }
+
+    const seen = recent.get(decodedText);
+    if (seen) {
+      const stillOnScanner = now - seen.lastSeen < RESTING_MS;
+      seen.lastSeen = now;
+      // 1) Phone still on the scanner: ignore silently (the message was already shown once).
+      if (stillOnScanner) return;
+      // 2) Scanned again within 5 seconds of a recorded entry/exit: "Already Scanned".
+      if (seen.recorded && now - seen.recordedAt < ALREADY_SCANNED_MS) {
+        const { action, name, at } = seen.recorded;
+        playNoticeSound();
+        setStatus("already");
+        showScan({
+          already: true,
+          full_name: name || "Already Scanned",
+          message: `Your ${action === "entry" ? "entry" : "exit"} was already recorded at ${at.toLocaleTimeString("en-US")}.`,
+          scannedAt: new Date(),
+        });
+        return;
+      }
+    }
+
+    // 3) Otherwise it's a new scan: send it.
+    recent.set(decodedText, { lastSeen: now, recordedAt: 0, recorded: null });
     processScan(decodedText);
+    // playNoticeSound only uses refs, so the first version is always fine to use.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processScan]);
 
   // Listens for the USB scanner: it "types" the code quickly, then presses Enter.
@@ -492,6 +564,7 @@ const Scanner = () => {
   const offline = scannerState === "disconnected";
   const kind =
     status === "error" ? "error"
+    : status === "already" && scanResult ? "already"
     : scanResult ? (scanResult.action === "entry" ? "entry" : "exit")
     : offline ? "offline"
     : "waiting";
@@ -623,6 +696,7 @@ const Scanner = () => {
                     {kind === "waiting" && "The result will show here."}
                     {kind === "offline" && "Scans can't be read until the scanner is plugged back in."}
                     {kind === "error" && (scanResult?.message || "Scan could not be verified.")}
+                    {kind === "already" && scanResult?.message}
                     {(kind === "entry" || kind === "exit") &&
                       (scanResult.full_name ? (
                         <>
@@ -637,7 +711,7 @@ const Scanner = () => {
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
                   {kind !== "waiting" && kind !== "offline" && (
                     <span className="text-[11px] font-bold tracking-wide px-3 py-1 rounded-full" style={{ backgroundColor: tone.pillBg, color: tone.pillFg }}>
-                      {kind === "entry" ? "ENTRY RECORDED" : kind === "exit" ? "EXIT RECORDED" : "DENIED"}
+                      {kind === "entry" ? "ENTRY RECORDED" : kind === "exit" ? "EXIT RECORDED" : kind === "already" ? "ALREADY SCANNED" : "DENIED"}
                     </span>
                   )}
                   <span className="text-[11px] text-gray-400 tabular-nums">
@@ -647,6 +721,37 @@ const Scanner = () => {
                 </div>
               </div>
             </div>
+
+            {/* RECENT SCANS — the result card shows only the newest scan; these are the
+                ones before it (newest first), so nobody misses their own result. */}
+            {(() => {
+              const earlier = scanResult ? recentResults.slice(1, 4) : recentResults.slice(0, 3);
+              if (earlier.length === 0) return null;
+              return (
+                <div className="w-full mt-5">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] mb-2 ml-1">Recent scans</p>
+                  <div className="rounded-[14px] bg-white border border-[#EFF1EF] divide-y divide-[#F1F3F1]">
+                    {earlier.map((item) => {
+                      const t = RESULT_TONES[item.kind];
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 px-4 py-2.5">
+                          <span className="text-[12px] text-gray-400 tabular-nums w-[92px] flex-shrink-0">
+                            {item.at.toLocaleTimeString("en-US")}
+                          </span>
+                          <span className="flex-1 min-w-0 text-[14px] font-semibold text-gray-800 tabular-nums truncate">
+                            {item.who}
+                            {item.offline && <span className="ml-2 text-[11px] font-medium text-gray-400">saved offline</span>}
+                          </span>
+                          <span className="text-[10.5px] font-bold tracking-wide px-2.5 py-0.5 rounded-full" style={{ backgroundColor: t.well, color: t.fg }}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </main>
       </div>
@@ -716,6 +821,12 @@ const ResultIcon = ({ kind }) => {
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
         <polyline points="16 17 21 12 16 7" />
         <line x1="21" y1="12" x2="9" y2="12" />
+      </>
+    ),
+    already: (
+      <>
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 7 12 12 15 14" />
       </>
     ),
     error: (

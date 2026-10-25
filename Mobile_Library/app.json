@@ -5,10 +5,6 @@
     "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#0E3B1F"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -30,12 +26,20 @@
     "plugins": [
       "expo-status-bar",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0E3B1F",
+          "resizeMode": "contain"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "QLess needs access to your photos so you can upload your Registration Form.",
           "cameraPermission": "QLess needs the camera so you can take a photo of your Registration Form."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "icon": "./assets/icon.png",
     "extra": {

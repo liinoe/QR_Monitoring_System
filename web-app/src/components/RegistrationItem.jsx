@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { RegStatusPill } from "./AdminUI";
+import ConfirmPopover from "./ConfirmPopover";
 
 // Button styles for the Action column (pill-shaped, like the rest of the system).
 const ACTION_BTN = {
@@ -19,6 +20,10 @@ const RegistrationItem = ({
   isLatest, currentStatus, onRowClick,
   onApprove, onReject, onDeactivate, onReactivate,
 }) => {
+  // Where the Approve button is while its small confirmation box is open (null = closed).
+  const [confirmAt, setConfirmAt] = useState(null);
+  const closeConfirm = useCallback(() => setConfirmAt(null), []);
+
   // Picks which buttons (or note) to show, based on the request's status.
   const renderAction = () => {
     // An older request of a student who has a newer one: no actions here.
@@ -31,7 +36,18 @@ const RegistrationItem = ({
       if (!college || college === "—") return <Note>Awaiting student submission</Note>;
       return (
         <>
-          <button onClick={onApprove} className={ACTION_BTN.approve}>Approve</button>
+          {/* Approve asks first, in a small box right under the button */}
+          <button onClick={(e) => setConfirmAt(e.currentTarget.getBoundingClientRect())} className={ACTION_BTN.approve}>
+            Approve
+          </button>
+          <ConfirmPopover
+            anchor={confirmAt}
+            title="Approve this registration?"
+            message={`${name || studentNumber} will get an active library QR pass.`}
+            confirmText="Approve"
+            onCancel={closeConfirm}
+            onConfirm={() => { closeConfirm(); onApprove(); }}
+          />
           <button onClick={onReject} className={ACTION_BTN.reject}>Reject</button>
         </>
       );

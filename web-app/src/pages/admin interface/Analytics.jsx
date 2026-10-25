@@ -245,9 +245,9 @@ const GENDER_COLORS = { male: BRAND.green, female: BRAND.gold, prefer_not_to_say
 const GUEST_TYPE_LABELS = { faculty: 'Faculty', alumni: 'Alumni', walkin: 'Walk-in', student: 'Student' };
 
 const KPI_TOOLTIPS = {
-  totalVisits: "Counts every entry — students and guests — with a visit date inside the selected period. A student who enters twice counts as 2 visits; the 'different students' number counts each student once.",
-  avgDaily: "Total visits in this period ÷ number of days elapsed so far (or the full period length, once it has ended).",
-  peakHour: "The 2-hour window with the most entries, based on time-in, across the selected period. The subtitle shows the weekday(s) with the most total visits.",
+  totalVisits: "All entries of students and guests in this period. If a student comes in twice, it counts as 2 visits. The number below counts each student only once.",
+  avgDaily: "How many visits the library gets in a normal day during this period.",
+  peakHour: "The busiest 2 hours of the day in this period (most people came in). Below it is the busiest day of the week.",
 };
 
 // The Analytics page: library usage trends, peak hours and breakdowns.

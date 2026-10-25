@@ -44,13 +44,16 @@ function makeLimiter({ limit, message, skipSuccessfulRequests = false }) {
 
 module.exports = {
     // Sending OTP codes (each one is an email from Brevo's 300/day).
-    otpLimiter: makeLimiter({ limit: 20, message: 'Too many code requests from this network.' }),
+    // Limits per NETWORK are kept high because a whole campus can share one Wi-Fi address;
+    // each email also has its own limit in index.js (5 codes per hour).
+    otpLimiter: makeLimiter({ limit: 100, message: 'Too many code requests from this network.' }),
     // Submitting a registration (each one uploads a registration form photo).
-    registerLimiter: makeLimiter({ limit: 20, message: 'Too many registration attempts from this network.' }),
+    registerLimiter: makeLimiter({ limit: 60, message: 'Too many registration attempts from this network.' }),
     // "Forgot password" emails.
-    forgotPasswordLimiter: makeLimiter({ limit: 10, message: 'Too many password reset requests from this network.' }),
+    // (each student also has a cooldown + daily limit in index.js)
+    forgotPasswordLimiter: makeLimiter({ limit: 30, message: 'Too many password reset requests from this network.' }),
     // Logins and password changes: only FAILED attempts count, so normal logins are never blocked.
-    loginLimiter: makeLimiter({ limit: 30, message: 'Too many failed attempts from this network.', skipSuccessfulRequests: true }),
+    loginLimiter: makeLimiter({ limit: 50, message: 'Too many failed attempts from this network.', skipSuccessfulRequests: true }),
     // Guest kiosk log in / log out (all guests share the kiosk PC).
     guestLimiter: makeLimiter({ limit: 60, message: 'Too many guest requests from this device.' }),
     // Live "is this taken?" checks while typing on the Register screen.

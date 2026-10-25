@@ -164,6 +164,7 @@ ensureAdminColumns().catch((err) => console.error('ensureAdminColumns error:', e
 const OTP_TTL_MINUTES = 10;      // a code works for 10 minutes
 const OTP_MAX_ATTEMPTS = 5;      // after 5 wrong tries the student must request a new code
 const OTP_RESEND_SECONDS = 60;   // wait 1 minute before sending another code
+const OTP_MAX_PER_HOUR = 5;      // at most 5 codes per email per hour (protects inboxes and the email limit)
 
 // Creates the email_verifications table if it doesn't exist yet.
 async function ensureOtpTable() {
@@ -176,7 +177,19 @@ async function ensureOtpTable() {
             last_sent_at DATETIME NOT NULL
         )`);
 }
-ensureOtpTable().catch((err) => console.error('ensureOtpTable error:', err.message));
+// Adds the per-hour counter columns (for OTP_MAX_PER_HOUR) if they aren't there yet.
+async function ensureOtpHourColumns() {
+    const [cols] = await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'email_verifications'`
+    );
+    const names = cols.map((c) => c.COLUMN_NAME);
+    if (!names.includes('hour_started_at')) await db.query('ALTER TABLE email_verifications ADD COLUMN hour_started_at DATETIME NULL');
+    if (!names.includes('hour_count')) await db.query('ALTER TABLE email_verifications ADD COLUMN hour_count INT NOT NULL DEFAULT 0');
+}
+ensureOtpTable()
+    .then(ensureOtpHourColumns)
+    .catch((err) => console.error('ensureOtpTable error:', err.message));
 
 // Adds the "archived" columns to admins if they aren't there yet.
 // (MySQL has no "ADD COLUMN IF NOT EXISTS", so we check the table first.)
@@ -391,7 +404,9 @@ app.post('/api/register/send-otp', otpLimiter, async (req, res) => {
 
         // Wait 1 minute between codes (stops spamming someone's inbox).
         const [rows] = await db.query(
-            'SELECT TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since FROM email_verifications WHERE email = ?',
+            `SELECT TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since,
+                    TIMESTAMPDIFF(SECOND, hour_started_at, NOW()) AS hour_age, hour_count
+             FROM email_verifications WHERE email = ?`,
             [email]
         );
         if (rows.length > 0 && rows[0].since < OTP_RESEND_SECONDS) {
@@ -399,13 +414,30 @@ app.post('/api/register/send-otp', otpLimiter, async (req, res) => {
             return res.status(429).json({ message: `Please wait ${wait} seconds before requesting a new code.`, retry_after_seconds: wait });
         }
 
+        // At most 5 codes per email per hour. The hour starts with the first code;
+        // after an hour the count starts again from zero.
+        const sameHour = rows.length > 0 && rows[0].hour_age !== null && rows[0].hour_age < 3600;
+        const sentThisHour = sameHour ? Number(rows[0].hour_count) : 0;
+        if (sentThisHour >= OTP_MAX_PER_HOUR) {
+            const waitSeconds = 3600 - rows[0].hour_age;
+            const minutes = Math.ceil(waitSeconds / 60);
+            // rate_limited: the app shows this as a message (not the 1-minute countdown).
+            return res.status(429).json({
+                rate_limited: true,
+                retry_after_seconds: waitSeconds,
+                message: `You've requested ${OTP_MAX_PER_HOUR} codes in the last hour. Please try again in ${minutes} minute${minutes === 1 ? '' : 's'}, or use the latest code we sent if it hasn't expired.`,
+            });
+        }
+
         const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
         await db.query(
-            `INSERT INTO email_verifications (email, code_hash, expires_at, attempts, last_sent_at)
-             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW())
+            `INSERT INTO email_verifications (email, code_hash, expires_at, attempts, last_sent_at, hour_started_at, hour_count)
+             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW(), NOW(), 1)
              ON DUPLICATE KEY UPDATE code_hash = VALUES(code_hash), expires_at = VALUES(expires_at),
-                                     attempts = 0, last_sent_at = NOW()`,
-            [email, hashOtp(code), OTP_TTL_MINUTES]
+                                     attempts = 0, last_sent_at = NOW(),
+                                     hour_started_at = IF(?, hour_started_at, NOW()),
+                                     hour_count = ?`,
+            [email, hashOtp(code), OTP_TTL_MINUTES, sameHour ? 1 : 0, sentThisHour + 1]
         );
         await sendEmail({ to: email, subject: 'Your QLess verification code', html: buildOtpEmail(code) });
 
@@ -881,6 +913,18 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
         try {
         await conn.beginTransaction();
 
+        // Check again WITH A LOCK: if "Submit" was sent twice (double tap or slow
+        // connection), the second one waits here, then sees the account is already
+        // "pending" and stops. Without this, both would add a pending request.
+        const [[locked]] = await conn.query(
+            'SELECT status FROM students WHERE student_number = ? FOR UPDATE', [student_number]
+        );
+        if (!locked || locked.status !== 'rejected') {
+            const dup = new Error('Already resubmitted');
+            dup.alreadySubmitted = true;
+            throw dup;
+        }
+
         // Corrected student number → update it in every table first.
         if (changingNumber) await moveStudentNumber(conn, student_number, finalNumber);
 
@@ -927,6 +971,9 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
             ...(changingNumber ? { student_number: finalNumber, token: issueStudentToken(finalNumber) } : {}),
         });
     } catch (err) {
+        if (err.alreadySubmitted) {
+            return res.status(409).json({ message: "Your registration was already resubmitted. Please wait for admin approval." });
+        }
         console.error("Resubmit error:", err.message);
         if (err.corUpload) {
             return res.status(502).json({ message: "We couldn't save your registration form photo. Please try again." });
@@ -1248,10 +1295,30 @@ app.post('/api/student/reset-password', async (req, res) => {
 
 // Lists only the PENDING registration requests, newest first
 // (used by the Dashboard's "Pending Registrations" card).
+// Registrations that NEED REVIEW right now (sidebar badge + Dashboard card).
+// Same rule as the Registrations page's Pending tabs, so the numbers always match:
+//   - pending, for the CURRENT semester (old unanswered ones show as "Not Reviewed")
+//   - the student's LATEST request only (an older duplicate doesn't count)
+//   - the student already sent their details (renewals waiting for the student
+//     have no Approve button yet, so there's nothing to review)
+async function getPendingToReview() {
+    const currentPeriod = await getCurrentPeriod();
+    const [rows] = await db.query(
+        `SELECT r.* FROM registration_requests r
+         WHERE r.approval_status = 'pending'
+           AND r.period = ?
+           AND COALESCE(r.college, '') <> ''
+           AND r.created_at = (SELECT MAX(r2.created_at) FROM registration_requests r2
+                               WHERE r2.student_number = r.student_number)
+         ORDER BY r.created_at DESC`,
+        [currentPeriod]
+    );
+    return rows;
+}
+
 app.get('/api/admin/pending', verifyToken, async (req, res) => {
      try {
-          const [rows] = await db.query('SELECT * FROM registration_requests WHERE approval_status = "pending" ORDER BY created_at DESC');
-          res.json(rows);
+          res.json(await getPendingToReview());
      } catch (err) {
           res.status(500).json({ error: err.message });
      }
@@ -1304,6 +1371,7 @@ app.get('/api/admin/changes', verifyToken, async (req, res) => {
                     MAX(created_at) AS latest
              FROM registration_requests`
         );
+        const toReview = await getPendingToReview(); // for the sidebar badge
         const [[stu]] = await db.query(
             `SELECT COUNT(*) AS total,
                     COALESCE(SUM(status = 'approved'), 0)    AS approved,
@@ -1320,7 +1388,7 @@ app.get('/api/admin/changes', verifyToken, async (req, res) => {
             registrations: [reg.total, reg.pending, reg.approved, reg.rejected, reg.deactivated, reg.expired,
                 reg.latest ? new Date(reg.latest).getTime() : 0].join('|'),
             students: [stu.total, stu.approved, stu.deactivated, stu.expired, stu.edits, stu.last_edit || 0].join('|'),
-            pending_count: Number(reg.pending),
+            pending_count: toReview.length, // same rule as the Registrations page
             registrations_total: Number(reg.total), // lets the Registrations page count new arrivals
         });
     } catch (err) {
@@ -1511,19 +1579,20 @@ app.post('/api/logs/scan', async (req, res) => {
 
         const student = students[0];
 
-        // Repeat-scan guard: if this student entered or exited in the last 1 second,
-        // ignore the scan (e.g. a phone left on the scanner gets read again and again).
-        // The scanner page also ignores repeats; this catches it even after a page reload.
+        // Repeat-scan guard: if this student entered or exited in the last 5 seconds,
+        // don't record anything (e.g. a quick second scan "to make sure").
+        // The scanner page has the same 5-second rule; this catches it even after a page reload.
+        // (Times are saved in whole seconds, so the real window here is about 5–6 seconds.)
         const [[recent]] = await db.query(
             `SELECT COUNT(*) AS n FROM student_logs
-             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 1 SECOND OR time_out >= NOW() - INTERVAL 1 SECOND)`,
+             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 5 SECOND OR time_out >= NOW() - INTERVAL 5 SECOND)`,
             [student.user_id]
         );
         if (recent.n > 0) {
             return res.status(409).json({
                 success: false,
                 duplicate: true,
-                message: "Already scanned. Please remove your QR code from the scanner.",
+                message: "Your scan was already recorded a moment ago.",
             });
         }
 

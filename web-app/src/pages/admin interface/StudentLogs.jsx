@@ -55,9 +55,9 @@ const toAcronym = (college) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalLogs: "Counts every student entry log matching your current search, college, status, and date filters.",
-  currentlyInside: "Live count of the filtered logs currently marked as \"inside\" right now.",
-  totalExits: "Number of filtered logs currently marked as \"exited.\"",
+  totalLogs: "Number of student visits in the list below (based on your search and filters).",
+  currentlyInside: "Students in the list who haven't scanned out yet.",
+  totalExits: "Students in the list who already scanned out.",
 };
 
 // This month as "YYYY-MM" (default + latest choice for the month picker).

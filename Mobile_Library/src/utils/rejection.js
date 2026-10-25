@@ -4,7 +4,8 @@
 // The reasons come from the admin's list on the website (Registrations.jsx):
 //   "Not enrolled in the current semester"
 //   "Information does not match university records"
-//   "Details are unclear or invalid (e.g. name, address)"
+//   "Registration form is unclear or incorrect"
+//   "Details are unclear or invalid (e.g. name, address)"  (old reason, still shown for older rejections)
 //   anything else = "Other" / custom text typed by the admin
 
 // Returns { kind, message, buttonLabel, noEditsNeeded } for a rejection reason.
@@ -33,7 +34,18 @@ export function getRejectionGuide(reason, currentPeriod) {
           };
      }
 
-     // Details look fake/unclear (e.g. "asdf" as address).
+     // The uploaded registration form couldn't be used to verify enrollment.
+     if (lower.startsWith('registration form is unclear')) {
+          return {
+               kind: 'registration_form',
+               message: `Your registration form couldn't be verified. It may be blurry, cut off, from another semester, or not yours. Upload a clear photo or PDF of your ${semester} registration form, then resubmit.`,
+               buttonLabel: 'Upload & Resubmit',
+               noEditsNeeded: false,
+          };
+     }
+
+     // OLD reason (no longer in the admin's list, kept for students rejected before):
+     // details look fake/unclear (e.g. "asdf" as address).
      if (lower.startsWith('details are unclear')) {
           return {
                kind: 'unclear',
