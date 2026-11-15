@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   ctaText: { color: BRAND.deep, fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
   tagline: { color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 6, letterSpacing: 1.2 },
 
-  skipBtn: { position: 'absolute', top: 12, right: 12, zIndex: 10 },
+  skipBtn: { position: 'absolute', top: 48, right: 12, zIndex: 10 },
   skipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
 
   slide: { alignItems: 'center', justifyContent: 'center' },

@@ -138,7 +138,9 @@ export default function SettingsScreen({ navigation }) {
           onPress: async () => {
             // Forget the student and their login pass on this phone.
             await AsyncStorage.multiRemove(['student', 'student_token']);
-            navigation.replace('Login');
+            // Clear the whole stack (Home is underneath Settings), so the back
+            // swipe / back button can't return to Home after logging out.
+            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
           },
         },
       ],

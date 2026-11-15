@@ -19,6 +19,21 @@ const TERM_NAMES = { "1st": "1st Semester", "2nd": "2nd Semester", Midyear: "Mid
 // Same input look as the other admin forms.
 const inputClass =
   "w-full bg-white border border-[#E3E7E3] rounded-[8px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
+// Same look with a red border, for an input that has a problem.
+const inputErrorClass = inputClass
+  .replace("border-[#E3E7E3]", "border-[#B3261E]")
+  .replace("focus:border-[#1B5E20]", "focus:border-[#B3261E]")
+  .replace("focus:ring-[#1B5E20]/10", "focus:ring-[#B3261E]/10");
+
+// Staff emails must be a CvSU or Gmail address (the server checks the same rule).
+const STAFF_EMAIL_REGEX = /^[^\s@]+@(cvsu\.edu\.ph|gmail\.com)$/i;
+// The message to show under the Email box, or "" if the email is fine.
+const checkStaffEmail = (value) => {
+  const email = value.trim();
+  if (!email) return "Please enter the email.";
+  if (!STAFF_EMAIL_REGEX.test(email)) return "Use a CvSU or Gmail address, e.g. name@cvsu.edu.ph or name@gmail.com";
+  return "";
+};
 
 // "2026-08-10" → a Date at local midnight (avoids timezone shifts).
 const toDate = (ymd) => {
@@ -61,6 +76,9 @@ const Settings = () => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "admin" });
   const [error, setError] = useState("");
+  // Show the email message while typing, or (when empty) after leaving the box / pressing Create.
+  const [emailTouched, setEmailTouched] = useState(false);
+  const emailError = emailTouched || form.email.trim() ? checkStaffEmail(form.email) : "";
   const [creating, setCreating] = useState(false);
   const myId = getAdmin()?.admin_id;
   // Password made by the server, shown ONCE: { title, email, password }
@@ -293,6 +311,9 @@ const Settings = () => {
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     setError("");
+    setEmailTouched(true);
+    if (!form.name.trim()) return setError("Please enter the full name.");
+    if (checkStaffEmail(form.email)) return; // the message is already showing under the Email box
     setCreating(true);
     try {
       const res = await authFetch(`${API_URL}/api/admin/create`, {
@@ -306,6 +327,7 @@ const Settings = () => {
         return;
       }
       setForm({ name: "", email: "", role: "admin" });
+      setEmailTouched(false);
       setShowForm(false);
       showIssued("Account created", data.email, data.temp_password);
       loadStaff();
@@ -441,29 +463,38 @@ const Settings = () => {
                   title="Manage Staff Accounts"
                   note="Create accounts, reset forgotten passwords, and archive accounts of staff who no longer need access."
                   right={
-                    <button onClick={() => setShowForm(!showForm)} className={showForm ? btn.secondary : btn.primary}>
-                      {showForm ? "Cancel" : "+ New Account"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {showForm && (
+                        <button type="submit" form="staff-form" disabled={creating} className={btn.primary}>
+                          {creating ? "Creating..." : "Create Account"}
+                        </button>
+                      )}
+                      <button onClick={() => setShowForm(!showForm)} className={showForm ? btn.secondary : btn.primary}>
+                        {showForm ? "Cancel" : "+ New Account"}
+                      </button>
+                    </div>
                   }
                 />
 
                 {showForm && (
-                  <form onSubmit={handleCreateStaff} className="rounded-[12px] bg-[#F7F8F7] p-4 mb-5 space-y-3">
+                  <form id="staff-form" onSubmit={handleCreateStaff} noValidate className="rounded-[12px] bg-[#F7F8F7] p-4 mb-5 space-y-3">
                     {error && <div className="rounded-[8px] bg-[#FBDFDB] text-[#B3261E] text-sm font-semibold px-4 py-2.5">{error}</div>}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-start gap-3">
                       <input name="name" placeholder="Full Name" required value={form.name} onChange={handleFormChange} className={inputClass} />
-                      <input name="email" type="email" placeholder="Email" required value={form.email} onChange={handleFormChange} className={inputClass} />
+                      <div>
+                        <input
+                          name="email" type="email" placeholder="Email (@cvsu.edu.ph or @gmail.com)" required
+                          value={form.email} onChange={handleFormChange} onBlur={() => setEmailTouched(true)}
+                          aria-invalid={!!emailError} className={emailError ? inputErrorClass : inputClass}
+                        />
+                        {emailError && <p className="text-[12.5px] text-[#B3261E] mt-1.5 ml-0.5">{emailError}</p>}
+                      </div>
                       <FilterSelect fullWidth value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                         <option value="admin">Library Staff</option>
                         <option value="super_admin">Super Admin</option>
                       </FilterSelect>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button type="submit" disabled={creating} className={btn.primary}>
-                        {creating ? "Creating..." : "Create Account"}
-                      </button>
-                      <p className="text-xs text-gray-500">A password is made for you to copy and give to the staff member.</p>
-                    </div>
+                    <p className="text-xs text-gray-500">A password is made for you to copy and give to the staff member.</p>
                   </form>
                 )}
 

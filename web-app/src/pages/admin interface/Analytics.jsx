@@ -245,8 +245,8 @@ const GENDER_COLORS = { male: BRAND.green, female: BRAND.gold, prefer_not_to_say
 const GUEST_TYPE_LABELS = { faculty: 'Faculty', alumni: 'Alumni', walkin: 'Walk-in', student: 'Student' };
 
 const KPI_TOOLTIPS = {
-  totalVisits: "All entries of students and guests in this period. If a student comes in twice, it counts as 2 visits. The number below counts each student only once.",
-  avgDaily: "How many visits the library gets in a normal day during this period.",
+  totalVisits: "All entries of students and guests in this period.",
+  avgDaily: "Total visits (students and guests) divided by the number of days in this period so far.",
   peakHour: "The busiest 2 hours of the day in this period (most people came in). Below it is the busiest day of the week.",
 };
 
@@ -880,7 +880,7 @@ const Analytics = () => {
           </div>
 
           {/* Visits by College & Programs */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card className="p-6">
               <CardTitle
                 title="Visits by College"
@@ -899,7 +899,7 @@ const Analytics = () => {
           </div>
 
           {/* New vs Returning & Top Visiting Students */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card className="p-6">
               <CardTitle
                 title="New vs Returning Students"
@@ -944,7 +944,7 @@ const Analytics = () => {
           </div>
 
           {/* Guest Types & Gender */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card className="p-6">
               <CardTitle
                 title="Guest Type Comparison"

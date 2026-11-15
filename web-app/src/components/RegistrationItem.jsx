@@ -10,6 +10,9 @@ const ACTION_BTN = {
   reactivate: "rounded-full bg-[#E8F1E9] text-[#1B5E20] px-4 py-2 text-xs font-bold hover:bg-[#dbe9dc] transition-colors",
 };
 
+// Shown on hover when Approve / Reactivate are paused (no active semester).
+const PAUSED_TIP = "No active semester. Approvals reopen when the next semester starts.";
+
 // Small gray italic note shown instead of buttons.
 const Note = ({ children }) => <span className="text-xs text-gray-400 italic">{children}</span>;
 
@@ -19,6 +22,7 @@ const RegistrationItem = ({
   studentNumber, name, email, college, program, period, status,
   isLatest, currentStatus, onRowClick,
   onApprove, onReject, onDeactivate, onReactivate,
+  approvalsPaused = false, // true between semesters: Approve and Reactivate are disabled
 }) => {
   // Where the Approve button is while its small confirmation box is open (null = closed).
   const [confirmAt, setConfirmAt] = useState(null);
@@ -37,7 +41,12 @@ const RegistrationItem = ({
       return (
         <>
           {/* Approve asks first, in a small box right under the button */}
-          <button onClick={(e) => setConfirmAt(e.currentTarget.getBoundingClientRect())} className={ACTION_BTN.approve}>
+          <button
+            onClick={(e) => setConfirmAt(e.currentTarget.getBoundingClientRect())}
+            disabled={approvalsPaused}
+            title={approvalsPaused ? PAUSED_TIP : undefined}
+            className={`${ACTION_BTN.approve} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#1B5E20]`}
+          >
             Approve
           </button>
           <ConfirmPopover
@@ -58,7 +67,16 @@ const RegistrationItem = ({
     }
 
     if (status === "deactivated") {
-      return <button onClick={onReactivate} className={ACTION_BTN.reactivate}>Reactivate</button>;
+      return (
+        <button
+          onClick={onReactivate}
+          disabled={approvalsPaused}
+          title={approvalsPaused ? PAUSED_TIP : undefined}
+          className={`${ACTION_BTN.reactivate} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#E8F1E9]`}
+        >
+          Reactivate
+        </button>
+      );
     }
 
     if (status === "rejected") return <Note>Awaiting student resubmission</Note>;

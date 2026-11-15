@@ -50,7 +50,7 @@ const COLLEGES = [
 
 // Full college names → short codes used on the board.
 const COLLEGE_ACRONYMS = {
-  "college of agriculture, food, environment, and natural resources": "CAFENR",
+  "college of agriculture, food, environment and natural resources": "CAFENR",
   "college of arts and sciences": "CAS",
   "college of criminal justice": "CCJ",
   "college of education": "CED",

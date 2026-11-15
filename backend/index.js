@@ -91,6 +91,16 @@ async function getCurrentPeriod() {
     return rows.length > 0 ? rows[0].setting_value : null;
 }
 
+// True when a semester is running (or when no semester calendar exists yet,
+// so older databases keep working). Used to pause approvals between semesters
+// and by the apps to show an "approvals paused" note.
+async function isSemesterActive() {
+    const [[cal]] = await db.query(
+        `SELECT COUNT(*) AS total, COALESCE(SUM(status = 'active'), 0) AS active FROM semesters`
+    );
+    return Number(cal.total) === 0 || Number(cal.active) > 0;
+}
+
 // Builds the display full_name from parts. full_name stays a real, stored
 // column so every existing query/UI that reads it (web dashboard, scanner,
 // logs, analytics) keeps working untouched.
@@ -378,6 +388,17 @@ app.get('/api/settings/current-period', async (req, res) => {
     try {
         const period = await getCurrentPeriod();
         res.json({ current_period: period });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Tells the apps whether a semester is running right now. When it is not
+// (the break between semesters), approvals are paused and the student app
+// shows a note on the pending card.
+app.get('/api/settings/semester-active', async (req, res) => {
+    try {
+        res.json({ active: await isSemesterActive() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1450,6 +1471,12 @@ app.post('/api/admin/approve', verifyToken, async (req, res) => {
         const [request] = await db.query('SELECT * FROM registration_requests WHERE request_id = ?', [request_id]);
         if (request.length === 0) return res.status(404).json({ message: "Request not found" });
 
+        // No approvals between semesters: nobody should get a working QR while
+        // every other pass is expired.
+        if (!(await isSemesterActive())) {
+            return res.status(409).json({ message: "No active semester right now. Approvals reopen when the next semester starts." });
+        }
+
         const student = request[0];
 
         const qrToken = crypto.randomUUID();
@@ -1539,6 +1566,10 @@ app.post('/api/admin/reactivate', verifyToken, async (req, res) => {
         return res.status(400).json({ message: "student_number and request_id are required." });
     }
     try {
+        // Same rule as approve: reactivating issues a new QR, so it waits for a semester.
+        if (!(await isSemesterActive())) {
+            return res.status(409).json({ message: "No active semester right now. Approvals reopen when the next semester starts." });
+        }
         const qrToken = crypto.randomUUID();
         await db.query(
             'UPDATE students SET status = "approved", status_reason = NULL, qr_code = ? WHERE student_number = ?',

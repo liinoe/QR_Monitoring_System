@@ -89,6 +89,19 @@ export async function authFetch(url, options = {}) {
   return res;
 }
 
+// Asks the server whether the saved token is still a live session.
+// Only a 401/403 counts as "expired". If the server can't be reached at all,
+// the admin is NOT kicked out (the pages show their own errors instead).
+export async function verifySession() {
+  if (!getToken()) return false;
+  try {
+    const res = await authFetch(`${API_URL}/api/admin/verify`);
+    return !(res.status === 401 || res.status === 403);
+  } catch {
+    return true;
+  }
+}
+
 // "Chrome on Windows"-style label for the approval prompt.
 export function describeUserAgent(ua = '') {
   const browser =

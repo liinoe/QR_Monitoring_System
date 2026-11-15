@@ -117,7 +117,7 @@ const Bootstrap = () => {
                                 <div className="text-center mb-7">
                                     <h1 className="text-[22px] font-extrabold text-gray-900">Initial setup</h1>
                                     <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-                                        No admin account exists yet. Create the first <span className="font-semibold text-gray-700">Super Admin</span> to get started.
+                                        No admin account exists yet. <br></br>Create the first <span className="font-semibold text-gray-700">Super Admin</span> to get started.
                                     </p>
                                 </div>
 
@@ -176,7 +176,7 @@ const Bootstrap = () => {
                                 </form>
 
                                 <p className="text-center text-[12.5px] text-gray-500 mt-5">
-                                    This page only works once. After this, staff accounts are added in Settings.
+                                    This page only works once. <br></br>After this, staff accounts are added in Settings.
                                 </p>
                             </>
                         )}

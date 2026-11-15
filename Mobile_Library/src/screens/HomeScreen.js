@@ -28,8 +28,7 @@ const CARD_INFO = {
   headcount: {
     title: 'Real-Time Headcount',
     message:
-      'How many people are inside the library right now: students and guests who have ' +
-      'scanned in but not yet scanned out. It refreshes every few seconds.',
+      'How many people are inside the library right now: students and guests. ',
   },
   totalVisits: {
     title: 'Total Visits',
@@ -40,9 +39,9 @@ const CARD_INFO = {
   peakHours: {
     title: 'Peak Hours',
     message:
-      'Each bar is the number of people (students and guests) who scanned in during that ' +
+      'Each bar is the number of people (students and guests) who logged in during that ' +
       'hour, added up over this semester so far.\n\n' +
-      'Gold bars = the busiest 2-hour period. "Right now" compares how many are inside now ' +
+      'Yellow bars = the busiest 2-hour period. "Right now" compares how many are inside now ' +
       "with the library's usual busiest time.\n\n" +
       'Use it to find a quieter time to visit.',
   },
@@ -248,6 +247,7 @@ export default function HomeScreen({ navigation }) {
   const [fetched, setFetched] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [currentPeriod, setCurrentPeriod] = useState(null);
+  const [semesterActive, setSemesterActive] = useState(true); // false between semesters (approvals paused)
   const [peakHours, setPeakHours] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
   const abortControllerRef = React.useRef(null);
@@ -346,6 +346,8 @@ export default function HomeScreen({ navigation }) {
         const data = await response.json();
         setCurrentPeriod(data.current_period);
       }
+      const activeRes = await fetch(`${API_URL}/api/settings/semester-active`);
+      if (activeRes.ok) setSemesterActive((await activeRes.json()).active);
     } catch (error) {
       console.error('Error fetching current period:', error);
     }
@@ -539,6 +541,9 @@ export default function HomeScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Access Restricted</Text>
                 <Text style={styles.pendingSubText}>Your registration is pending admin approval.</Text>
+                {!semesterActive && (
+                  <Text style={styles.pendingSubText}>Approvals reopen when the next semester starts.</Text>
+                )}
                 <View style={styles.pendingBadge}>
                   <View style={styles.badgeDot} />
                   <Text style={styles.pendingBadgeText}>Pending Review</Text>

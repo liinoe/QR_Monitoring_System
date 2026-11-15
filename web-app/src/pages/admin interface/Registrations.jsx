@@ -26,7 +26,7 @@ const STATUS_TABS = ["All", "Pending", "Pending Renewal", "Approved", "Rejected"
 // student in the mobile app, so keep them short and clear.
 const REJECT_REASONS = [
   "Not enrolled in the current semester",
-  "Information does not match university records",
+  "Information does not match",
   "Registration form is unclear or incorrect", // blurry, cut off, old semester, or not theirs
   "Other (specify below)",
 ];
@@ -57,6 +57,7 @@ const Registrations = () => {
   const [errorDialog, setErrorDialog] = useState(null);
   // Student waiting for the "Reactivate account?" confirm: { id, studentNumber }
   const [toReactivate, setToReactivate] = useState(null);
+  const [semesterActive, setSemesterActive] = useState(true); // false between semesters: approvals are paused
   const [reactivating, setReactivating] = useState(false);
 
   // Shows the error pop-up with a title and message.
@@ -80,6 +81,9 @@ const Registrations = () => {
       if (data.current_period) {
         setCurrentPeriod(data.current_period);
       }
+      const activeRes = await authFetch(`${API_URL}/api/settings/semester-active`);
+      const activeData = await activeRes.json();
+      setSemesterActive(activeData.active !== false);
     } catch (err) {
       console.error("Failed to fetch current period");
     }
@@ -89,6 +93,13 @@ const Registrations = () => {
   useEffect(() => {
     fetchRegistrations();
     fetchCurrentPeriod();
+  }, []);
+
+  // A semester can start or end at midnight while this page is open,
+  // so re-check once a minute (cheap) to keep the banner and buttons right.
+  useEffect(() => {
+    const timer = setInterval(fetchCurrentPeriod, 60000);
+    return () => clearInterval(timer);
   }, []);
 
   // Then reloads the list only when registrations changed (new registration, renewal,
@@ -134,6 +145,10 @@ const Registrations = () => {
 
   // Approves a request: the student gets a QR pass. Updates the row on screen right away.
   const handleApprove = async (id) => {
+    if (!semesterActive) {
+      showError("Approvals Paused", "No active semester right now. Approvals reopen when the next semester starts.");
+      return;
+    }
     try {
       const response = await authFetch(`${API_URL}/api/admin/approve`, {
         method: 'POST',
@@ -340,6 +355,13 @@ const Registrations = () => {
             subtitle="Approve, reject, or review student registrations."
           />
 
+          {/* Between semesters: approving and reactivating are paused */}
+          {!semesterActive && (
+            <div className="flex items-center gap-2 bg-[#FBF1CE] text-[#946800] text-sm font-semibold px-4 py-2.5 rounded-[8px]">
+              No active semester. Approvals are paused until the next one starts.
+            </div>
+          )}
+
           {/* Small notice when new registrations arrive while the page is open */}
           {newCount > 0 && (
             <div className="flex items-center gap-2 bg-[#E8F1E9] text-[#1B5E20] text-sm font-semibold px-4 py-2.5 rounded-[8px]">
@@ -478,6 +500,7 @@ const Registrations = () => {
                           onReject={() => openReject(req.request_id)}
                           onDeactivate={() => openDeactivate(req.request_id, req.student_number)}
                           onReactivate={() => setToReactivate({ id: req.request_id, studentNumber: req.student_number })}
+                          approvalsPaused={!semesterActive}
                         />
                         </React.Fragment>
                       );

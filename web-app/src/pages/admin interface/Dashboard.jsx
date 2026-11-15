@@ -26,7 +26,7 @@ const COLLEGES = Object.keys(COLLEGE_COLORS);
 
 // Full college names → short codes.
 const COLLEGE_ACRONYMS = {
-  "college of agriculture, food, environment, and natural resources": "CAFENR",
+  "college of agriculture, food, environment and natural resources": "CAFENR",
   "college of arts and sciences": "CAS",
   "college of criminal justice": "CCJ",
   "college of education": "CED",
@@ -75,8 +75,8 @@ const formatActivityTime = (dateStr) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalToday: "All entries of students and guests today, including those still inside. If a student comes in twice, it counts as 2 visits. The number below counts each student only once.",
-  currentlyInside: "Students and guests who are in the library right now. Updates by itself.",
+  totalToday: "All entries of students and guests today, including those still inside.",
+  currentlyInside: "Students and guests who are in the library right now.",
   pending: "Student registrations waiting for you to approve or reject. Open Registrations to review them.",
 };
 
@@ -89,6 +89,8 @@ const Dashboard = () => {
   const [confirmExit, setConfirmExit] = useState(false);
   const [exitResult, setExitResult] = useState(null);
   const [exiting, setExiting] = useState(false);
+  // true until the first load of today's data finishes (shows a loading screen instead of zeros)
+  const [loading, setLoading] = useState(true);
 
   // Gets every student entry/exit log.
   const fetchDashboardData = async () => {
@@ -124,10 +126,10 @@ const Dashboard = () => {
   };
 
   // Loads everything once when the page opens.
+  // (Each fetch has its own try/catch, so Promise.all always finishes.)
   useEffect(() => {
-    fetchDashboardData();
-    fetchGuestData();
-    fetchPendingCount();
+    Promise.all([fetchDashboardData(), fetchGuestData(), fetchPendingCount()])
+      .finally(() => setLoading(false));
   }, []);
 
   // Then reloads only what changed (checked every 5 seconds with a tiny request).
@@ -271,12 +273,29 @@ const Dashboard = () => {
 
   const dateText = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
+  // First load: keep the page layout, show a spinner instead of empty numbers.
+  // (Placed after every hook above, so React's hook order stays the same.)
+  if (loading) {
+    return (
+      <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
+        <Header />
+        <div className="flex flex-1">
+          <Sidebar />
+          <main className="flex-1 min-w-0 flex flex-col items-center justify-center gap-3 text-gray-500">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#1B5E20]" />
+            <p className="text-sm">Loading dashboard…</p>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
       <Header />
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
+        <main className="flex-1 min-w-0 px-8 py-8 space-y-6">
           {/* PAGE TITLE */}
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -360,7 +379,7 @@ const Dashboard = () => {
           {/* CHARTS */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
             {/* Daily entries this week */}
-            <Card className="p-6 xl:col-span-3">
+            <Card className="p-6 xl:col-span-2">
               <CardTitle
                 title="Daily Entries"
                 note="Students and guests, this week (Sun – Sat)"
@@ -384,7 +403,7 @@ const Dashboard = () => {
             </Card>
 
             {/* Visitors by college */}
-            <Card className="p-6 xl:col-span-2">
+            <Card className="p-6 xl:col-span-3">
               <CardTitle
                 title="Visits by College"
                 note={`Students only, this week · ${uniqueStudentsThisWeek} different ${uniqueStudentsThisWeek === 1 ? "student" : "students"}`}
@@ -392,7 +411,7 @@ const Dashboard = () => {
               {totalCollegeVisitors === 0 ? (
                 <EmptyState text="No college data this week" />
               ) : (
-                <div className="flex items-center gap-5 h-[240px]">
+                <div className="flex items-center justify-center gap-10 h-[240px]">
                   {/* Donut with the total in the middle */}
                   <div className="relative w-[180px] h-[180px] flex-shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
@@ -415,12 +434,20 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* Legend: college · count · share */}
-                  <ul className="flex-1 min-w-0 space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {/* Legend: college · count · share.
+                      Up to 6 colleges fill one column; more than 6 flow into a second
+                      column (down the first, then the next), so nothing needs scrolling. */}
+                  <ul
+                    className="min-w-1 grid grid-flow-col gap-x-10 gap-y-3"
+                    style={{
+                      gridTemplateRows: `repeat(${Math.min(collegeData.length, 6)}, auto)`,
+                      gridAutoColumns: "minmax(0, 200px)",
+                    }}
+                  >
                     {collegeData.map((c) => (
                       <li key={c.name} className="flex items-center gap-2 text-[13px]">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLLEGE_COLORS[c.name] }} />
-                        <span className="font-semibold text-gray-700 flex-1">{c.name}</span>
+                        <span className="font-semibold text-gray-700 flex-1 truncate">{c.name}</span>
                         <span className="font-bold text-gray-900 tabular-nums">{c.value}</span>
                         <span className="text-gray-400 text-xs w-10 text-right tabular-nums">
                           {Math.round((c.value / totalCollegeVisitors) * 100)}%

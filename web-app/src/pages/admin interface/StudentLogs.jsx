@@ -30,8 +30,6 @@ const COLLEGE_OPTIONS = Object.keys(COLLEGE_COLORS);
 // Full college names → short codes.
 const COLLEGE_ACRONYMS = {
   "college of agriculture, food, environment and natural resources": "CAFENR",
-  "college of agriculture, food, environment, and natural resources": "CAFENR",
-  "college of agriculture, forestry, environment and natural resources": "CAFENR",
   "college of arts and sciences": "CAS",
   "college of criminal justice": "CCJ",
   "college of education": "CED",
@@ -55,9 +53,9 @@ const toAcronym = (college) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalLogs: "Number of student visits in the list below (based on your search and filters).",
-  currentlyInside: "Students in the list who haven't scanned out yet.",
-  totalExits: "Students in the list who already scanned out.",
+  totalLogs: "Total number of students visits in the list below.",
+  currentlyInside: "Total number of students in the list who haven't scanned out yet.",
+  totalExits: "Total number of students in list who already scanned out.",
 };
 
 // This month as "YYYY-MM" (default + latest choice for the month picker).
