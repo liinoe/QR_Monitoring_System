@@ -18,6 +18,8 @@ const CheckIcon = () => (
 );
 
 const LIST_MAX_HEIGHT = 280; // px, same as max-h-[280px] below
+const OPTION_HEIGHT = 36;    // px, one option row (py-2 + text-sm line height)
+const LIST_PADDING = 14;     // px, list padding (p-1.5) + border
 
 // Custom dropdown (looks the same in every browser).
 // Use it like <select>: pass <option value="">Label</option> children,
@@ -27,7 +29,7 @@ const LIST_MAX_HEIGHT = 280; // px, same as max-h-[280px] below
 //   disabled     grayed out, can't be opened
 //   placeholder  text shown when nothing is picked yet
 // The list floats above everything (position: fixed), so it's never cut off by
-// tables or pop-ups, and it opens upward by itself when there's no room below.
+// tables or pop-ups, and it opens upward by itself only when the list doesn't fit below.
 const FilterSelect = ({
   value, onChange, children, className = "",
   dropUp = false, fullWidth = false, disabled = false, placeholder = "Select...",
@@ -51,7 +53,9 @@ const FilterSelect = ({
     if (!buttonRef.current) return;
     const r = buttonRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - r.bottom;
-    const up = dropUp || (spaceBelow < LIST_MAX_HEIGHT + 16 && r.top > spaceBelow);
+    // Use the list's real height (short lists need little room), not always the 280px maximum.
+    const listHeight = Math.min(LIST_MAX_HEIGHT, options.length * OPTION_HEIGHT + LIST_PADDING);
+    const up = dropUp || (spaceBelow < listHeight + 16 && r.top > spaceBelow);
     setPos({
       left: r.left,
       minWidth: r.width,
