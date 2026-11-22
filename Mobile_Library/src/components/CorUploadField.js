@@ -30,7 +30,16 @@ async function shrinkPhoto(uri) {
 // upload a PDF (for students who already have the file). Then shows a preview
 // with "Change" and "Remove".
 // value = { uri, base64 } for a photo, { uri, base64, kind: 'pdf', name, size } for a PDF, or null. onError(message) shows a pop-up on the screen.
-export default function CorUploadField({ value, onChange, onError, invalid }) {
+//
+// The same field is used for the faculty "Proof of Employee ID". Pass:
+//   label  heading shown above the field (default "Registration Form")
+//   noun   how the document is named inside sentences (default "registration form")
+//   hint   the small gray explanation under the heading (default: about the registration form)
+const DEFAULT_HINT =
+  "A clear photo or PDF (2 MB max) of this semester's registration form, showing your name and student number. " +
+  'Library staff use it to verify your enrollment, and it is deleted after review.';
+
+export default function CorUploadField({ value, onChange, onError, invalid, label = 'Registration Form', noun = 'registration form', hint = DEFAULT_HINT }) {
   const [busy, setBusy] = useState(false);
 
   // Opens the camera or the gallery, then shrinks the chosen photo.
@@ -41,8 +50,8 @@ export default function CorUploadField({ value, onChange, onError, invalid }) {
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         onError?.(fromCamera
-          ? 'Please allow camera access in your phone settings to take a photo of your registration form.'
-          : 'Please allow photo access in your phone settings to choose your registration form.');
+          ? `Please allow camera access in your phone settings to take a photo of your ${noun}.`
+          : `Please allow photo access in your phone settings to choose your ${noun}.`);
         return;
       }
       const options = { mediaTypes: ['images'], quality: 1 };
@@ -69,12 +78,12 @@ export default function CorUploadField({ value, onChange, onError, invalid }) {
       if (picked.canceled || !picked.result) return;
       const file = picked.result;
       if (file.size && file.size > MAX_PDF_BYTES) {
-        onError?.(`This PDF is ${formatSize(file.size)}. The limit is 2 MB. Please take a photo of your registration form instead.`);
+        onError?.(`This PDF is ${formatSize(file.size)}. The limit is 2 MB. Please take a photo of your ${noun} instead.`);
         return;
       }
       setBusy(true);
       const base64 = await file.base64();
-      onChange({ uri: file.uri, base64, kind: 'pdf', name: file.name || 'Registration Form.pdf', size: file.size || 0 });
+      onChange({ uri: file.uri, base64, kind: 'pdf', name: file.name || `${label}.pdf`, size: file.size || 0 });
     } catch (err) {
       console.error('COR PDF error:', err);
       onError?.('Could not use that PDF. Please try again, or take a photo instead.');
@@ -85,11 +94,8 @@ export default function CorUploadField({ value, onChange, onError, invalid }) {
 
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={styles.label}>Registration Form<Text style={{ color: '#DC2626' }}> *</Text></Text>
-      <Text style={styles.hint}>
-        A clear photo or PDF (2 MB max) of this semester's registration form, showing your name and student number.
-        Library staff use it to verify your enrollment, and it is deleted after review.
-      </Text>
+      <Text style={styles.label}>{label}<Text style={{ color: '#DC2626' }}> *</Text></Text>
+      <Text style={styles.hint}>{hint}</Text>
 
       {busy ? (
         <View style={[styles.box, styles.center]}>

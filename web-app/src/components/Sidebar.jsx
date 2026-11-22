@@ -23,6 +23,12 @@ const ICONS = {
       <path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5" />
     </>
   ),
+  facultyLogs: (
+    <>
+      <rect x="2" y="7" width="20" height="14" rx="2" />
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+    </>
+  ),
   guestLogs: (
     <>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -93,13 +99,13 @@ const Sidebar = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Gets how many registrations are waiting (for the badge) once when the page opens.
+  // Gets how many registrations are waiting (students + faculty, for the badge) once when the page opens.
   useEffect(() => {
     const fetchPendingCount = async () => {
       try {
-        const response = await authFetch(`${API_URL}/api/admin/pending`);
+        const response = await authFetch(`${API_URL}/api/admin/changes`);
         const data = await response.json();
-        setPendingCount(Array.isArray(data) ? data.length : 0);
+        setPendingCount(data?.pending_count ?? 0);
       } catch {
         // offline for a moment — the change check below will update it
       }
@@ -114,9 +120,10 @@ const Sidebar = () => {
   const menu = [
     { name: "Dashboard", path: "/", icon: "dashboard" },
     { name: "Student Logs", path: "/student-logs", icon: "studentLogs" },
+    { name: "Faculty Logs", path: "/faculty-logs", icon: "facultyLogs" },
     { name: "Guest Logs", path: "/guest-logs", icon: "guestLogs" },
     { name: "Registrations", path: "/registrations", icon: "registrations", badge: pendingCount },
-    { name: "Manage Students", path: "/manage-students", icon: "manageStudents" },
+    { name: "Manage Accounts", path: "/manage-accounts", icon: "manageStudents" },
     { name: "Analytics", path: "/analytics", icon: "analytics" },
     ...(superAdmin ? [{ name: "Settings", path: "/settings", icon: "settings" }] : []),
   ];

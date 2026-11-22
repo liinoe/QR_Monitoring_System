@@ -54,19 +54,30 @@ module.exports = function registerOfflineScannerRoutes(app, { db }) {
             // SHA2() makes the hash in MySQL, so real QR codes never leave the server.
             const [students] = await db.query(
                 `SELECT SHA2(qr_code, 256) AS h, student_number, program, college
-                 FROM students WHERE status = 'approved' AND qr_code IS NOT NULL`
+                 FROM students WHERE status = 'approved' AND qr_code IS NOT NULL
+                 UNION ALL
+                 SELECT SHA2(qr_code, 256) AS h, employee_id AS student_number, 'Faculty' AS program, college
+                 FROM faculty WHERE status = 'approved' AND qr_code IS NOT NULL`
             );
             // Who is inside right now (hashes).
             const [inside] = await db.query(
                 `SELECT SHA2(s.qr_code, 256) AS h FROM student_logs sl JOIN students s ON s.user_id = sl.user_id
-                 WHERE sl.status = 'inside' AND s.qr_code IS NOT NULL`
+                 WHERE sl.status = 'inside' AND s.qr_code IS NOT NULL
+                 UNION ALL
+                 SELECT SHA2(f.qr_code, 256) AS h FROM faculty_logs fl JOIN faculty f ON f.faculty_id = fl.faculty_id
+                 WHERE fl.status = 'inside' AND f.qr_code IS NOT NULL`
             );
             // Who the system already logged out today (5:31 PM / Force Exit) → "Already logged out".
             const [forced] = await db.query(
-                `SELECT SHA2(s.qr_code, 256) AS h, DATE_FORMAT(MAX(sl.time_out), '%l:%i %p') AS t
-                 FROM student_logs sl JOIN students s ON s.user_id = sl.user_id
-                 WHERE sl.visit_date = CURDATE() AND sl.forced_exit = 1 AND s.qr_code IS NOT NULL
-                 GROUP BY s.user_id`
+                `SELECT h, DATE_FORMAT(MAX(out_at), '%l:%i %p') AS t FROM (
+                     SELECT SHA2(s.qr_code, 256) AS h, sl.time_out AS out_at
+                     FROM student_logs sl JOIN students s ON s.user_id = sl.user_id
+                     WHERE sl.visit_date = CURDATE() AND sl.forced_exit = 1 AND s.qr_code IS NOT NULL
+                     UNION ALL
+                     SELECT SHA2(f.qr_code, 256) AS h, fl.time_out AS out_at
+                     FROM faculty_logs fl JOIN faculty f ON f.faculty_id = fl.faculty_id
+                     WHERE fl.visit_date = CURDATE() AND fl.forced_exit = 1 AND f.qr_code IS NOT NULL
+                 ) forced_today GROUP BY h`
             );
             const [[{ guests }]] = await db.query('SELECT COUNT(*) AS guests FROM guest_logs WHERE status = "inside"');
 
@@ -101,10 +112,21 @@ module.exports = function registerOfflineScannerRoutes(app, { db }) {
             // A scan "from the future" (wrong PC clock) is treated as happening now.
             const scannedAt = scan.time.getTime() > now + 5 * 60 * 1000 ? new Date(now) : scan.time;
             try {
-                const [[student]] = await db.query(
+                // The QR belongs to a student or to a faculty member (each has its own log table).
+                let student = null; // "student" here means whoever owns the QR
+                const [[stu]] = await db.query(
                     'SELECT user_id FROM students WHERE SHA2(qr_code, 256) = ? AND qr_code IS NOT NULL LIMIT 1',
                     [scan.qr_hash]
                 );
+                if (stu) {
+                    student = { user_id: stu.user_id, table: 'student_logs', col: 'user_id' };
+                } else {
+                    const [[fac]] = await db.query(
+                        'SELECT faculty_id FROM faculty WHERE SHA2(qr_code, 256) = ? AND qr_code IS NOT NULL LIMIT 1',
+                        [scan.qr_hash]
+                    );
+                    if (fac) student = { user_id: fac.faculty_id, table: 'faculty_logs', col: 'faculty_id' };
+                }
 
                 // Remember this scan ID first; if it's already there, it was synced before.
                 const [ins] = await db.query(
@@ -121,19 +143,19 @@ module.exports = function registerOfflineScannerRoutes(app, { db }) {
                     result = 'unknown_qr'; // QR changed since the pack (e.g. deactivated) — not recorded
                 } else {
                     const [open] = await db.query(
-                        'SELECT log_id, time_in FROM student_logs WHERE user_id = ? AND status = "inside" ORDER BY time_in DESC LIMIT 1',
+                        `SELECT log_id, time_in FROM ${student.table} WHERE ${student.col} = ? AND status = "inside" ORDER BY time_in DESC LIMIT 1`,
                         [student.user_id]
                     );
                     if (open.length > 0 && new Date(open[0].time_in) <= scannedAt) {
                         // Inside → this scan was the exit.
-                        await db.query('UPDATE student_logs SET time_out = ?, status = "exited" WHERE log_id = ?', [scannedAt, open[0].log_id]);
+                        await db.query(`UPDATE ${student.table} SET time_out = ?, status = "exited" WHERE log_id = ?`, [scannedAt, open[0].log_id]);
                         result = 'exit';
                     } else {
                         // Not inside → entry, unless it was after the 5:30 PM cut-off that day,
                         // or they already have a visit covering that moment (e.g. auto-logged-out).
                         const [[{ afterCutoff }]] = await db.query('SELECT TIME(?) >= ? AS afterCutoff', [scannedAt, ENTRY_CUTOFF]);
                         const [[{ covered }]] = await db.query(
-                            'SELECT COUNT(*) AS covered FROM student_logs WHERE user_id = ? AND time_in <= ? AND time_out >= ?',
+                            `SELECT COUNT(*) AS covered FROM ${student.table} WHERE ${student.col} = ? AND time_in <= ? AND time_out >= ?`,
                             [student.user_id, scannedAt, scannedAt]
                         );
                         if (afterCutoff) {
@@ -142,7 +164,7 @@ module.exports = function registerOfflineScannerRoutes(app, { db }) {
                             result = 'skipped_already_out';
                         } else {
                             await db.query(
-                                'INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, ?, DATE(?), "inside")',
+                                `INSERT INTO ${student.table} (${student.col}, time_in, visit_date, status) VALUES (?, ?, DATE(?), "inside")`,
                                 [student.user_id, scannedAt, scannedAt]
                             );
                             result = 'entry';
@@ -162,12 +184,14 @@ module.exports = function registerOfflineScannerRoutes(app, { db }) {
         // Offline entries from a day that's already past closing time are closed
         // like the 5:31 PM auto logout would have (flagged as forced exits).
         try {
-            await db.query(
-                `UPDATE student_logs
-                 SET time_out = GREATEST(time_in, TIMESTAMP(visit_date, ?)), status = "exited", forced_exit = 1
-                 WHERE status = "inside" AND NOW() >= TIMESTAMP(visit_date, ?)`,
-                [CLOSING_TIME, CLOSING_TIME]
-            );
+            for (const table of ['student_logs', 'faculty_logs']) {
+                await db.query(
+                    `UPDATE ${table}
+                     SET time_out = GREATEST(time_in, TIMESTAMP(visit_date, ?)), status = "exited", forced_exit = 1
+                     WHERE status = "inside" AND NOW() >= TIMESTAMP(visit_date, ?)`,
+                    [CLOSING_TIME, CLOSING_TIME]
+                );
+            }
         } catch (err) {
             console.error('Offline sync close-out error:', err.message);
         }

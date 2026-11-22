@@ -55,16 +55,19 @@ function fileKind(data) {
 
 // Checks the file the app sent: a base64 photo (JPEG/PNG) or PDF, not too big.
 // Returns an error message, or null if it's fine.
-function checkCorImage(base64) {
-    if (!base64 || typeof base64 !== 'string') return 'Please upload a photo or PDF of your Registration Form.';
+// `what` names the document in the messages: "Registration Form" (students) or
+// "Employee ID" (faculty's proof of employment). Same checks either way.
+function checkCorImage(base64, what = 'Registration Form') {
+    const noun = what === 'Registration Form' ? 'registration form' : what;
+    if (!base64 || typeof base64 !== 'string') return `Please upload a photo or PDF of your ${what}.`;
     const data = stripPrefix(base64);
     if (data.length > MAX_BASE64_LENGTH) {
         return fileKind(data) === 'pdf'
-            ? 'The PDF is too large (2 MB max). Please take a photo of your registration form instead.'
+            ? `The PDF is too large (2 MB max). Please take a photo of your ${noun} instead.`
             : 'The photo is too large. Please take the photo again.';
     }
     if (!/^[A-Za-z0-9+/=\r\n]+$/.test(data) || !fileKind(data)) {
-        return 'The file could not be read. Please upload a photo or a PDF of your registration form.';
+        return `The file could not be read. Please upload a photo or a PDF of your ${noun}.`;
     }
     return null;
 }

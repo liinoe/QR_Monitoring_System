@@ -17,6 +17,8 @@ import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessMark, ScanFrame, BrandPattern } from '../components/QLessLogo';
+import { CvsuLogoMark } from '../components/CvsuLockup';
+import BottomNav from '../components/BottomNav';
 import { getRejectionGuide } from '../utils/rejection';
 import { authHeaders, clearSavedLogin } from '../utils/studentAuth';
 import { useAppDialog } from '../components/AppDialog';
@@ -28,7 +30,7 @@ const CARD_INFO = {
   headcount: {
     title: 'Real-Time Headcount',
     message:
-      'How many people are inside the library right now: students and guests. ',
+      'How many people are inside the library right now: students, faculty and guests. ',
   },
   totalVisits: {
     title: 'Total Visits',
@@ -39,7 +41,7 @@ const CARD_INFO = {
   peakHours: {
     title: 'Peak Hours',
     message:
-      'Each bar is the number of people (students and guests) who logged in during that ' +
+      'Each bar is the number of people (students, faculty and guests) who logged in during that ' +
       'hour, added up over this semester so far.\n\n' +
       'Yellow bars = the busiest 2-hour period. "Right now" compares how many are inside now ' +
       "with the library's usual busiest time.\n\n" +
@@ -196,7 +198,7 @@ function PeakHoursCard({ data, currentOccupancy, isOffline, now, width, padding,
 
         {data.total_checkins < 10 && (
           <Text style={styles.peakLowData}>
-            Based on only {data.total_checkins} check-in{data.total_checkins === 1 ? '' : 's'} this semester — this gets more accurate as more students visit.
+            Based on only {data.total_checkins} check-in{data.total_checkins === 1 ? '' : 's'} this semester — this gets more accurate as more people visit.
           </Text>
         )}
 
@@ -277,7 +279,10 @@ export default function HomeScreen({ navigation }) {
       const student = JSON.parse(storedStudent);
 
       const response = await fetch(
-        `${API_URL}/api/student/profile/${student.student_number}`,
+        // Faculty have their own table and routes (they are saved on the phone with user_type: 'faculty').
+        student.user_type === 'faculty'
+          ? `${API_URL}/api/faculty/profile/${student.employee_id}`
+          : `${API_URL}/api/student/profile/${student.student_number}`,
         { signal: controller.signal, headers: await authHeaders() }
       );
 
@@ -318,7 +323,9 @@ export default function HomeScreen({ navigation }) {
       const student = JSON.parse(storedStudent);
 
       const response = await fetch(
-        `${API_URL}/api/student/analytics/${student.student_number}`,
+        student.user_type === 'faculty'
+          ? `${API_URL}/api/faculty/analytics/${student.employee_id}`
+          : `${API_URL}/api/student/analytics/${student.student_number}`,
         { headers: await authHeaders() }
       );
       if (response.ok) {
@@ -414,14 +421,18 @@ export default function HomeScreen({ navigation }) {
   // The semester ended: the QR pass expired; renewal opens when the next semester starts.
   const isExpired = studentData?.status === 'expired';
   // What to tell a rejected student, based on the admin's reason.
-  const rejectionGuide = getRejectionGuide(studentData?.status_reason, currentPeriod);
+  const rejectionGuide = getRejectionGuide(studentData?.status_reason, currentPeriod, studentData?.user_type);
+  // Faculty have their own registration screen (used for resubmitting a rejected registration).
+  const registerRoute = studentData?.user_type === 'faculty' ? 'RegisterFaculty' : 'Register';
 
   // A student is due for RENEWAL if their last registration was for a
   // different (past) period than the one currently active. Only applies
   // to 'pending' status — rejected/deactivated have their own distinct
   // states below, not a renewal prompt.
+  // (Faculty never renew: their pass stays valid until an admin deactivates it.)
   const needsRenewal = !!(
     studentData &&
+    studentData.user_type !== 'faculty' &&
     studentData.status === 'pending' &&
     currentPeriod &&
     studentData.registered_period &&
@@ -439,25 +450,32 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
         <BrandPattern size={200} opacity={0.07} style={{ top: -30, right: -60 }} />
+        {/* Top row: QLess (Home and Settings are in the footer) */}
         <View style={[styles.brandRow, { paddingHorizontal: layout.horizontalPadding }]}>
-          <QLessMark size={22} tone="dark" />
-          <Text style={styles.brandText}>
-            Q<Text style={{ color: BRAND.goldLight }}>Less</Text>
-          </Text>
+          <View style={styles.brandLeft}>
+            <QLessMark size={22} tone="dark" />
+            <Text style={styles.brandText}>
+              Q<Text style={{ color: BRAND.goldLight }}>Less</Text>
+            </Text>
+          </View>
         </View>
+        {/* Greeting, name, and role + date on one line; the CvSU logo (no backdrop, light border on the logo itself) floats on the right of this block */}
         <View style={[styles.headerInner, { paddingHorizontal: layout.horizontalPadding }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{getGreeting(now)}</Text>
-            <Text style={styles.name}>{getDisplayName(studentData)}</Text>
-            <Text style={styles.dateText}>{formatDateTime(now)}</Text>
+            <Text style={styles.name} numberOfLines={1}>{getDisplayName(studentData)}</Text>
+            <View style={styles.metaRow}>
+              {studentData && (
+                <>
+                  <Ionicons name={studentData.user_type === 'faculty' ? 'briefcase-outline' : 'school-outline'} size={12} color={BRAND.goldLight} />
+                  <Text style={styles.roleText}>{studentData.user_type === 'faculty' ? 'Faculty' : 'Student'}</Text>
+                  <Text style={styles.metaDot}>·</Text>
+                </>
+              )}
+              <Text style={[styles.dateText, { marginTop: 0 }]}>{formatDateTime(now)}</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={styles.iconBtn}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="settings-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
+          <CvsuLogoMark size={60} style={{ marginLeft: 14 }} />
         </View>
       </SafeAreaView>
 
@@ -472,7 +490,7 @@ export default function HomeScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: layout.horizontalPadding, alignItems: 'center', paddingBottom: 30 + insets.bottom },
+          { paddingHorizontal: layout.horizontalPadding, alignItems: 'center', paddingBottom: 30 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -483,11 +501,11 @@ export default function HomeScreen({ navigation }) {
           <View style={[styles.registerCard, { padding: layout.cardPadding, width: layout.contentWidth }]}>
             <Text style={styles.registerTitle}>No Library Account Found</Text>
             <Text style={styles.registerSub}>
-              Register your student profile to access the library and get your QR pass.
+              Register as a student or faculty member to access the library and get your QR pass.
             </Text>
             <TouchableOpacity
               style={styles.registerBtn}
-              onPress={() => navigation.navigate('Register')}
+              onPress={() => navigation.navigate('RoleSelect')}
               activeOpacity={0.88}
             >
               <Text style={styles.registerBtnText}>Register Now</Text>
@@ -541,7 +559,7 @@ export default function HomeScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.restrictedTitle}>Access Restricted</Text>
                 <Text style={styles.pendingSubText}>Your registration is pending admin approval.</Text>
-                {!semesterActive && (
+                {!semesterActive && studentData?.user_type !== 'faculty' && (
                   <Text style={styles.pendingSubText}>Approvals reopen when the next semester starts.</Text>
                 )}
                 <View style={styles.pendingBadge}>
@@ -569,7 +587,7 @@ export default function HomeScreen({ navigation }) {
                 {/* Opens the Register form already filled with their details */}
                 <TouchableOpacity
                   style={styles.resubmitBtn}
-                  onPress={() => navigation.navigate('Register', { mode: 'resubmit' })}
+                  onPress={() => navigation.navigate(registerRoute, { mode: 'resubmit' })}
                   activeOpacity={0.88}
                 >
                   <Text style={styles.resubmitBtnText}>{rejectionGuide.buttonLabel}</Text>
@@ -790,6 +808,9 @@ export default function HomeScreen({ navigation }) {
 
       {/* (i) explanation pop-ups */}
       {dialog}
+
+      {/* Footer navigation: Home | Settings */}
+      <BottomNav active="HomeScreen" navigation={navigation} />
     </View>
   );
 }
@@ -818,15 +839,28 @@ const styles = StyleSheet.create({
     backgroundColor: BRAND.deep,
     borderBottomLeftRadius: HEADER_RADIUS,
     borderBottomRightRadius: HEADER_RADIUS,
-    paddingBottom: 24,
+    paddingBottom: 16,
     overflow: 'hidden',
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 14 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, marginBottom: 8 },
+  brandLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  brandDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.25)', marginHorizontal: 3 },
   brandText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.4 },
   headerInner: { flexDirection: 'row', alignItems: 'center' },
   greeting: { color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: '500' },
   name: { color: '#fff', fontSize: 23, fontWeight: '700', marginTop: 3 },
   dateText: { color: 'rgba(255,255,255,0.6)', fontSize: 11.5, marginTop: 5 },
+  // Round see-through button, same look as the Back button on the Settings screen.
+  settingsBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // "Student" / "Faculty" tag under the name.
+  // One line under the name: role (Student / Faculty) · date and time.
+  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  metaDot: { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+  roleText: { color: BRAND.goldLight, fontSize: 11.5, fontWeight: '700', letterSpacing: 0.3 },
   iconBtn: {
     width: 42,
     height: 42,

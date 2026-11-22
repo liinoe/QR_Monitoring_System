@@ -4,11 +4,12 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 import FilterSelect from "../../components/FilterSelect";
 import FilterTabs from "../../components/FilterTabs";
+import DayPicker from "../../components/DayPicker";
 import { buildAvgStayTooltip } from "../../components/AvgStayToolTip";
 import StatBarList from "../../components/StatBarList";
 import HoverTooltip from "../../components/HoverTooltip";
 import { authFetch, getAdmin } from "../../auth";
-import { buildAnalyticsPdf } from "../../components/AnalyticsReport";
+import { buildAnalyticsPdf, downloadAnalyticsExcel, REPORT_TITLE } from "../../components/AnalyticsReport";
 import useChangeWatcher from "../../components/useChangeWatcher";
 import { BRAND, PageTitle, Card, CardTitle, SectionLabel, KpiCard, TrendPill, ChartTooltip, EmptyState, Dialog, btn } from "../../components/AdminUI";
 
@@ -37,6 +38,50 @@ const toAcronym = (college) => {
   if (!college) return null;
   const key = college.trim().toLowerCase();
   return COLLEGE_ACRONYMS[key] || college.trim().toUpperCase();
+};
+
+// Visits per college for a list of logs, biggest first (used for students and for faculty).
+const visitsByCollege = (list) => {
+  const counts = list.reduce((acc, l) => {
+    const code = toAcronym(l.college);
+    if (code) acc[code] = (acc[code] || 0) + 1;
+    return acc;
+  }, {});
+  return COLLEGE_OPTIONS
+    .map(c => ({ key: c, name: c, value: counts[c] || 0 }))
+    .filter(c => c.value > 0)
+    .sort((a, b) => b.value - a.value);
+};
+
+// The 5 people with the most visits in a list of logs (students by student number,
+// faculty by Employee ID, which is saved in student_number), with their average stay.
+const topVisitors = (list) => {
+  const byPerson = {};
+  list.forEach(l => {
+    const key = l.student_number || l.full_name;
+    if (!key) return;
+    if (!byPerson[key]) {
+      byPerson[key] = {
+        studentNumber: l.student_number || "N/A",
+        college: toAcronym(l.college) || "N/A",
+        visits: 0,
+        stayMs: 0,
+        stayCount: 0,
+      };
+    }
+    byPerson[key].visits += 1;
+    if (l.time_in && l.time_out && !l.forced_exit) {
+      byPerson[key].stayMs += (new Date(l.time_out) - new Date(l.time_in));
+      byPerson[key].stayCount += 1;
+    }
+  });
+  return Object.values(byPerson)
+    .map(p => ({
+      ...p,
+      avgStay: p.stayCount > 0 ? (p.stayMs / p.stayCount / (1000 * 60 * 60)).toFixed(1) : "--",
+    }))
+    .sort((a, b) => b.visits - a.visits)
+    .slice(0, 5);
 };
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -156,7 +201,31 @@ const EMPTY_RANGE = { start: new Date(0), end: new Date(0) };
 // "Last 7 Days" = today + the 6 days before it (rolling). Admin-only view.
 // The mobile app's stats match the "Semester" tab (backend: reportingSemester in index.js).
 const WEEK = "Last 7 Days";
-const PERIOD_TYPES = [WEEK, "Month", "Semester", "Year"];
+const PERIOD_TYPES = [WEEK, "Day", "Month", "Semester", "Year"];
+
+// ---- Single day (the "Day" filter) ----
+// Day id for a date, e.g. "2026-11-15".
+const dayKey = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+// True for a day id like "2026-11-15" (month ids like "2026-11" are not).
+const isDayKey = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
+// First and last moment of a day.
+const dayRange = (key) => {
+  const start = ymdDate(key);
+  return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59) };
+};
+// "2026-11-15" → "Sunday • Nov 15, 2026".
+const dayLabel = (key) => {
+  const d = ymdDate(key);
+  return `${d.toLocaleDateString([], { weekday: 'long' })} • ${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+};
+// "2026-11-15" → "Nov 15".
+const dayShort = (key) => ymdDate(key).toLocaleDateString([], { month: 'short', day: 'numeric' });
+// The day before (used for the "vs previous day" comparison).
+const previousDayKey = (key) => {
+  const d = ymdDate(key);
+  return dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1));
+};
 
 const LAST7 = "last7";
 const PREV7 = "prev7";
@@ -181,6 +250,7 @@ const rollingWeekLabel = (value) => {
 //   sems = semesters from the academic calendar (may be empty)
 const getPeriodKeyForDate = (periodType, date, sems = []) => {
   if (periodType === WEEK) return LAST7;
+  if (periodType === "Day") return dayKey(date);
   if (periodType === "Month") return monthKey(date);
   if (periodType === "Year") return String(date.getFullYear());
   if (sems.length > 0) {
@@ -196,6 +266,7 @@ const getPeriodRange = (periodType, value, sems = []) => {
     const s = findCal(sems, value);
     return s ? calRange(s) : EMPTY_RANGE;
   }
+  if (periodType === "Day") return isDayKey(value) ? dayRange(value) : EMPTY_RANGE;
   if (periodType === WEEK) return rollingWeekRange(value);
   if (periodType === "Month") return monthRange(value);
   if (periodType === "Year") return yearRange(value);
@@ -208,6 +279,7 @@ const getPeriodLabel = (periodType, value, sems = []) => {
     const s = findCal(sems, value);
     return s ? `AY ${s.ay_start}-${s.ay_start + 1} • ${CAL_TERM_NAMES[s.term] || s.term}` : "—";
   }
+  if (periodType === "Day") return isDayKey(value) ? dayLabel(value) : "—";
   if (periodType === WEEK) return rollingWeekLabel(value);
   if (periodType === "Month") return monthLabel(value);
   if (periodType === "Year") return `Year ${value}`;
@@ -222,6 +294,7 @@ const getPreviousPeriodValue = (periodType, value, sems = []) => {
     const i = ordered.findIndex((s) => `cal-${s.semester_id}` === value);
     return i > 0 ? `cal-${ordered[i - 1].semester_id}` : null;
   }
+  if (periodType === "Day") return isDayKey(value) ? previousDayKey(value) : null;
   if (periodType === WEEK) return PREV7;
   if (periodType === "Month") {
     const [y, m] = value.split('-').map(Number);
@@ -245,12 +318,12 @@ const GENDER_COLORS = { male: BRAND.green, female: BRAND.gold, prefer_not_to_say
 const GUEST_TYPE_LABELS = { faculty: 'Faculty', alumni: 'Alumni', walkin: 'Walk-in', student: 'Student' };
 
 const KPI_TOOLTIPS = {
-  totalVisits: "All entries of students and guests in this period.",
-  avgDaily: "Total visits (students and guests) divided by the number of days in this period so far.",
+  totalVisits: "All entries of students, faculty and guests in this period.",
+  avgDaily: "Total visits (students, faculty and guests) divided by the number of days in this period so far.",
   peakHour: "The busiest 2 hours of the day in this period (most people came in). Below it is the busiest day of the week.",
 };
 
-// The Analytics page: library usage trends, peak hours and breakdowns.
+// The Analytics page: visitor trends, peak hours and breakdowns.
 const Analytics = () => {
   const [logs, setLogs] = useState([]);
   const [guestLogs, setGuestLogs] = useState([]);
@@ -258,15 +331,41 @@ const Analytics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState(monthKey(new Date()));
   const [semesters, setSemesters] = useState([]); // academic calendar from Settings
   // Report: busy flag while the PDF is being made, the preview pop-up
-  // ({ url, fileName } of the finished PDF), and an error pop-up if it fails.
+  // ({ url, fileName, report } of the finished PDF and the numbers behind it),
+  // a busy flag for the Excel download, and an error pop-up if something fails.
   const [exporting, setExporting] = useState(false);
   const [reportPreview, setReportPreview] = useState(null);
+  const [excelBusy, setExcelBusy] = useState(false);
   const [exportError, setExportError] = useState("");
 
   // Closes the preview and frees the PDF from the browser's memory.
   const closeReportPreview = () => {
     if (reportPreview) URL.revokeObjectURL(reportPreview.url);
     setReportPreview(null);
+  };
+
+  // Download buttons inside the preview. Both use the same numbers as the preview.
+  const handleDownloadPdf = () => {
+    if (!reportPreview) return;
+    const link = document.createElement("a");
+    link.href = reportPreview.url;
+    link.download = reportPreview.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!reportPreview) return;
+    setExcelBusy(true);
+    try {
+      await downloadAnalyticsExcel(reportPreview.report);
+    } catch (err) {
+      console.error("Excel export failed:", err);
+      setExportError("The Excel file couldn't be created. Please try again.");
+    } finally {
+      setExcelBusy(false);
+    }
   };
 
 
@@ -278,12 +377,21 @@ const Analytics = () => {
       .catch(() => setSemesters([])); // offline → fixed-month semesters
   }, []);
 
-// Loads every student entry/exit log from the server.
+// Loads every student and faculty entry/exit log from the server.
+  // Faculty visits are mixed in with the students' (Employee ID in the student number, program "Faculty", is_faculty = true).
+  // Students and faculty are split apart again below (studentPeriodLogs / facultyPeriodLogs).
   const fetchLogs = async () => {
     try {
-      const response = await authFetch(`${API_URL}/api/logs/all`);
-      const data = await response.json();
-      setLogs(Array.isArray(data) ? data : []);
+      const [studentRes, facultyRes] = await Promise.all([
+        authFetch(`${API_URL}/api/logs/all`),
+        authFetch(`${API_URL}/api/faculty-logs/all`),
+      ]);
+      const students = await studentRes.json();
+      const faculty = await facultyRes.json().catch(() => []);
+      const facultyAsLogs = Array.isArray(faculty)
+        ? faculty.map((f) => ({ ...f, student_number: f.employee_id, program: "Faculty", is_faculty: true }))
+        : [];
+      setLogs([...(Array.isArray(students) ? students : []), ...facultyAsLogs]);
     } catch (error) {
       console.error("Fetch error:", error);
     }
@@ -316,6 +424,7 @@ const Analytics = () => {
   // plus the current one so it's always selectable even before any visits.
   const availablePeriods = useMemo(() => {
     if (periodType === WEEK) return [LAST7];
+    if (periodType === "Day") return [dayKey(new Date())]; // any date can be picked with the date box
     // Semester with a calendar: every semester that has started, newest first
     // (so the current one is always first and selected by default).
     if (periodType === "Semester" && startedSemesters(semesters).length > 0) {
@@ -334,6 +443,11 @@ const Analytics = () => {
   // Snap to the most recent available period whenever the period TYPE changes
   // (e.g. switching from Month to Semester shouldn't keep a month-shaped value).
   useEffect(() => {
+    // "Day": keep the picked date; if coming from another type, start on today.
+    if (periodType === "Day") {
+      setSelectedPeriod(prev => (isDayKey(prev) ? prev : dayKey(new Date())));
+      return;
+    }
     setSelectedPeriod(prev => (availablePeriods.includes(prev) ? prev : availablePeriods[0]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodType, availablePeriods]);
@@ -342,10 +456,11 @@ const Analytics = () => {
   const periodRange = useMemo(() => getPeriodRange(periodType, selectedPeriod, semesters), [periodType, selectedPeriod, semesters]);
 
   // Wording for card subtitles: "this month" / "in the last 7 days", etc.
-  const periodPhrase = periodType === WEEK ? "in the last 7 days" : `this ${periodType.toLowerCase()}`;
-  const periodShort = periodType === WEEK ? "last 7 days" : periodType.toLowerCase();
+  const dayText = isDayKey(selectedPeriod) ? dayShort(selectedPeriod) : "this day";
+  const periodPhrase = periodType === WEEK ? "in the last 7 days" : periodType === "Day" ? `on ${dayText}` : `this ${periodType.toLowerCase()}`;
+  const periodShort = periodType === WEEK ? "last 7 days" : periodType === "Day" ? dayText : periodType.toLowerCase();
 
-// Student logs inside the selected period.
+// Student and faculty logs inside the selected period.
   const periodLogs = useMemo(() => {
     return logs.filter(l => {
       if (!l.visit_date) return false;
@@ -353,6 +468,10 @@ const Analytics = () => {
       return !isNaN(d) && d >= periodRange.start && d <= periodRange.end;
     });
   }, [logs, periodRange]);
+
+  // The same logs, split: the student charts use the first, the faculty charts the second.
+  const studentPeriodLogs = useMemo(() => periodLogs.filter(l => !l.is_faculty), [periodLogs]);
+  const facultyPeriodLogs = useMemo(() => periodLogs.filter(l => l.is_faculty), [periodLogs]);
 
 // Guest logs inside the selected period.
   const periodGuestLogs = useMemo(() => {
@@ -369,12 +488,20 @@ const Analytics = () => {
   // KPI: Total visits & avg daily visits (students + guests)
   const totalVisits = combinedPeriodEntries.length;
   const today = new Date();
-  const rangeTotalDays = Math.round((periodRange.end - periodRange.start) / (1000 * 60 * 60 * 24)) + 1;
+  const rangeTotalDays = Math.max(1, Math.ceil((periodRange.end - periodRange.start) / (1000 * 60 * 60 * 24)));
   const isPeriodOngoing = today >= periodRange.start && today <= periodRange.end;
   const daysElapsed = isPeriodOngoing
     ? Math.floor((today - periodRange.start) / (1000 * 60 * 60 * 24)) + 1
     : rangeTotalDays;
-  const avgDailyVisits = daysElapsed > 0 ? (totalVisits / daysElapsed).toFixed(1) : "0.0";
+  // For a single day, "per day" would just repeat the total, so show visits per library hour instead.
+  const avgDailyVisits = periodType === "Day"
+    ? (totalVisits / HOURS.length).toFixed(1)
+    : daysElapsed > 0 ? (totalVisits / daysElapsed).toFixed(1) : "0.0";
+  const avgCardLabel = periodType === "Day" ? "Avg. Visits per Hour" : "Avg. Daily Visits";
+  const avgCardTooltip = periodType === "Day"
+    ? `Total visits on this day divided by the ${HOURS.length} library hours (7 AM–6 PM).`
+    : KPI_TOOLTIPS.avgDaily;
+  const avgCardFooter = periodType === "Day" ? "Across library hours" : "Weekdays and weekends";
 
   // vs previous period trend
   const previousPeriodValue = getPreviousPeriodValue(periodType, selectedPeriod, semesters);
@@ -451,6 +578,19 @@ const Analytics = () => {
   // Entry trend — grouped by week when viewing a single month (W1..W5), or
   // by month when viewing a semester/year (too many weeks to show cleanly).
   const trendData = useMemo(() => {
+    // One day: visits for each library hour (by time in).
+    if (periodType === "Day") {
+      const counts = HOURS.map(() => 0);
+      combinedPeriodEntries.forEach(l => {
+        if (!l.time_in) return;
+        const d = new Date(l.time_in);
+        if (isNaN(d)) return;
+        const i = HOURS.indexOf(d.getHours());
+        if (i !== -1) counts[i] += 1;
+      });
+      return HOURS.map((h, i) => ({ name: formatHour(h), visits: counts[i] }));
+    }
+
     if (periodType === WEEK) {
       const days = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(periodRange.start);
@@ -498,7 +638,7 @@ const Analytics = () => {
     return buckets.map(({ name, visits }) => ({ name, visits }));
   }, [combinedPeriodEntries, periodType, periodRange, rangeTotalDays]);
 
-  const trendTitle = periodType === WEEK ? `Daily entry trend` : periodType === "Month" ? `Weekly entry trend` : `Monthly entry trend`;
+  const trendTitle = periodType === "Day" ? `Hourly entry trend` : periodType === WEEK ? `Daily entry trend` : periodType === "Month" ? `Weekly entry trend` : `Monthly entry trend`;
 
   // Peak hours heatmap matrix (weekday x hour, students + guests)
   const heatmapMatrix = useMemo(() => {
@@ -517,23 +657,15 @@ const Analytics = () => {
   const heatmapMax = Math.max(1, ...heatmapMatrix.flat());
 
   // Visits by college
-  const collegeChartData = useMemo(() => {
-    const counts = periodLogs.reduce((acc, l) => {
-      const code = toAcronym(l.college);
-      if (code) acc[code] = (acc[code] || 0) + 1;
-      return acc;
-    }, {});
-    return COLLEGE_OPTIONS
-      .map(c => ({ key: c, name: c, value: counts[c] || 0 }))
-      .filter(c => c.value > 0)
-      .sort((a, b) => b.value - a.value);
-  }, [periodLogs]);
+  const collegeChartData = useMemo(() => visitsByCollege(studentPeriodLogs), [studentPeriodLogs]);
+  // Faculty visits by college (own chart, so they aren't counted as students)
+  const facultyCollegeChartData = useMemo(() => visitsByCollege(facultyPeriodLogs), [facultyPeriodLogs]);
 
   // Highest program (course) by visits — capped to top 8 so the chart stays
   // readable even at schools with many programs.
   const programChartData = useMemo(() => {
     const counts = {};
-    periodLogs.forEach(l => {
+    studentPeriodLogs.forEach(l => {
       const name = l.program || "Unspecified";
       counts[name] = (counts[name] || 0) + 1;
     });
@@ -541,7 +673,7 @@ const Analytics = () => {
       .map(([name, visits]) => ({ key: name, name, value: visits }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [periodLogs]);
+  }, [studentPeriodLogs]);
 
   // Gender comparison (by visit record, same methodology as college/program)
   const genderChartData = useMemo(() => {
@@ -572,11 +704,11 @@ const Analytics = () => {
   const { newReturningData, newCount, returningCount } = useMemo(() => {
     const allTimeCountByStudent = {};
     logs.forEach(l => {
-      if (!l.student_number) return;
+      if (l.is_faculty || !l.student_number) return; // students only
       allTimeCountByStudent[l.student_number] = (allTimeCountByStudent[l.student_number] || 0) + 1;
     });
 
-    const studentsInPeriod = new Set(periodLogs.map(l => l.student_number).filter(Boolean));
+    const studentsInPeriod = new Set(studentPeriodLogs.map(l => l.student_number).filter(Boolean));
     let newC = 0, returningC = 0;
     studentsInPeriod.forEach(sn => {
       if ((allTimeCountByStudent[sn] || 0) <= 1) newC += 1;
@@ -591,50 +723,31 @@ const Analytics = () => {
       newCount: newC,
       returningCount: returningC,
     };
-  }, [logs, periodLogs]);
+  }, [logs, studentPeriodLogs]);
 
   const totalUniqueStudents = newCount + returningCount;
   const returningPct = totalUniqueStudents > 0 ? Math.round((returningCount / totalUniqueStudents) * 100) : 0;
 
-  // Top visiting students
-  const topStudents = useMemo(() => {
-    const byStudent = {};
-    periodLogs.forEach(l => {
-      const key = l.student_number || l.full_name;
-      if (!key) return;
-      if (!byStudent[key]) {
-        byStudent[key] = {
-          studentNumber: l.student_number || "N/A",
-          college: toAcronym(l.college) || "N/A",
-          visits: 0,
-          stayMs: 0,
-          stayCount: 0,
-        };
-      }
-      byStudent[key].visits += 1;
-      if (l.time_in && l.time_out && !l.forced_exit) {
-        byStudent[key].stayMs += (new Date(l.time_out) - new Date(l.time_in));
-        byStudent[key].stayCount += 1;
-      }
-    });
+  // Top visiting students, and (separately) top visiting faculty
+  const topStudents = useMemo(() => topVisitors(studentPeriodLogs), [studentPeriodLogs]);
+  const topFaculty = useMemo(() => topVisitors(facultyPeriodLogs), [facultyPeriodLogs]);
 
-    return Object.values(byStudent)
-      .map(s => ({
-        ...s,
-        avgStay: s.stayCount > 0 ? (s.stayMs / s.stayCount / (1000 * 60 * 60)).toFixed(1) : "--",
-      }))
-      .sort((a, b) => b.visits - a.visits)
-      .slice(0, 5);
-  }, [periodLogs]);
+  // Different faculty in this period (each counted once), and students + faculty together.
+  const totalUniqueFaculty = useMemo(
+    () => new Set(facultyPeriodLogs.map(l => l.student_number).filter(Boolean)).size,
+    [facultyPeriodLogs]
+  );
+  const totalUniquePeople = totalUniqueStudents + totalUniqueFaculty;
 
   // "View Report": collects the totals shown on this page (for the selected period),
-  // makes the PDF and opens it in a preview first. Downloading is a separate button.
-  // Nothing is sent to the server.
-  const handleExportPdf = async () => {
+  // makes the PDF and opens it in a preview first. PDF / Excel downloads are the
+  // buttons inside the preview. Nothing is sent to the server.
+  const handleViewReport = async () => {
     setExporting(true);
     try {
       const periodLabelText = getPeriodLabel(periodType, selectedPeriod, semesters);
-      const studentTotal = periodLogs.length;
+      const studentTotal = studentPeriodLogs.length;
+      const facultyTotal = facultyPeriodLogs.length;
       const guestTotal = periodGuestLogs.length;
 
       // Visits per library hour (7 AM–6 PM), added up from the heatmap.
@@ -645,31 +758,31 @@ const Analytics = () => {
       // Visits per weekday, added up from the heatmap.
       const dayRows = WEEKDAY_FULL.map((day, i) => [day, heatmapMatrix[i].reduce((a, b) => a + b, 0)]);
 
-      const pdf = await buildAnalyticsPdf({
+      // Kept short on purpose: the main totals plus six simple tables.
+      const report = {
         periodLabel: periodLabelText,
         generatedBy: getAdmin()?.name,
         summary: [
-          ["Total visits (students + guests)", totalVisits],
+          ["Total visits (students + faculty + guests)", totalVisits],
           ["Student visits", studentTotal],
+          ["Faculty visits", facultyTotal],
           ["Guest visits", guestTotal],
-          ["Unique students (each counted once)", totalUniqueStudents],
-          ["New students / Returning students", `${newCount} / ${returningCount}`],
-          ["Average daily visits", avgDailyVisits],
-          ["Peak hour (busiest 2-hour window)", peakLabel],
-          ["Busiest day(s)", busiestDaysLabel.replace(" busiest", "")],
-          ["Average stay duration", `${avgStay} hr`],
-          ["Forced exits (not counted in average stay)", forcedExitCount],
+          ["Unique students", totalUniqueStudents],
+          ["Unique faculty", totalUniqueFaculty],
+          [periodType === "Day" ? "Average visits per hour" : "Average daily visits", avgDailyVisits],
+          ["Peak hour (busiest 2 hours)", peakLabel],
+          ["Average stay", `${avgStay} hr`],
           [
-            `Change in total visits vs ${previousPeriodLabel || "previous period"}`,
-            visitsTrend === null ? "No data in previous period" : `${visitsTrend > 0 ? "+" : ""}${visitsTrend}%`,
+            `Change vs ${previousPeriodLabel || "previous period"}`,
+            visitsTrend === null ? "No previous data" : `${visitsTrend > 0 ? "+" : ""}${visitsTrend}%`,
           ],
         ],
         // Listed in pairs: each pair is printed side by side in the PDF.
         sections: [
           {
             title: trendTitle.charAt(0).toUpperCase() + trendTitle.slice(1),
-            note: "Students and guests",
-            head: [periodType === WEEK ? "Day" : periodType === "Month" ? "Week" : "Month", "Visits"],
+            note: "Students, faculty and guests",
+            head: [periodType === "Day" ? "Hour" : periodType === WEEK ? "Day" : periodType === "Month" ? "Week" : "Month", "Visits"],
             rows: trendData.map((t) => [t.name, t.visits]),
           },
           {
@@ -680,13 +793,13 @@ const Analytics = () => {
           },
           {
             title: "Visits by Hour",
-            note: "Students and guests, based on time in",
+            note: "Students, faculty and guests, based on time in",
             head: ["Hour", "Visits"],
             rows: hourRows,
           },
           {
             title: "Visits by Day of the Week",
-            note: "Students and guests",
+            note: "Students, faculty and guests",
             head: ["Day", "Visits"],
             rows: dayRows,
           },
@@ -697,28 +810,18 @@ const Analytics = () => {
             rows: programChartData.map((p) => [p.name, p.value]),
           },
           {
-            title: "Gender",
-            note: "Students only, by visit",
-            head: ["Sex", "Visits"],
-            rows: genderChartData.map((g) => [g.name, g.value]),
-          },
-          {
             title: "Guest Types",
             head: ["Guest type", "Visits"],
-            rows: [...guestTypeChartData].sort((a, b) => b.value - a.value).map((g) => [g.name, g.value]),
+            rows: [...guestTypeChartData].sort((x, y) => y.value - x.value).map((g) => [g.name, g.value]),
             empty: "No guest visits for this period.",
           },
-          {
-            title: "Top 5 Visiting Students",
-            note: "Shown by student number only",
-            head: ["Student No.", "College", "Visits", "Avg stay"],
-            rows: topStudents.map((s) => [s.studentNumber, s.college, s.visits, s.avgStay === "--" ? "--" : `${s.avgStay} hr`]),
-          },
         ],
-      });
-      setReportPreview(pdf); // open the preview
+      };
+
+      const pdf = await buildAnalyticsPdf(report);
+      setReportPreview({ ...pdf, report }); // open the preview
     } catch (err) {
-      console.error("PDF export failed:", err);
+      console.error("Report failed:", err);
       setExportError("The report couldn't be created. Please try again.");
     } finally {
       setExporting(false);
@@ -726,6 +829,7 @@ const Analytics = () => {
   };
 
   const topCollegeName = collegeChartData[0]?.name;
+  const topFacultyCollegeName = facultyCollegeChartData[0]?.name;
   const topProgramName = programChartData[0]?.name;
   const topGenderEntry = [...genderChartData].sort((a, b) => b.value - a.value)[0];
   const topGuestTypeEntry = [...guestTypeChartData].sort((a, b) => b.value - a.value)[0];
@@ -738,17 +842,26 @@ const Analytics = () => {
         <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
           <PageTitle
             title="Analytics"
-            subtitle="Library usage trends, peak hours, and demographic breakdown."
+            subtitle="Visitor trends, peak hours, and demographic breakdown."
             right={
               <>
                 <FilterTabs options={PERIOD_TYPES} value={periodType} onChange={setPeriodType} />
-                <FilterSelect value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
-                  {availablePeriods.map((p) => (
-                    <option key={p} value={p}>{getPeriodLabel(periodType, p, semesters)}</option>
-                  ))}
-                </FilterSelect>
+                {periodType === "Day" ? (
+                  // Pick any date to see that day's own numbers and report.
+                  <DayPicker
+                    value={isDayKey(selectedPeriod) ? selectedPeriod : ""}
+                    max={dayKey(new Date())}
+                    onChange={(e) => { if (isDayKey(e.target.value)) setSelectedPeriod(e.target.value); }}
+                  />
+                ) : (
+                  <FilterSelect value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
+                    {availablePeriods.map((p) => (
+                      <option key={p} value={p}>{getPeriodLabel(periodType, p, semesters)}</option>
+                    ))}
+                  </FilterSelect>
+                )}
                 {/* Opens a preview of the report for the selected period (download from there) */}
-                <button type="button" onClick={handleExportPdf} disabled={exporting} className={btn.secondary}>
+                <button type="button" onClick={handleViewReport} disabled={exporting} className={btn.secondary}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />
                   </svg>
@@ -772,21 +885,21 @@ const Analytics = () => {
                     <TrendPill
                       change={visitsTrend}
                       suffix={`${Math.abs(visitsTrend ?? 0)}% vs ${previousPeriodLabel}`}
-                      emptyText={periodType === WEEK ? "No data in the previous 7 days" : `No data last ${periodType.toLowerCase()}`}
+                      emptyText={periodType === WEEK ? "No data in the previous 7 days" : periodType === "Day" ? "No data the day before" : `No data last ${periodType.toLowerCase()}`}
                     />
-                    {/* each student counted once, however many times they came */}
+                    {/* each student or faculty member counted once, however many times they came */}
                     <span className="text-xs text-gray-500">
-                      {totalUniqueStudents} different {totalUniqueStudents === 1 ? "student" : "students"}
+                      {totalUniquePeople} different {totalUniquePeople === 1 ? "person" : "people"}
                     </span>
                   </div>
                 }
               />
               <KpiCard
-                label="Avg. Daily Visits"
+                label={avgCardLabel}
                 value={avgDailyVisits}
                 color={BRAND.deep}
-                tooltip={KPI_TOOLTIPS.avgDaily}
-                footer={<span className="text-xs text-gray-500">Weekdays and weekends</span>}
+                tooltip={avgCardTooltip}
+                footer={<span className="text-xs text-gray-500">{avgCardFooter}</span>}
               />
               <KpiCard
                 label="Peak Hour"
@@ -815,7 +928,7 @@ const Analytics = () => {
           {/* Trend + Peak hours heatmap */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card className="p-6">
-              <CardTitle title={trendTitle.charAt(0).toUpperCase() + trendTitle.slice(1)} note="Students and guests" />
+              <CardTitle title={trendTitle.charAt(0).toUpperCase() + trendTitle.slice(1)} note="Students, faculty and guests" />
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -837,7 +950,7 @@ const Analytics = () => {
             </Card>
 
             <Card className="p-6">
-              <CardTitle title="Peak Hours" note="Visits per hour · students and guests" />
+              <CardTitle title="Peak Hours" note="Visits per hour · students, faculty and guests" />
               <div className="grid gap-1" style={{ gridTemplateColumns: `36px repeat(${HOURS.length}, 1fr)` }}>
                 {heatmapMatrix.map((row, dayIdx) => (
                   <React.Fragment key={dayIdx}>
@@ -943,6 +1056,49 @@ const Analytics = () => {
             </Card>
           </div>
 
+          {/* Faculty: Visits by College & Top Visiting Faculty */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <Card className="p-6">
+              <CardTitle
+                title="Faculty Visits by College"
+                note={topFacultyCollegeName
+                  ? `${topFacultyCollegeName} leads ${periodPhrase} · ${totalUniqueFaculty} different faculty`
+                  : "No faculty visits yet"}
+              />
+              <StatBarList data={facultyCollegeChartData} colorFor={rankColor} emptyLabel={`No faculty visits recorded ${periodPhrase}`} />
+            </Card>
+
+            <Card className="p-6">
+              <CardTitle title="Top Visiting Faculty" note="Faculty only" />
+              {topFaculty.length === 0 ? (
+                <EmptyState text={`No faculty visits recorded ${periodPhrase}`} />
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em] border-b border-[#F1F3F1]">
+                      <th className="pb-2.5">#</th>
+                      <th className="pb-2.5">Employee ID</th>
+                      <th className="pb-2.5">College</th>
+                      <th className="pb-2.5">Visits</th>
+                      <th className="pb-2.5">Avg Stay</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F3F1]">
+                    {topFaculty.map((f, i) => (
+                      <tr key={i}>
+                        <td className="py-2.5 text-gray-400 tabular-nums">{i + 1}</td>
+                        <td className="py-2.5 font-semibold text-gray-900 tabular-nums">{f.studentNumber}</td>
+                        <td className="py-2.5 text-gray-500">{f.college}</td>
+                        <td className="py-2.5 font-bold text-[#1B5E20] tabular-nums">{f.visits}</td>
+                        <td className="py-2.5 text-gray-500 tabular-nums">{f.avgStay === "--" ? "--" : `${f.avgStay} hr`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          </div>
+
           {/* Guest Types & Gender */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card className="p-6">
@@ -960,7 +1116,7 @@ const Analytics = () => {
             <Card className="p-6">
               <CardTitle
                 title="Gender Comparison"
-                note={topGenderEntry ? `${topGenderEntry.name} makes up the most visits ${periodPhrase} · students only` : "No student visits yet"}
+                note={topGenderEntry ? `${topGenderEntry.name} makes up the most visits ${periodPhrase} · students and faculty` : "No visits yet"}
               />
               <StatBarList
                 data={genderChartData}
@@ -972,7 +1128,7 @@ const Analytics = () => {
         </main>
       </div>
 
-      {/* REPORT PREVIEW — look at the PDF first; download or print from the viewer */}
+      {/* REPORT PREVIEW — look at the report first, then download it as PDF or Excel */}
       {reportPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071A0F]/40 backdrop-blur-sm" onClick={closeReportPreview}>
           <div
@@ -981,28 +1137,36 @@ const Analytics = () => {
           >
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-[#F1F3F1]">
               <div className="min-w-0">
-                <h3 className="text-[17px] font-bold text-gray-900">Library Usage Report</h3>
+                <h3 className="text-[17px] font-bold text-gray-900">{REPORT_TITLE}</h3>
                 <p className="text-xs text-gray-500 truncate">{getPeriodLabel(periodType, selectedPeriod, semesters)}</p>
               </div>
-              {/* Close only — download / print use the PDF viewer's own buttons below */}
-              <button
-                type="button"
-                onClick={closeReportPreview}
-                aria-label="Close"
-                className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-gray-500 hover:bg-[#F1F3F1] hover:text-gray-800 transition-colors"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              {/* Pick a file type to download, or close */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button type="button" onClick={handleDownloadPdf} className={btn.primary}>
+                  Download PDF
+                </button>
+                <button type="button" onClick={handleDownloadExcel} disabled={excelBusy} className={btn.secondary}>
+                  {excelBusy ? "Preparing..." : "Download Excel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeReportPreview}
+                  aria-label="Close"
+                  className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-gray-500 hover:bg-[#F1F3F1] hover:text-gray-800 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            {/* The browser's own PDF viewer shows the report */}
+            {/* The browser's own PDF viewer shows the report (the same file the PDF button downloads) */}
             <iframe title="Report preview" src={reportPreview.url} className="flex-1 w-full bg-[#F4F5F4]" />
           </div>
         </div>
       )}
 
-      {/* Shown only if the PDF couldn't be made */}
+      {/* Shown only if the report or the Excel file couldn't be made */}
       <Dialog
         open={!!exportError}
         tone="error"

@@ -1,16 +1,22 @@
 import React from "react";
 
-// Left panel of the scanner kiosk: who's inside right now + the live board per college.
+// Left panel of the scanner kiosk: who's inside right now (students, faculty, guests) + the live board per college.
 // Same look as the mobile app: white rounded cards with soft shadows.
-const ScannerSideBar = ({ totalInside, guestsInside = 0, boardData = {}, colleges }) => {
+// totalInside = everyone on the college board (students + faculty); studentsInside = students only.
+const ScannerSideBar = ({ totalInside, studentsInside, facultyInside = 0, guestsInside = 0, boardData = {}, colleges }) => {
   return (
     <aside className="scanner-sidebar w-[360px] flex-shrink-0 p-6 space-y-6 overflow-y-auto">
-      {/* STUDENTS + GUESTS INSIDE */}
+      {/* STUDENTS + FACULTY, with GUESTS under them in the middle (same card size) */}
       <div>
         <SectionLabel>Inside the library</SectionLabel>
         <div className="grid grid-cols-2 gap-3">
-          <StatCard label="Students" value={totalInside} fg="#1B5E20" />
-          <StatCard label="Guests" value={guestsInside} fg="#946800" />
+          <StatCard label="Students" value={studentsInside ?? totalInside} fg="#1B5E20" />
+          <StatCard label="Faculty" value={facultyInside} fg="#1D5C8C" />
+          <div className="col-span-2 flex justify-center">
+            <div className="w-[calc(50%-6px)]">
+              <StatCard label="Guests" value={guestsInside} fg="#946800" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -53,7 +59,7 @@ const StatCard = ({ label, value, fg }) => (
 );
 
 // One college on the live board: big count, college code, and a thin bar
-// showing that college's share of all students inside.
+// showing that college's share of everyone inside (students and faculty).
 const CollegeTile = ({ item, count, total }) => {
   const active = count > 0;
   const share = total > 0 ? Math.round((count / total) * 100) : 0;

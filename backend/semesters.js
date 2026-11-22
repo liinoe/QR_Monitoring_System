@@ -397,15 +397,51 @@ module.exports = function registerSemesterRoutes(app, { db, verifyToken, require
         }
     });
 
-    // DELETE /api/admin/semesters/:id → removes a semester that hasn't started yet.
+    // DELETE /api/admin/semesters/:id → removes a semester that hasn't started yet, or one that
+    // already ended (super admin only, like every route here). A semester that is in session can't
+    // be deleted, and neither can an ended one that can still be undone (see findUndoableEnd).
+    // Visit logs and student records are not touched: only the calendar entry goes away.
     app.delete('/api/admin/semesters/:id', verifyToken, requireSuperAdmin, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         try {
             const [rows] = await db.query('SELECT name, status FROM semesters WHERE semester_id = ?', [id]);
             if (rows.length === 0) return res.status(404).json({ message: 'Semester not found.' });
-            if (rows[0].status !== 'upcoming') return res.status(400).json({ message: "Only semesters that haven't started can be removed." });
-            await db.query('DELETE FROM semesters WHERE semester_id = ?', [id]);
-            res.json({ message: `${rows[0].name} was removed.` });
+            const { name, status } = rows[0];
+
+            if (status === 'active') {
+                return res.status(400).json({ message: "A semester that is in session can't be deleted. Edit its dates instead." });
+            }
+            if (status === 'ended') {
+                const undo = await findUndoableEnd().catch(() => null);
+                if (undo && undo.semester_id === id) {
+                    return res.status(400).json({
+                        message: `${name} can still be undone until ${undo.available_until}. It can be deleted after that.`,
+                    });
+                }
+            }
+
+            // The semester's saved undo data points at it (your database has a foreign key,
+            // fk_transitions_semester), so that data has to go first. All three deletes happen
+            // together: if one fails, nothing is deleted.
+            const conn = await db.getConnection();
+            try {
+                await conn.beginTransaction();
+                await conn.query(
+                    'DELETE FROM semester_transition_students WHERE transition_id IN (SELECT transition_id FROM semester_transitions WHERE semester_id = ?)',
+                    [id]
+                );
+                await conn.query('DELETE FROM semester_transitions WHERE semester_id = ?', [id]);
+                await conn.query('DELETE FROM semesters WHERE semester_id = ?', [id]);
+                await conn.commit();
+            } catch (txErr) {
+                try { await conn.rollback(); } catch { /* nothing to undo */ }
+                throw txErr;
+            } finally {
+                conn.release();
+            }
+
+            console.log(`[semesters] Deleted ${status} semester: ${name}`);
+            res.json({ message: `${name} was ${status === 'ended' ? 'deleted' : 'removed'}.` });
         } catch (err) {
             res.status(500).json({ message: err.message });
         }

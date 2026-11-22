@@ -18,9 +18,10 @@ import { getResponsive } from '../theme/responsive';
 import { API_URL } from '../config';
 import { authHeaders } from '../utils/studentAuth';
 import VisitRow from '../components/VisitRow';
+import BottomNav from '../components/BottomNav';
 
-// "My Visits": every library entry/exit of this student for the current semester,
-// newest first. A new semester starts a fresh list (older visits stay saved).
+// "My Visits": every library entry/exit of this student or faculty member for the current
+// semester, newest first. A new semester starts a fresh list (older visits stay saved).
 export default function MyVisitsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -32,13 +33,17 @@ export default function MyVisitsScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Gets this student's visits from the server.
+  // Gets this student's (or faculty member's) visits from the server.
   const loadVisits = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem('student');
       if (!stored) return;
-      const { student_number } = JSON.parse(stored);
-      const res = await fetch(`${API_URL}/api/student/visits/${student_number}`, { headers: await authHeaders() });
+      const account = JSON.parse(stored);
+      // Faculty are saved with user_type: 'faculty' and an employee_id, and have their own route.
+      const url = account.user_type === 'faculty'
+        ? `${API_URL}/api/faculty/visits/${account.employee_id}`
+        : `${API_URL}/api/student/visits/${account.student_number}`;
+      const res = await fetch(url, { headers: await authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.message || 'Could not load your visits.');
@@ -80,7 +85,9 @@ export default function MyVisitsScreen({ navigation }) {
       </SafeAreaView>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        </View>
       ) : (
         <FlatList
           data={visits}
@@ -89,7 +96,7 @@ export default function MyVisitsScreen({ navigation }) {
           contentContainerStyle={{
             paddingHorizontal: layout.horizontalPadding,
             paddingTop: 16,
-            paddingBottom: 30 + insets.bottom,
+            paddingBottom: 24,
             width: '100%',
             maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
             alignSelf: 'center',
@@ -122,6 +129,9 @@ export default function MyVisitsScreen({ navigation }) {
           )}
         />
       )}
+
+      {/* Footer: My Visits belongs to Home, so Home stays highlighted. Tapping Home goes back to it. */}
+      <BottomNav active="HomeScreen" current="MyVisits" navigation={navigation} />
     </View>
   );
 }
@@ -139,8 +149,8 @@ const styles = StyleSheet.create({
   headerInner: { paddingBottom: 22 },
   topBar: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   backBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center', justifyContent: 'center',
     marginRight: 12,
   },

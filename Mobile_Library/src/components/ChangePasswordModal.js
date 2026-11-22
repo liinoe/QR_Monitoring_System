@@ -19,10 +19,21 @@ import { API_URL } from '../config';
 import { getResponsive } from '../theme/responsive';
 import { useAppDialog } from './AppDialog';
 
-// Pop-up (opened from Settings) where a student changes their password.
+// Where each kind of account changes its password.
+// NOTE: check that the faculty route exists in the backend (index.js) and that it expects
+// { employee_id, current_password, new_password }.
+const CHANGE_PASSWORD_PATH = {
+  student: '/api/student/change-password',
+  faculty: '/api/faculty/change-password',
+};
+
+// Pop-up (opened from Settings) where a student or faculty member changes their password.
 // Same password rules as registration: 8+ characters, an uppercase letter,
 // a lowercase letter and a number.
-export default function ChangePasswordModal({ visible, onClose, studentNumber }) {
+//   studentNumber  the student's number (students)
+//   employeeId     the employee ID (faculty)
+//   isFaculty      true for a faculty account
+export default function ChangePasswordModal({ visible, onClose, studentNumber, employeeId, isFaculty = false }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -71,11 +82,11 @@ export default function ChangePasswordModal({ visible, onClose, studentNumber })
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/student/change-password`, {
+      const response = await fetch(`${API_URL}${CHANGE_PASSWORD_PATH[isFaculty ? 'faculty' : 'student']}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_number: studentNumber,
+          ...(isFaculty ? { employee_id: employeeId } : { student_number: studentNumber }),
           current_password: currentPassword,
           new_password: newPassword,
         }),

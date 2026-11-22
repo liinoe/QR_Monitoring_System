@@ -101,8 +101,10 @@ const Scanner = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [boardData, setBoardData] = useState({});
-  const [totalInside, setTotalInside] = useState(0);
+  const [totalInside, setTotalInside] = useState(0); // everyone on the college board (students + faculty)
+  const [studentsInside, setStudentsInside] = useState(0);
   const [guestsInside, setGuestsInside] = useState(0);
+  const [facultyInside, setFacultyInside] = useState(0);
   // "connected" | "disconnected" | "unknown" (agent not running / scanner not set up)
   const [scannerState, setScannerState] = useState("unknown");
 
@@ -151,15 +153,23 @@ const Scanner = () => {
   };
 
   // Live board numbers worked out on this PC (used while offline).
+  // Each saved entry is [student number / employee ID, program, college]. Faculty are saved with the
+  // program "Faculty": they count in their college AND in their own Faculty number.
   const showLocalBoard = () => {
     const counts = {};
+    let students = 0;
+    let faculty = 0;
     insideRef.current.forEach((h) => {
-      const college = packRef.current?.students?.[h]?.[2];
-      const code = toAcronym(college);
+      const info = packRef.current?.students?.[h];
+      if (info?.[1] === "Faculty") faculty += 1;
+      else students += 1;
+      const code = toAcronym(info?.[2]);
       if (code) counts[code] = (counts[code] || 0) + 1;
     });
     setBoardData(counts);
-    setTotalInside(insideRef.current.size);
+    setTotalInside(students + faculty);
+    setStudentsInside(students);
+    setFacultyInside(faculty);
   };
 
   // Sends the saved offline scans to the server. Returns true if the server was
@@ -224,9 +234,17 @@ const Scanner = () => {
     playTone(587.33, 0.14, "sine", 0, 0.18);
   };
 
+  // True for an "Access Denied" result (unknown / not-approved QR code).
+  // These show on the result card only; they are NOT added to "Recent scans".
+  // ("Library Closed" and "Already Logged Out" are still listed.)
+  const isAccessDenied = (r) =>
+    !r.already && r.action !== "entry" && r.action !== "exit" &&
+    ["ACCESS DENIED", "DENIED"].includes((r.full_name || "DENIED").toUpperCase());
+
   // Shows a scan result on the card AND adds it to the "Recent scans" list.
   const showScan = (result) => {
     setScanResult(result);
+    if (isAccessDenied(result)) return; // result card only, not in "Recent scans"
     const label = result.already ? "ALREADY SCANNED"
       : result.action === "entry" ? "ENTRY"
       : result.action === "exit" ? "EXIT"
@@ -253,7 +271,8 @@ const Scanner = () => {
     playTone(220, 0.3, "sawtooth", 0, 0.2);
   };
 
-  // Gets the live numbers in ONE request: students inside per college + guests inside.
+  // Gets the live numbers in ONE request: everyone inside per college (students + faculty),
+  // plus the students, faculty and guests inside.
   const fetchBoardData = async () => {
     try {
       const response = await fetchWithTimeout(`${API_URL}/api/scanner/live`, {}, SCAN_TIMEOUT_MS);
@@ -273,7 +292,9 @@ const Scanner = () => {
       });
       setBoardData(counts);
       setTotalInside(total);
+      setStudentsInside(data.students ?? total);
       setGuestsInside(data.guests ?? 0);
+      setFacultyInside(data.faculty ?? 0);
     } catch {
       // Server unreachable → offline mode; the board is worked out on this PC.
       setOffline(true);
@@ -635,7 +656,7 @@ const Scanner = () => {
 
       {/* BODY: live board on the left, scan area on the right */}
       <div className="scanner-body flex flex-1 min-h-0">
-        <ScannerSideBar totalInside={totalInside} guestsInside={guestsInside} boardData={boardData} colleges={COLLEGES} />
+        <ScannerSideBar totalInside={totalInside} studentsInside={studentsInside} facultyInside={facultyInside} guestsInside={guestsInside} boardData={boardData} colleges={COLLEGES} />
 
         <main className="scanner-page-main flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-[680px] flex flex-col items-center justify-center">
@@ -725,7 +746,9 @@ const Scanner = () => {
             {/* RECENT SCANS — the result card shows only the newest scan; these are the
                 ones before it (newest first), so nobody misses their own result. */}
             {(() => {
-              const earlier = scanResult ? recentResults.slice(1, 4) : recentResults.slice(0, 3);
+              // The card's result is the newest list item, unless it was an Access Denied
+              // (those aren't listed), in which case every listed scan is an earlier one.
+              const earlier = scanResult && !isAccessDenied(scanResult) ? recentResults.slice(1, 4) : recentResults.slice(0, 3);
               if (earlier.length === 0) return null;
               return (
                 <div className="w-full mt-5">

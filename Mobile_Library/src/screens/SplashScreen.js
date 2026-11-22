@@ -8,7 +8,6 @@ import {
   Easing,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  Image,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +18,7 @@ import { colors } from '../theme/colors';
 import { BRAND } from '../theme/brand';
 import { getResponsive } from '../theme/responsive';
 import { QLessMark, QLessTile, ScanFrame, BrandPattern, TILE_RADIUS_RATIO } from '../components/QLessLogo';
+import CvsuLockup from '../components/CvsuLockup';
 
 /**
  * SplashScreen — animated intro that turns into the Welcome slides.
@@ -40,10 +40,9 @@ import { QLessMark, QLessTile, ScanFrame, BrandPattern, TILE_RADIUS_RATIO } from
  *
  * Tapping anywhere during the intro finishes the drawing instantly and shows
  * the Get Started button. Navigation targets
- * ('Register' / 'Login') are unchanged.
+ * ('RoleSelect' for Create Account / 'Login') are unchanged.
  */
 
-const CVSU_LOGO = require('../../assets/cvsu_logo.png');
 const APP_NAME = 'QLess';
 const WELCOME_TILE = 104;
 
@@ -54,7 +53,7 @@ const SLIDES = [
   {
     key: 'welcome',
     title: `Welcome to ${APP_NAME}`,
-    description: 'Your digital companion for the Ladislao N. Diwa Memorial Library — simple, fast, and always with you.',
+    description: 'Your digital companion for the CvSU - Main Campus Library — simple, fast, and always with you.',
     isBrand: true,
   },
   {
@@ -104,11 +103,14 @@ export default function SplashScreen({ navigation }) {
   const [morphing, setMorphing] = useState(false);
   const introRef = useRef(null);
   const cta = useRef(new Animated.Value(0)).current; // Get Started button
+  const made = useRef(new Animated.Value(0)).current; // "Made for CvSU" slides up after the wordmark
+  const [textH, setTextH] = useState(135); // measured height of the QLess + tagline + "Made for" block
   const ctaShown = useRef(false);
   const insets = useSafeAreaInsets();
 
   const isLast = index === SLIDES.length - 1;
-  const introMarkSize = Math.min(200, rootSize.w * 0.5);
+  // Scales with the screen: smaller on short phones so the whole group always fits above the button.
+  const introMarkSize = Math.min(200, rootSize.w * 0.5, rootSize.h * 0.24);
 
   const measureTile = () =>
     new Promise((resolve) => {
@@ -121,7 +123,7 @@ export default function SplashScreen({ navigation }) {
       });
     });
 
-  // Welcome text rises in, line by line (title → description → chip → buttons).
+  // Welcome text rises in, line by line (title → description → buttons).
   const playReveal = (delay = 0) =>
     Animated.timing(reveal, { toValue: 1, duration: 620, delay, easing: EASE, useNativeDriver: true }).start();
 
@@ -175,6 +177,7 @@ export default function SplashScreen({ navigation }) {
       step(draw.handle, 240, 960),
       step(draw.book, 360, 1120),
       step(wordmark, 460, 1260),
+      step(made, 520, 1700),
       step(draw.scan, 820, 1320, Easing.inOut(Easing.quad)),
     ]);
     introRef.current.start(({ finished }) => {
@@ -206,7 +209,7 @@ export default function SplashScreen({ navigation }) {
   const skipIntro = () => {
     if (ctaShown.current) return;
     introRef.current?.stop();
-    [...Object.values(draw), wordmark].forEach((v) => v.setValue(1));
+    [...Object.values(draw), wordmark, made].forEach((v) => v.setValue(1));
     draw.scan.setValue(0);
     showCta();
   };
@@ -216,7 +219,7 @@ export default function SplashScreen({ navigation }) {
 
   // ---- slides ----
   const goToSlide = (i) => listRef.current?.scrollToIndex({ index: i, animated: true });
-  const handleNext = () => (isLast ? navigation.navigate('Register') : goToSlide(index + 1));
+  const handleNext = () => (isLast ? navigation.navigate('RoleSelect') : goToSlide(index + 1));
   const handleSkip = () => navigation.navigate('Login');
 
   const onScroll = Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false });
@@ -229,7 +232,15 @@ export default function SplashScreen({ navigation }) {
   const W = rootSize.w;
   const H = rootSize.h;
   const BG = Math.hypot(W, H);
-  const markCenterY = H / 2 - 30; // the logo sits a little above centre
+  // The whole group (logo + QLess + tagline + "Made for") is centred between the status bar and the
+  // Get Started button, a little above the middle (45% of the free space above it, 55% below), so it
+  // looks balanced on every screen size. The text block's height is measured, not guessed.
+  const GAP_MARK = 18; // space between the logo and "QLess"
+  const areaTop = insets.top + 8;
+  const areaBottom = H - (insets.bottom + 36 + 54 + 16); // top of the Get Started button, plus a little air
+  const groupH = introMarkSize + GAP_MARK + textH;
+  const markTop = areaTop + Math.max(0, areaBottom - areaTop - groupH) * 0.45;
+  const markCenterY = markTop + introMarkSize / 2;
   const lerp = (from, to) => morph.interpolate({ inputRange: [0, 1], outputRange: [from, to] });
   const tcx = target ? target.x + target.size / 2 : W / 2; // welcome tile centre
   const tcy = target ? target.y + target.size / 2 : markCenterY;
@@ -329,12 +340,6 @@ export default function SplashScreen({ navigation }) {
                   <Animated.View style={item.isBrand ? riseIn(0.15, 0.7) : null}>
                     <Text style={styles.slideDescription}>{item.description}</Text>
                   </Animated.View>
-                  {item.isBrand && (
-                    <Animated.View style={[styles.cvsuChip, riseIn(0.3, 0.85)]}>
-                      <Image source={CVSU_LOGO} style={styles.cvsuLogo} resizeMode="contain" />
-                      <Text style={styles.cvsuChipText}>Cavite State University</Text>
-                    </Animated.View>
-                  )}
                 </Animated.View>
               </View>
             );
@@ -353,7 +358,7 @@ export default function SplashScreen({ navigation }) {
         <Animated.View style={[styles.footer, { paddingHorizontal: layout.horizontalPadding }, riseIn(0.45, 1)]}>
           {isLast ? (
             <>
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Register')} activeOpacity={0.88}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('RoleSelect')} activeOpacity={0.88}>
                 <Text style={styles.primaryBtnText}>Create Account</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLinkWrap} hitSlop={8}>
@@ -386,22 +391,23 @@ export default function SplashScreen({ navigation }) {
               pointerEvents="box-none"
               style={[StyleSheet.absoluteFill, { opacity: chrome, transform: [{ translateY: chromeDrop }] }]}
             >
-              <Animated.View
+              <View
                 pointerEvents="none"
-                style={[
-                  styles.wordmarkWrap,
-                  {
-                    top: markCenterY + introMarkSize / 2 + 18,
-                    opacity: wordmark,
-                    transform: [{ translateY: wordmarkRise }],
-                  },
-                ]}
+                style={[styles.wordmarkWrap, { top: markTop + introMarkSize + GAP_MARK }]}
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (Math.abs(h - textH) > 1) setTextH(h);
+                }}
               >
-                <Text style={styles.wordmark}>
-                  Q<Text style={styles.wordmarkLess}>Less</Text>
-                </Text>
-                <Text style={styles.tagline}>Scan in. Skip the line.</Text>
-              </Animated.View>
+                <Animated.View style={{ alignItems: 'center', opacity: wordmark, transform: [{ translateY: wordmarkRise }] }}>
+                  <Text style={styles.wordmark}>
+                    Q<Text style={styles.wordmarkLess}>Less</Text>
+                  </Text>
+                  <Text style={styles.tagline}>Scan in. Skip the line.</Text>
+                </Animated.View>
+                {/* who the app is made for: slides up and fades in right after the wordmark */}
+                <CvsuLockup tone="dark" size={40} progress={made} style={{ marginTop: 26, paddingHorizontal: 24 }} />
+              </View>
 
               <Animated.View
                 style={[
@@ -477,22 +483,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
 
-  cvsuChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginTop: 22,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E4E4E7',
-    gap: 8,
-  },
-  cvsuLogo: { width: 22, height: 22 },
-  cvsuChipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 24 },
   dot: { height: 8, borderRadius: 4, backgroundColor: BRAND.deep },
 
@@ -509,6 +499,6 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15.5, letterSpacing: 0.4 },
 
   loginLinkWrap: { marginTop: 16, alignItems: 'center' },
-  loginLinkText: { fontSize: 13, color: colors.textSecondary },
+  loginLinkText: { fontSize: 16, color: colors.textSecondary },
   loginLinkBold: { color: colors.primary, fontWeight: '700' },
 });

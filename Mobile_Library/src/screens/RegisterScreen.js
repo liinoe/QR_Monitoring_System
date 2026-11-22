@@ -29,14 +29,13 @@ import PrivacyNoticeModal from '../components/PrivacyNoticeModal';
 import CorUploadField from '../components/CorUploadField';
 
 // Maps what the student picks ("Male") to what the database stores ("male").
-const sexLabelToValue = {
+export const sexLabelToValue = {
   'Male': 'male',
   'Female': 'female',
-  'Prefer not to say': 'prefer_not_to_say',
 };
 
 // Only CvSU school emails are accepted, e.g. juan.delacruz@cvsu.edu.ph
-const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
+export const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
 
 // Veterinary Medicine is a 6-year program, so it gets a "6th Year" option.
 const VETMED_COLLEGE = 'College of Veterinary Medicine and Biomedical Sciences';
@@ -47,7 +46,7 @@ function yearLevelsFor(college) {
 }
 
 // Checks the email as the student types and returns the message to show under the field.
-function getEmailFeedback(email) {
+export function getEmailFeedback(email) {
   const value = email.trim();
   if (!value) return { state: 'hint', text: 'Use your CvSU email (name@cvsu.edu.ph)' };
   if (/\s/.test(value)) return { state: 'error', text: 'Email cannot contain spaces' };
@@ -72,13 +71,13 @@ export function isStrongPassword(pw) {
 // Names: letters only (including ñ and accented letters), plus spaces, hyphens,
 // apostrophes and periods — e.g. "Dela Cruz", "O'Neil", "Ma. Clara". No numbers or symbols.
 const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ .'-]*$/;
-const NAME_RULE_MESSAGE = 'Letters only. Spaces, hyphens (-), apostrophes (\') and periods (.) are allowed.';
+export const NAME_RULE_MESSAGE = 'Letters only. Spaces, hyphens (-), apostrophes (\') and periods (.) are allowed.';
 // True if the name is empty (checked separately) or follows the rule above.
-const isValidName = (value) => !value.trim() || NAME_REGEX.test(value.trim());
+export const isValidName = (value) => !value.trim() || NAME_REGEX.test(value.trim());
 
 // Cleans what the student types in the phone box and keeps only the 10
 // digits after +63 (accepts "09...", "63..." or "9...").
-function normalizePhoneDigits(value) {
+export function normalizePhoneDigits(value) {
   const digits = value.replace(/\D/g, '');
   const localDigits = digits.startsWith('09')
     ? digits.slice(1)
@@ -100,7 +99,7 @@ function formatPhoneDigits(phoneNumber) {
 // Waits 0.5s after the student stops typing, then asks the server.
 // Returns { state, message, reason } where state is
 // 'idle' | 'checking' | 'available' | 'taken' | 'unknown'.
-function useAvailabilityCheck(url) {
+export function useAvailabilityCheck(url) {
   const [check, setCheck] = useState({ state: 'idle', message: '', reason: null });
 
   useEffect(() => {
@@ -738,7 +737,10 @@ export default function RegisterScreen({ navigation, route }) {
               : 'Fields marked with * are required.'}
         </Text>
         {currentPeriod ? (
-          <Text style={styles.headerPeriod}>{isRenewal ? 'Renewing for' : 'Registering for'}: {currentPeriod}</Text>
+          <View style={styles.periodPill}>
+            <Ionicons name="calendar-outline" size={14} color={BRAND.goldLight} />
+            <Text style={styles.periodPillText}>{isRenewal ? 'Renewing for' : 'Registering for'}: {currentPeriod}</Text>
+          </View>
         ) : null}
       </SafeAreaView>
 
@@ -1158,7 +1160,7 @@ export default function RegisterScreen({ navigation, route }) {
 
 // Phone input with a fixed "+63" in front. Turns red while it's incomplete
 // or when the number is already used by another account.
-const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange, taken, hasMessage }, ref) {
+export const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange, taken, hasMessage }, ref) {
   const phoneDigits = value.replace(/^\+63/, '');
   const isComplete = /^9\d{9}$/.test(phoneDigits);
   const hasInput = phoneDigits.length > 0;
@@ -1186,7 +1188,7 @@ const PhoneNumberField = forwardRef(function PhoneNumberField({ value, onChange,
 // A labeled text input. Pass invalid={true} to show a red border.
 // forwardRef lets a screen grab the input (e.g. to focus it from code).
 // editable={false} shows it grayed out (locked). required={true} adds a red *.
-const Field = forwardRef(function Field({ label, invalid, style, required, ...rest }, ref) {
+export const Field = forwardRef(function Field({ label, invalid, style, required, ...rest }, ref) {
   return (
     <View style={[{ marginBottom: 16 }, style]}>
       <Text style={styles.fieldLabel}>{label}{required && <Text style={{ color: '#DC2626' }}> *</Text>}</Text>
@@ -1202,7 +1204,7 @@ const Field = forwardRef(function Field({ label, invalid, style, required, ...re
 
 // Live message under a field (student number, phone): nothing while typing,
 // then "Checking…", then available (green) / already used (red).
-function LiveCheck({ check }) {
+export function LiveCheck({ check }) {
   if (check.state === 'idle') return null; // nothing to show until all 9 digits are typed
   if (check.state === 'checking') {
     return (
@@ -1226,7 +1228,7 @@ function LiveCheck({ check }) {
 }
 
 // Live message under the email field: gray hint, red error, or green "valid".
-function EmailCheck({ feedback }) {
+export function EmailCheck({ feedback }) {
   const look = {
     hint: { color: colors.textSecondary },
     error: { color: '#DC2626' },
@@ -1240,7 +1242,7 @@ function EmailCheck({ feedback }) {
 }
 
 // Password input with a show/hide eye button.
-function PasswordField({ label, visible, onToggle, required, ...rest }) {
+export function PasswordField({ label, visible, onToggle, required, ...rest }) {
   return (
     <View style={{ marginBottom: 8 }}>
       <Text style={styles.fieldLabel}>{label}{required && <Text style={{ color: '#DC2626' }}> *</Text>}</Text>
@@ -1309,7 +1311,7 @@ export function PasswordMatchCheck({ matches }) {
 }
 
 // One "Label ........ Value" line in the review pop-up.
-function SummaryRow({ label, value }) {
+export function SummaryRow({ label, value }) {
   return (
     <View style={styles.summaryRow}>
       <Text style={styles.summaryLabel}>{label}</Text>
@@ -1318,12 +1320,19 @@ function SummaryRow({ label, value }) {
   );
 }
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   headerWrap: { backgroundColor: BRAND.deep, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: HEADER_RADIUS, borderBottomRightRadius: HEADER_RADIUS, overflow: 'hidden' },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   headerSub: { color: '#BFD9C2', fontSize: 13, marginTop: 4 },
   headerPeriod: { color: BRAND.goldLight, fontSize: 12, fontWeight: '700', marginTop: 6 },
+  // Gold-outlined badge in the header: which semester they are registering for
+  periodPill: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: 10,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+    backgroundColor: 'rgba(240,205,90,0.14)', borderWidth: 1, borderColor: 'rgba(240,205,90,0.45)',
+  },
+  periodPillText: { color: BRAND.goldLight, fontSize: 13, fontWeight: '700' },
   scroll: { flex: 1, marginTop: -16 },
   scrollContent: { padding: 16, paddingBottom: 32 },
 

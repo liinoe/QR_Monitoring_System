@@ -9,17 +9,22 @@
 //   anything else = "Other" / custom text typed by the admin
 
 // Returns { kind, message, buttonLabel, noEditsNeeded } for a rejection reason.
-export function getRejectionGuide(reason, currentPeriod) {
+// userType: 'student' (default) or 'faculty' — faculty get wording about their
+// Employee ID / proof of employment instead of the student registration form.
+export function getRejectionGuide(reason, currentPeriod, userType = 'student') {
      const text = (reason || '').trim();
      const lower = text.toLowerCase();
      const semester = currentPeriod || 'this semester';
+     const faculty = userType === 'faculty';
 
-     // Not enrolled yet: their details are fine, they just need to enroll first.
+     // Not enrolled yet (students) / employment couldn't be confirmed (faculty).
      if (lower.startsWith('not enrolled')) {
           return {
                kind: 'not_enrolled',
-               message: `You're not enrolled for ${semester} yet. Once you're officially enrolled, you can resubmit — no changes to your details are needed.`,
-               buttonLabel: "I'm Enrolled Now — Resubmit",
+               message: faculty
+                    ? `The library couldn't confirm that you're currently employed for ${semester}. Once that is settled, you can resubmit — no changes to your details are needed.`
+                    : `You're not enrolled for ${semester} yet. Once you're officially enrolled, you can resubmit — no changes to your details are needed.`,
+               buttonLabel: faculty ? 'Resubmit' : "I'm Enrolled Now — Resubmit",
                noEditsNeeded: true,
           };
      }
@@ -28,17 +33,21 @@ export function getRejectionGuide(reason, currentPeriod) {
      if (lower.startsWith('information does not match')) {
           return {
                kind: 'mismatch',
-               message: 'Your details don’t match the university records. Check your name spelling, student number, college and program, then resubmit.',
+               message: faculty
+                    ? 'Your details don’t match the university records. Check your name spelling, Employee ID and college, then resubmit.'
+                    : 'Your details don’t match the university records. Check your name spelling, student number, college and program, then resubmit.',
                buttonLabel: 'Edit & Resubmit',
                noEditsNeeded: false,
           };
      }
 
-     // The uploaded registration form couldn't be used to verify enrollment.
-     if (lower.startsWith('registration form is unclear')) {
+     // The uploaded file couldn't be used to verify the person.
+     if (lower.startsWith('registration form is unclear') || (faculty && lower.startsWith('employee id'))) {
           return {
                kind: 'registration_form',
-               message: `Your registration form couldn't be verified. It may be blurry, cut off, from another semester, or not yours. Upload a clear photo or PDF of your ${semester} registration form, then resubmit.`,
+               message: faculty
+                    ? 'Your proof of Employee ID couldn’t be verified. It may be blurry, cut off, expired, or not yours. Upload a clear photo or PDF of your employee ID, then resubmit.'
+                    : `Your registration form couldn't be verified. It may be blurry, cut off, from another semester, or not yours. Upload a clear photo or PDF of your ${semester} registration form, then resubmit.`,
                buttonLabel: 'Upload & Resubmit',
                noEditsNeeded: false,
           };
@@ -55,7 +64,7 @@ export function getRejectionGuide(reason, currentPeriod) {
           };
      }
 
-  // "Other" or a custom reason: show the admin's own words.
+     // "Other" or a custom reason: show the admin's own words.
      return {
           kind: 'other',
           message: `${text || 'Your registration was not approved.'} Not sure what to change? Visit the library front desk.`,

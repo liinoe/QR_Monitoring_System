@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
-import SearchInput from "../../components/SearchInput";
-import FilterSelect from "../../components/FilterSelect";
-import Pagination from "../../components/Pagination";
-import { authFetch } from "../../auth";
-import { colleges, programsByCollege, yearLevels, toCollegeAcronym } from "../../data/options";
-import { BRAND, COLLEGE_COLORS, PageTitle, Pill, Avatar, Dialog, btn } from "../../components/AdminUI";
+import SearchInput from "../../../components/SearchInput";
+import FilterSelect from "../../../components/FilterSelect";
+import Pagination from "../../../components/Pagination";
+import { authFetch } from "../../../auth";
+import { colleges, programsByCollege, yearLevels, toCollegeAcronym } from "../../../data/options";
+import { COLLEGE_COLORS, PageTitle, Pill, Avatar, Dialog, btn } from "../../../components/AdminUI";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -21,7 +19,7 @@ const emptyForm = {
 };
 
 // College choice label: bold code + gray name, e.g. "CEIT · Engineering and Information Technology".
-const CollegeLabel = ({ college }) => (
+export const CollegeLabel = ({ college }) => (
   <>
     <span className="font-bold">{toCollegeAcronym(college)}</span>
     <span className="text-gray-400 font-normal"> · {college.replace(/^College of /i, "")}</span>
@@ -29,30 +27,30 @@ const CollegeLabel = ({ college }) => (
 );
 
 // Same input look as the guest kiosk / mobile app.
-const inputClass =
+export const inputClass =
   "w-full bg-white border border-[#E3E7E3] rounded-[8px] px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#1B5E20] focus:ring-4 focus:ring-[#1B5E20]/10 disabled:bg-[#F4F5F4] disabled:text-gray-400";
 
 // Phone helpers (same rules as the mobile Register screen).
 // Keeps only the 10 digits after +63 (accepts "09...", "63..." or "9...").
-const normalizePhoneDigits = (value) => {
+export const normalizePhoneDigits = (value) => {
   const digits = (value || "").replace(/\D/g, "");
   const local = digits.startsWith("09") ? digits.slice(1) : digits.startsWith("63") ? digits.slice(2) : digits;
   return local.slice(0, 10);
 };
 // Shows "+639123456789" as "912 345 6789" in the input box.
-const formatPhoneDigits = (phone) => {
+export const formatPhoneDigits = (phone) => {
   const d = (phone || "").replace(/^\+63/, "").slice(0, 10);
   return [d.slice(0, 3), d.slice(3, 6), d.slice(6, 10)].filter(Boolean).join(" ");
 };
 // A complete Philippine mobile number: +63 then 9 and 9 more digits.
-const isValidPhone = (phone) => /^\+639\d{9}$/.test(phone || "");
+export const isValidPhone = (phone) => /^\+639\d{9}$/.test(phone || "");
 
 // Year levels for a college: Vet Med (CVMBS) also has a 6th year.
 const yearLevelsFor = (college) =>
   /veterinary/i.test(college || "") ? [...yearLevels.filter((y) => y !== "6th Year"), "6th Year"] : yearLevels;
 
 // "Juan D. Dela Cruz" style name (falls back to full_name for old records).
-const displayNameOf = (s) =>
+export const displayNameOf = (s) =>
   s.first_name && s.surname
     ? `${s.first_name} ${s.middle_name ? s.middle_name.charAt(0).toUpperCase() + ". " : ""}${s.surname}`
     : s.full_name || "—";
@@ -66,10 +64,11 @@ const SORT_OPTIONS = [
 ];
 
 // Surname used for alphabetical sorting (old records only have full_name → its last word).
-const surnameOf = (s) => (s.surname || (s.full_name || "").trim().split(/\s+/).pop() || "").toLowerCase();
+export const surnameOf = (s) => (s.surname || (s.full_name || "").trim().split(/\s+/).pop() || "").toLowerCase();
 
-// Admin page for correcting an approved student's details (e.g. after a program shift).
-const ManageStudents = () => {
+// STUDENT accounts: correct an approved student's details (e.g. after a program shift).
+// (The page frame, sidebar and the Students | Faculty switch are in ManageAccounts.jsx.)
+const StudentAccountsPanel = ({ switcher }) => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -260,15 +259,16 @@ const ManageStudents = () => {
   const paginated = filtered.slice(startIndex, startIndex + rowsPerPage);
 
   return (
-    <div className="w-screen min-h-screen flex flex-col font-sans" style={{ backgroundColor: BRAND.page }}>
-      <Header />
-      <div className="flex flex-1">
-        <Sidebar />
-        <main className="flex-1 min-w-0 px-10 py-8 space-y-6">
+    <>
           <PageTitle
             title="Student Accounts"
             subtitle="Update a student's college, program, year level, or contact info — e.g. after a program shift."
-            right={!loading && <Pill tone="green">{approved.length} approved {approved.length === 1 ? "student" : "students"}</Pill>}
+            right={
+              <div className="flex items-center gap-3 flex-wrap justify-end">
+                {!loading && <Pill tone="green">{approved.length} approved {approved.length === 1 ? "student" : "students"}</Pill>}
+                {switcher}
+              </div>
+            }
           />
 
           {/* SEARCH AND FILTER */}
@@ -352,8 +352,6 @@ const ManageStudents = () => {
               />
             )}
           </div>
-        </main>
-      </div>
 
       {/* EDIT POP-UP */}
       {editing && (
@@ -403,7 +401,6 @@ const ManageStudents = () => {
                     <FilterSelect fullWidth value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value })}>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
-                      <option value="prefer_not_to_say">Prefer not to say</option>
                     </FilterSelect>
                   </Field>
                 </div>
@@ -464,12 +461,12 @@ const ManageStudents = () => {
         message={`Student ${savedFor}'s details were updated.`}
         footer={<button onClick={() => setSavedFor(null)} className={btn.primary}>OK</button>}
       />
-    </div>
+    </>
   );
 };
 
 // Small uppercase heading with its fields in a light gray box.
-const FormSection = ({ title, children }) => (
+export const FormSection = ({ title, children }) => (
   <div>
     <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.08em] mb-2 ml-1">{title}</p>
     <div className="rounded-[12px] bg-[#F7F8F7] p-4 space-y-3">{children}</div>
@@ -478,7 +475,7 @@ const FormSection = ({ title, children }) => (
 
 // Phone input with a fixed "+63" in front: digits only, max 10 digits.
 // Red border while incomplete or already used; live message underneath.
-const PhoneInput = ({ value, onChange, check }) => {
+export const PhoneInput = ({ value, onChange, check }) => {
   const digits = (value || "").replace(/^\+63/, "");
   const invalid = (digits.length > 0 && !/^9\d{9}$/.test(digits)) || check.state === "taken";
   const tone = {
@@ -518,11 +515,11 @@ const PhoneInput = ({ value, onChange, check }) => {
 };
 
 // Label above an input.
-const Field = ({ label, htmlFor, children }) => (
+export const Field = ({ label, htmlFor, children }) => (
   <div className="flex flex-col gap-1.5">
     <label htmlFor={htmlFor} className="text-[12px] font-semibold text-gray-600">{label}</label>
     {children}
   </div>
 );
 
-export default ManageStudents;
+export default StudentAccountsPanel;

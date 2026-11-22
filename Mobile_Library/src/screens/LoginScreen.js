@@ -25,8 +25,8 @@ import { QLessMark, BrandPattern } from '../components/QLessLogo';
 import { useAppDialog } from '../components/AppDialog';
 
 /**
- * LoginScreen — students log in with their CvSU email OR 9-digit student
- * number, plus the password they set when registering.
+ * LoginScreen — shared by students and faculty. They log in with their CvSU email,
+ * student number (9 digits) or employee ID (faculty), plus the password they set when registering.
  *
  *   - Errors use the QLess pop-up (AppDialog) instead of the phone's plain alert,
  *     with helpful next steps (Create Account, Forgot Password, Try Again).
@@ -54,24 +54,25 @@ const settle = (value, toValue) =>
     useNativeDriver: true,
   });
 
-// Login accepts either a CvSU email or a 9-digit student number.
+// Login accepts a CvSU email, a student number (students) or an employee ID (faculty).
 const CVSU_EMAIL_REGEX = /^[^\s@]+@cvsu\.edu\.ph$/i;
-const STUDENT_NUMBER_REGEX = /^\d{9}$/;
+// Student number (9 digits) or faculty Employee ID (1-9 digits). Digits can never be an email.
+const STUDENT_NUMBER_REGEX = /^\d{1,9}$/;
 
 // CvSU emails never start with a number, so if the first character is a
-// digit, treat it as a student number: keep only digits, max 9.
+// digit, treat it as a student number / employee ID: keep only digits, max 9.
 // Anything starting with a letter is an email and has no limit.
 const limitStudentNumber = (value) =>
   /^\d/.test(value) ? value.replace(/\D/g, '').slice(0, 9) : value;
 
-// True if what was typed looks like a CvSU email or a student number.
+// True if what was typed looks like a CvSU email, a student number or an employee ID.
 const isValidIdentifier = (value) => CVSU_EMAIL_REGEX.test(value) || STUDENT_NUMBER_REGEX.test(value);
 
 // The Login screen itself.
 export default function LoginScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const layout = getResponsive(width, height);
-  const [identifier, setIdentifier] = useState(''); // CvSU email OR student number
+  const [identifier, setIdentifier] = useState(''); // CvSU email, student number OR employee ID
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -291,7 +292,7 @@ export default function LoginScreen({ navigation }) {
       showDialog({
         tone: 'warning',
         title: 'Enter Your Login',
-        message: 'Please enter your CvSU email or student number.',
+        message: 'Please enter your CvSU email, student number or employee ID.',
         buttons: [{ text: 'OK', style: 'primary', onPress: focusIdentifier }],
       });
       return;
@@ -301,7 +302,7 @@ export default function LoginScreen({ navigation }) {
       showDialog({
         tone: 'error',
         title: 'Check Your Login',
-        message: 'Use your CvSU email (name@cvsu.edu.ph) or your 9-digit student number.',
+        message: 'Use your CvSU email (name@cvsu.edu.ph), your student number or your employee ID.',
         buttons: [{ text: 'Edit', style: 'primary', onPress: focusIdentifier }],
       });
       return;
@@ -334,10 +335,10 @@ export default function LoginScreen({ navigation }) {
           showDialog({
             tone: 'warning',
             title: 'Account Not Found',
-            message: data.message || 'No account matches that email or student number.',
+            message: data.message || 'No account matches that email or ID number.',
             buttons: [
               { text: 'Try Again', style: 'secondary', onPress: focusIdentifier },
-              { text: 'Create Account', style: 'primary', onPress: () => navigation.navigate('Register') },
+              { text: 'Create Account', style: 'primary', onPress: () => navigation.navigate('RoleSelect') },
             ],
           });
         } else if (response.status === 401) {
@@ -371,7 +372,9 @@ export default function LoginScreen({ navigation }) {
 
       // Save the student and their login pass (token) on the phone, then open Home.
       // They stay logged in (even offline) until they log out.
-      await AsyncStorage.setItem('student', JSON.stringify(data.student));
+      // Students come back as data.student, faculty as data.faculty (kept under the same key on the phone).
+      const person = data.faculty ? { ...data.faculty, user_type: 'faculty' } : data.student;
+      await AsyncStorage.setItem('student', JSON.stringify(person));
       if (data.token) await AsyncStorage.setItem('student_token', data.token);
       navigation.replace('HomeScreen');
 
@@ -422,7 +425,7 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.heroTitle}>
               <Text style={{ color: BRAND.goldLight }}>Q</Text>Less
             </Text>
-            <Text style={styles.heroCaption}>Ladislao N. Diwa Memorial Library</Text>
+            <Text style={styles.heroCaption}>Cavite State University - Main Campus Library</Text>
           </Animated.View>
         </Animated.View>
 
@@ -452,7 +455,7 @@ export default function LoginScreen({ navigation }) {
               </View>
               <TouchableOpacity
                 style={styles.tabItem}
-                onPress={() => navigation.navigate('Register')}
+                onPress={() => navigation.navigate('RoleSelect')}
                 activeOpacity={0.7}
               >
                 <Text style={styles.tabText}>Signup</Text>
@@ -467,7 +470,7 @@ export default function LoginScreen({ navigation }) {
                   transform: [{ translateY: emailFieldTranslateY }],
                 }}
               >
-                <Text style={styles.fieldLabel}>Email or Student Number</Text>
+                <Text style={styles.fieldLabel}>Email, Student No. or Employee ID</Text>
                 <Animated.View
                   style={[
                     styles.inputRow,
@@ -477,7 +480,7 @@ export default function LoginScreen({ navigation }) {
                   <TextInput
                     ref={identifierRef}
                     style={styles.input}
-                    placeholder="name@cvsu.edu.ph or 202300001"
+                    placeholder="name@cvsu.edu.ph or ID number"
                     placeholderTextColor={colors.gray}
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -577,7 +580,7 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const LOGO_SIZE = 76; // biggest the logo gets in the green header
+const LOGO_SIZE = 60; // biggest the logo gets in the green header
 
 const styles = StyleSheet.create({
   // White root so nothing grey peeks out below the card while it's lifted.
@@ -598,7 +601,7 @@ const styles = StyleSheet.create({
   },
 
   // "QLess" and the library name under the logo (in the green header)
-  heroTitle: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: 0.5, marginTop: 8 },
+  heroTitle: { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: 0.5, marginTop: 5, marginBottom: 10 },
   heroCaption: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 3 },
 
   heroLogoWrap: {
@@ -669,7 +672,7 @@ const styles = StyleSheet.create({
   },
 
   forgotLink: { alignSelf: 'flex-end', marginTop: 12 },
-  forgotLinkText: { fontSize: 12.5, fontWeight: '600', color: colors.primary },
+  forgotLinkText: { fontSize: 14.5, fontWeight: '600', color: colors.primary },
 
   button: {
     width: '100%',

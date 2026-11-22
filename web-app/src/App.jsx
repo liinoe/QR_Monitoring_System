@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/admin interface/Dashboard";
 import StudentLogs from "./pages/admin interface/StudentLogs";
 import Registrations from "./pages/admin interface/Registrations";
@@ -9,7 +9,8 @@ import Settings from "./pages/admin interface/Settings";
 import Guest from "./pages/guest interface/Guest";
 import Login from "./pages/admin interface/Login";
 import Bootstrap from "./pages/admin interface/Bootstrap";
-import ManageStudents from "./pages/admin interface/ManageStudents";
+import ManageAccounts from "./pages/admin interface/ManageAccounts";
+import FacultyLogs from "./pages/admin interface/FacultyLogs";
 import { ProtectedRoute, SuperAdminRoute } from "./components/ProtectedRoute";
 import GuestLanding from "./pages/guest interface/Guest_landing";
 import GuestLogout from "./pages/guest interface/Guest_logout";
@@ -33,7 +34,10 @@ function App() {
         <Route path="/registrations" element={<ProtectedRoute><Registrations /></ProtectedRoute>} />
         <Route path="/student-logs" element={<ProtectedRoute><StudentLogs /></ProtectedRoute>} />
         <Route path="/guest-logs" element={<ProtectedRoute><GuestLogs /></ProtectedRoute>} />
-        <Route path="/manage-students" element={<ProtectedRoute><ManageStudents /></ProtectedRoute>} />
+        <Route path="/faculty-logs" element={<ProtectedRoute><FacultyLogs /></ProtectedRoute>} />
+        <Route path="/manage-accounts" element={<ProtectedRoute><ManageAccounts /></ProtectedRoute>} />
+        {/* Old address of Manage Students */}
+        <Route path="/manage-students" element={<Navigate to="/manage-accounts" replace />} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
 
         {/* Super admin only  */}

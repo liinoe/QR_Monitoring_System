@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,8 +31,9 @@ const maskEmail = (email) => {
 // 125 → "2:05".
 const formatCountdown = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-// Forgot password: the student enters their CvSU email and we email a one-time reset link.
-// Plain white page with a back button (no green header), same inputs/buttons as Login.
+// Forgot password: a student or faculty member enters their CvSU email and we email a one-time reset link.
+// Plain white page (no green header and no top back arrow): "Back to Login" is a button under the main one,
+// same inputs/buttons as Login.
 export default function ForgotPasswordScreen({ navigation }) {
   // Height of the phone's bottom navigation bar, so nothing hides behind it.
   const insets = useSafeAreaInsets();
@@ -104,15 +105,13 @@ export default function ForgotPasswordScreen({ navigation }) {
       {isFocused && <StatusBar style="dark" />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" bounces={false}>
-          {/* TOP BAR: back button only */}
-          <SafeAreaView edges={['top']}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>
-              <Ionicons name="arrow-back" size={20} color={BRAND.green} />
-            </TouchableOpacity>
-          </SafeAreaView>
-
-          {/* CONTENT */}
-          <View style={[styles.card, { paddingHorizontal: layout.cardPadding, paddingBottom: 36 + insets.bottom }]}>
+          {/* CONTENT (starts a little below the status bar, more on taller screens) */}
+          <View
+            style={[
+              styles.card,
+              { paddingHorizontal: layout.cardPadding, paddingTop: insets.top + Math.round(height * 0.07), paddingBottom: 36 + insets.bottom },
+            ]}
+          >
             <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }}>
               {!sentTo ? (
                 <>
@@ -154,8 +153,9 @@ export default function ForgotPasswordScreen({ navigation }) {
                     {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send Reset Link</Text>}
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={() => navigation.goBack()} style={styles.linkBtn} hitSlop={8}>
-                    <Text style={styles.linkText}>Back to Login</Text>
+                  <TouchableOpacity onPress={() => navigation.goBack()} style={styles.secondaryBtn} activeOpacity={0.8}>
+                    <Ionicons name="arrow-back" size={18} color={BRAND.green} />
+                    <Text style={styles.secondaryText}>Back to Login</Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -218,16 +218,9 @@ export default function ForgotPasswordScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff' },
 
-  backBtn: {
-    width: 40, height: 40, borderRadius: 8, // small square button with a thin border
-    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#fff',
-    alignItems: 'center', justifyContent: 'center',
-    marginLeft: 16, marginTop: 8,
-  },
-
   card: {
     flex: 1,
-    paddingTop: 28, // content starts near the top, under the back button
+    paddingTop: 28, // (the real top padding is set where the card is drawn, from the screen height)
     paddingBottom: 36,
   },
 
@@ -267,6 +260,7 @@ const styles = StyleSheet.create({
   secondaryBtn: {
     width: '100%', height: 50, borderRadius: 8,
     backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7', // outlined button
+    flexDirection: 'row', gap: 8, // icon beside the text
     justifyContent: 'center', alignItems: 'center',
     marginTop: 12,
   },
@@ -274,5 +268,5 @@ const styles = StyleSheet.create({
   secondaryText: { color: BRAND.green, fontWeight: '700', fontSize: 14.5 },
 
   linkBtn: { alignSelf: 'center', marginTop: 18 },
-  linkText: { fontSize: 13, fontWeight: '700', color: BRAND.green },
+  linkText: { fontSize: 15, fontWeight: '700', color: BRAND.green },
 });

@@ -9,7 +9,6 @@ export const yearLevels = [
 export const sexOptions = [
   'Male',
   'Female',
-  'Prefer not to say',
 ];
 
 export const colleges = [

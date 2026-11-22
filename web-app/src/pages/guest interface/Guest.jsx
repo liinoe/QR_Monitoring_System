@@ -6,16 +6,6 @@ import { GuestLayout, Card, SectionLabel, Dialog, Icon, btn, inputClass, BRAND }
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Visitor type icons (color follows the button's text color).
-// Faculty: teacher pointing at a board.
-const FacultyIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="10" y="3" width="12" height="9" rx="1" />
-    <circle cx="5" cy="7" r="2.5" />
-    <path d="M1.5 21v-3.5A3.5 3.5 0 0 1 5 14a3.5 3.5 0 0 1 3.5 3.5V21" />
-    <path d="M7.5 14.5L12 10" />
-  </svg>
-);
-
 // Alumni: graduation cap icon.
 const AlumniIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -44,8 +34,8 @@ const StudentIcon = () => (
   </svg>
 );
 
+// CvSU faculty are not guests any more: they register for their own QR pass in the QLess app.
 const VISITOR_TYPES = [
-  { id: "faculty", label: "Faculty", icon: FacultyIcon },
   { id: "alumni", label: "Alumni", icon: AlumniIcon },
   { id: "walkin", label: "Walk-in", icon: WalkinIcon },
   { id: "student", label: "Student", icon: StudentIcon },
@@ -70,7 +60,7 @@ const HOW_TO_STEPS = [
 // Guest entry form: guest picks a type, enters their details and purpose, then confirms.
 const GuestEntry = () => {
   const navigate = useNavigate();
-  const [guestType, setGuestType] = useState("faculty");
+  const [guestType, setGuestType] = useState("alumni");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [affiliation, setAffiliation] = useState("");
@@ -89,7 +79,7 @@ const GuestEntry = () => {
 
   // Clears the form back to its starting values.
   const resetForm = () => {
-    setGuestType("faculty");
+    setGuestType("alumni");
     setFirstName("");
     setLastName("");
     setAffiliation("");
@@ -199,7 +189,7 @@ const GuestEntry = () => {
         {/* I AM A */}
         <div>
           <SectionLabel>I am a…</SectionLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {VISITOR_TYPES.map(({ id, label, icon: TypeIcon }) => {
               const active = guestType === id;
               return (

@@ -10,6 +10,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SplashScreen from './src/screens/SplashScreen';
 import HomeScreenComponent from './src/screens/HomeScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import RoleSelectScreen from './src/screens/RoleSelectScreen';
+import RegisterFacultyScreen from './src/screens/RegisterFacultyScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -80,12 +82,14 @@ export default function App() {
 
           {/* Auth Screens */}
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="RegisterFaculty" component={RegisterFacultyScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
 
           {/* Main Dashboard */}
-          <Stack.Screen name="HomeScreen" component={HomeScreenComponent} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="HomeScreen" component={HomeScreenComponent} options={{ animation: 'fade' }} />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="MyVisits" component={MyVisitsScreen} />
         </Stack.Navigator>
       </NavigationContainer>

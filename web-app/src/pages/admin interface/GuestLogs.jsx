@@ -23,8 +23,8 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const STATUS_TABS = ["All", "Inside", "Exited"];
 // "Today" comes first and is the default view.
 const DATE_TABS = ["Today", "This Week", "This Month", "All Time"];
+// Faculty is not a guest type any more (CvSU faculty have their own accounts and logs).
 const VISITOR_TYPE_OPTIONS = [
-  { value: "faculty", label: "Faculty" },
   { value: "alumni", label: "Alumni" },
   { value: "walkin", label: "Walk-in" },
   { value: "student", label: "Student" },

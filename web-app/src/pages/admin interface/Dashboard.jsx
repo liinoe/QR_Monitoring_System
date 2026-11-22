@@ -75,9 +75,9 @@ const formatActivityTime = (dateStr) => {
 
 // Explanations shown on the "i" icons of the KPI cards.
 const KPI_TOOLTIPS = {
-  totalToday: "All entries of students and guests today, including those still inside.",
-  currentlyInside: "Students and guests who are in the library right now.",
-  pending: "Student registrations waiting for you to approve or reject. Open Registrations to review them.",
+  totalToday: "All entries of students, faculty and guests today, including those still inside.",
+  currentlyInside: "Students, faculty and guests who are in the library right now.",
+  pending: "Student and faculty registrations waiting for you to approve or reject. Open Registrations to review them.",
 };
 
 // Admin home page: today's numbers, this week's charts and the latest entries.
@@ -92,12 +92,20 @@ const Dashboard = () => {
   // true until the first load of today's data finishes (shows a loading screen instead of zeros)
   const [loading, setLoading] = useState(true);
 
-  // Gets every student entry/exit log.
+  // Gets every student and faculty entry/exit log. Faculty visits are mixed in with the students'
+  // (their Employee ID fills the student number, their program shows "Faculty" and is_faculty = true).
   const fetchDashboardData = async () => {
     try {
-      const response = await authFetch(`${API_URL}/api/logs/all`);
-      const data = await response.json();
-      setLogs(Array.isArray(data) ? data : []);
+      const [studentRes, facultyRes] = await Promise.all([
+        authFetch(`${API_URL}/api/logs/all`),
+        authFetch(`${API_URL}/api/faculty-logs/all`),
+      ]);
+      const students = await studentRes.json();
+      const faculty = await facultyRes.json().catch(() => []);
+      const facultyAsLogs = Array.isArray(faculty)
+        ? faculty.map((f) => ({ ...f, student_number: f.employee_id, program: "Faculty", is_faculty: true }))
+        : [];
+      setLogs([...(Array.isArray(students) ? students : []), ...facultyAsLogs]);
     } catch (error) {
       console.error("Fetch error:", error);
     }
@@ -114,12 +122,12 @@ const Dashboard = () => {
     }
   };
 
-  // Gets how many registrations are waiting for approval.
+  // Gets how many registrations (students + faculty) are waiting for approval.
   const fetchPendingCount = async () => {
     try {
-      const response = await authFetch(`${API_URL}/api/admin/pending`);
+      const response = await authFetch(`${API_URL}/api/admin/changes`);
       const data = await response.json();
-      setPendingCount(Array.isArray(data) ? data.length : 0);
+      setPendingCount(data?.pending_count ?? 0);
     } catch (error) {
       console.error("Pending fetch error:", error);
     }
@@ -140,7 +148,7 @@ const Dashboard = () => {
     fetchPendingCount();
   });
 
-  // ---- KPIs (students + guests together) ----
+  // ---- KPIs (students + faculty + guests together) ----
   const now = new Date();
   const todayStr = now.toDateString();
   const yesterday = new Date(now);
@@ -162,11 +170,12 @@ const Dashboard = () => {
     ? Math.round(((totalVisitorsToday - totalVisitorsYesterday) / totalVisitorsYesterday) * 100)
     : null;
 
-  const studentsInside = logs.filter((l) => l.status === "inside").length;
+  const studentsInside = logs.filter((l) => l.status === "inside" && !l.is_faculty).length;
+  const facultyInside = logs.filter((l) => l.status === "inside" && l.is_faculty).length;
   const guestsInside = guestLogs.filter((g) => g.status === "inside").length;
-  const currentlyInside = studentsInside + guestsInside;
+  const currentlyInside = studentsInside + facultyInside + guestsInside;
 
-  // "Yes, Force Exit": logs out EVERY patron inside (students and guests) in one go,
+  // "Yes, Force Exit": logs out EVERY patron inside (students, faculty and guests) in one go,
   // e.g. for an early closure. The 5:31 PM auto logout does the same thing daily.
   const handleForceExitAll = async () => {
     setExiting(true);
@@ -203,7 +212,7 @@ const Dashboard = () => {
   const avgStayYesterdayMs = exitedYesterday.reduce((acc, log) => acc + (new Date(log.time_out) - new Date(log.time_in)), 0);
   const avgStayYesterday = exitedYesterday.length > 0 ? avgStayYesterdayMs / exitedYesterday.length / (1000 * 60 * 60) : null;
 
-  // ---- Weekly bar chart (students + guests, Sun–Sat of this week) ----
+  // ---- Weekly bar chart (students + faculty + guests, Sun–Sat of this week) ----
   // Counts entries per day of the current week.
   const getWeeklyData = () => {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -220,8 +229,8 @@ const Dashboard = () => {
   const weeklyData = getWeeklyData();
   const weekTotal = weeklyData.reduce((sum, d) => sum + d.count, 0);
 
-  // ---- College donut (students only, this week) ----
-  // Counts this week's student entries per college, biggest first.
+  // ---- College donut (students + faculty, this week) ----
+  // Counts this week's student and faculty entries per college, biggest first.
   const getCollegeData = () => {
     const { start, end } = getWeekRange(now);
     const counts = {};
@@ -250,7 +259,7 @@ const Dashboard = () => {
     return seen.size;
   })();
 
-  // ---- Recent activity: latest 5 student + guest entries ----
+  // ---- Recent activity: latest 5 student, faculty and guest entries ----
   const recentActivity = [
     ...logs.map((l) => ({
       name: l.student_number || "Unknown", // students: student number in bold
@@ -333,7 +342,7 @@ const Dashboard = () => {
                       emptyText="No data from yesterday"
                     />
                     <span className="text-xs text-gray-500">
-                      {uniqueStudentsToday} different {uniqueStudentsToday === 1 ? "student" : "students"}
+                      {uniqueStudentsToday} different {uniqueStudentsToday === 1 ? "person" : "people"}
                     </span>
                   </div>
                 }
@@ -347,7 +356,7 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2">
                     <Pill tone="green" dot>LIVE</Pill>
                     <span className="text-xs text-gray-500">
-                      {studentsInside} students · {guestsInside} guests
+                      {studentsInside} students · {facultyInside} faculty · {guestsInside} guests
                     </span>
                   </div>
                 }
@@ -382,7 +391,7 @@ const Dashboard = () => {
             <Card className="p-6 xl:col-span-2">
               <CardTitle
                 title="Daily Entries"
-                note="Students and guests, this week (Sun – Sat)"
+                note="Students, faculty and guests, this week (Sun – Sat)"
                 right={<Pill tone="green">{weekTotal} this week</Pill>}
               />
               <div className="h-[240px]">
@@ -406,7 +415,7 @@ const Dashboard = () => {
             <Card className="p-6 xl:col-span-3">
               <CardTitle
                 title="Visits by College"
-                note={`Students only, this week · ${uniqueStudentsThisWeek} different ${uniqueStudentsThisWeek === 1 ? "student" : "students"}`}
+                note={`Students and faculty, this week · ${uniqueStudentsThisWeek} different ${uniqueStudentsThisWeek === 1 ? "person" : "people"}`}
               />
               {totalCollegeVisitors === 0 ? (
                 <EmptyState text="No college data this week" />
@@ -427,9 +436,9 @@ const Dashboard = () => {
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                       <p className="text-[26px] font-extrabold text-gray-900 leading-none">{totalCollegeVisitors}</p>
                       <p className="text-[11px] text-gray-500 mt-1">{totalCollegeVisitors === 1 ? "visit" : "visits"}</p>
-                      {/* how many different students made those visits */}
+                      {/* how many different people (students + faculty) made those visits */}
                       <p className="text-[10.5px] font-semibold text-[#1B5E20] mt-0.5">
-                        {uniqueStudentsThisWeek} {uniqueStudentsThisWeek === 1 ? "student" : "students"}
+                        {uniqueStudentsThisWeek} {uniqueStudentsThisWeek === 1 ? "person" : "people"}
                       </p>
                     </div>
                   </div>
@@ -462,7 +471,7 @@ const Dashboard = () => {
 
           {/* RECENT ACTIVITY */}
           <Card className="p-6">
-            <CardTitle title="Recent Activity" note="Latest 5 entries — students and guests" />
+            <CardTitle title="Recent Activity" note="Latest 5 entries — students, faculty and guests" />
             {recentActivity.length === 0 ? (
               <EmptyState text="No activity recorded yet." />
             ) : (
@@ -494,7 +503,7 @@ const Dashboard = () => {
         open={confirmExit}
         tone="warning"
         title="Force Exit All Patrons?"
-        message={`This will log out everyone still inside: ${studentsInside} student(s) and ${guestsInside} guest(s). Use it for early closures. These exits won't count toward the average stay.`}
+        message={`This will log out everyone still inside: ${studentsInside} student(s), ${facultyInside} faculty and ${guestsInside} guest(s). Use it for early closures. These exits won't count toward the average stay.`}
         footer={
           <>
             <button onClick={() => setConfirmExit(false)} disabled={exiting} className={btn.secondary}>Cancel</button>

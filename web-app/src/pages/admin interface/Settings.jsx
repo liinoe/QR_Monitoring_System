@@ -209,7 +209,8 @@ const Settings = () => {
     }
   };
 
-  // Deletes a semester that hasn't started (after the admin confirms).
+  // Deletes a semester that hasn't started, or (super admin only) one that already ended,
+  // after the admin confirms.
   const removeSemester = async () => {
     const s = toRemove;
     setToRemove(null);
@@ -442,6 +443,13 @@ const Settings = () => {
                             {s.status === "upcoming" && (
                               <button onClick={() => setToRemove(s)} className="ml-2 rounded-full bg-[#F1F3F1] text-gray-600 px-4 py-1.5 text-xs font-bold hover:bg-[#FBDFDB] hover:text-[#B3261E] transition-colors">
                                 Remove
+                              </button>
+                            )}
+                            {/* Ended semesters can be deleted (super admin only). Not while the "Undo" banner
+                                is offering to reopen it, because that semester may still need to be undone. */}
+                            {s.status === "ended" && superAdmin && calendar?.undo?.name !== s.name && (
+                              <button onClick={() => setToRemove(s)} className="rounded-full bg-[#F1F3F1] text-gray-600 px-4 py-1.5 text-xs font-bold hover:bg-[#FBDFDB] hover:text-[#B3261E] transition-colors">
+                                Delete
                               </button>
                             )}
                           </td>
@@ -781,12 +789,18 @@ const Settings = () => {
       <Dialog
         open={!!toRemove}
         tone="warning"
-        title="Remove Semester?"
-        message={toRemove ? `${toRemove.name} (${formatDay(toRemove.start_date)} – ${formatDay(toRemove.end_date)}) will be removed from the calendar.` : ""}
+        title={toRemove?.status === "ended" ? "Delete Semester?" : "Remove Semester?"}
+        message={
+          !toRemove
+            ? ""
+            : toRemove.status === "ended"
+              ? `${toRemove.name} (${formatDay(toRemove.start_date)} – ${formatDay(toRemove.end_date)}) will be deleted from the calendar and will no longer appear in the Analytics semester list. Visit logs are not deleted. This can't be undone.`
+              : `${toRemove.name} (${formatDay(toRemove.start_date)} – ${formatDay(toRemove.end_date)}) will be removed from the calendar.`
+        }
         footer={
           <>
             <button onClick={() => setToRemove(null)} className={btn.secondary}>Cancel</button>
-            <button onClick={removeSemester} className={btn.danger}>Yes, Remove</button>
+            <button onClick={removeSemester} className={btn.danger}>{toRemove?.status === "ended" ? "Yes, Delete" : "Yes, Remove"}</button>
           </>
         }
       />

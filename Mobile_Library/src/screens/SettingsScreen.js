@@ -18,6 +18,7 @@ import { authHeaders } from '../utils/studentAuth';
 import { getResponsive } from '../theme/responsive';
 import { BRAND, HEADER_RADIUS } from '../theme/brand';
 import { QLessTile, ScanFrame } from '../components/QLessLogo';
+import BottomNav from '../components/BottomNav';
 import { useAppDialog } from '../components/AppDialog';
 import appConfig from '../../app.json';
 import PrivacyNoticeModal from '../components/PrivacyNoticeModal';
@@ -79,6 +80,8 @@ const formatPhone = (phone) => {
 
 // Settings page: profile header (with Log Out), account details,
 // password change, library contacts and app info.
+// Works for students and faculty. A faculty account is saved on the phone with an
+// employee_id (no student_number), and has no semester, program or year level.
 export default function SettingsScreen({ navigation }) {
   // Height of the phone's bottom navigation bar, so nothing hides behind it.
   const insets = useSafeAreaInsets();
@@ -88,24 +91,40 @@ export default function SettingsScreen({ navigation }) {
   // Privacy Notice pop-up (same one shown during registration)
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState(null);
+  const [isFaculty, setIsFaculty] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   // Styled pop-up (see components/AppDialog.js).
   const { dialog, showDialog } = useAppDialog();
 
-  // Loads the profile and current semester when the page opens.
+  // Loads the profile (and, for students, the current semester) when the page opens.
   useEffect(() => {
-    // Gets the student's profile (cached first, then from the server).
+    // Gets the profile (cached first, then from the server).
     const load = async () => {
       try {
-        // Show the last-known profile instantly (the Home screen caches it),
-        // then refresh from the server.
-        const cached = await AsyncStorage.getItem('cached_profile');
-        if (cached) setStudentData(JSON.parse(cached));
-
         const stored = await AsyncStorage.getItem('student');
         if (!stored) return;
-        const student = JSON.parse(stored);
-        const res = await fetch(`${API_URL}/api/student/profile/${student.student_number}`, { headers: await authHeaders() });
+        const account = JSON.parse(stored);
+        // The login saves user_type: 'faculty' for faculty (they also have an employee_id
+        // instead of a student_number).
+        const faculty = account.user_type === 'faculty' || (!!account.employee_id && !account.student_number);
+        setIsFaculty(faculty);
+
+        // Show the last-known profile instantly (the Home screen caches it),
+        // then refresh from the server. A faculty member only sees a cached profile
+        // that is really theirs (the cache can hold someone else's after a log out).
+        const cached = await AsyncStorage.getItem('cached_profile');
+        if (cached) {
+          const profile = JSON.parse(cached);
+          if (!faculty || String(profile.employee_id) === String(account.employee_id)) setStudentData(profile);
+        }
+
+        // Semesters only matter for students (faculty never renew).
+        if (!faculty) loadPeriod();
+
+        const url = faculty
+          ? `${API_URL}/api/faculty/profile/${account.employee_id}`
+          : `${API_URL}/api/student/profile/${account.student_number}`;
+        const res = await fetch(url, { headers: await authHeaders() });
         if (res.ok) setStudentData(await res.json());
       } catch (err) {
         console.error('Error loading profile for settings:', err);
@@ -121,7 +140,6 @@ export default function SettingsScreen({ navigation }) {
       }
     };
     load();
-    loadPeriod();
   }, []);
 
   // Log Out button: asks first, then clears the saved login and goes to Login.
@@ -157,30 +175,37 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const status = getStatusInfo(studentData, currentPeriod);
-  const details = [
-    { icon: 'school-outline', label: 'College', value: studentData?.college },
-    { icon: 'book-outline', label: 'Program', value: studentData?.program },
-    { icon: 'layers-outline', label: 'Year level', value: studentData?.year_level },
-    { icon: 'calendar-outline', label: 'Registered for', value: studentData?.registered_period },
-    { icon: 'mail-outline', label: 'Email', value: studentData?.email },
-    { icon: 'call-outline', label: 'Phone', value: formatPhone(studentData?.phone_number) },
-  ];
+  // Faculty submitted a college, email and phone (no program, year level or semester).
+  const details = isFaculty
+    ? [
+        { icon: 'school-outline', label: 'College', value: studentData?.college },
+        { icon: 'mail-outline', label: 'Email', value: studentData?.email },
+        { icon: 'call-outline', label: 'Phone', value: formatPhone(studentData?.phone_number) },
+      ]
+    : [
+        { icon: 'school-outline', label: 'College', value: studentData?.college },
+        { icon: 'book-outline', label: 'Program', value: studentData?.program },
+        { icon: 'layers-outline', label: 'Year level', value: studentData?.year_level },
+        { icon: 'calendar-outline', label: 'Registered for', value: studentData?.registered_period },
+        { icon: 'mail-outline', label: 'Email', value: studentData?.email },
+        { icon: 'call-outline', label: 'Phone', value: formatPhone(studentData?.phone_number) },
+      ];
+  const displayName =
+    studentData?.full_name ||
+    [studentData?.first_name, studentData?.surname].filter(Boolean).join(' ') ||
+    (isFaculty ? 'Faculty' : 'Student');
+  const idLine = isFaculty
+    ? `Faculty · ${studentData?.employee_id || '—'}`
+    : `Student · ${studentData?.student_number || '—'}`;
 
   return (
     <View style={styles.root}>
       {/* HEADER + PROFILE */}
       <SafeAreaView edges={['top']} style={styles.headerWrap}>
         <View style={[styles.headerInner, { paddingHorizontal: layout.horizontalPadding }]}>
+          {/* Title only: Home and Settings are in the footer, Log Out is at the bottom of the page */}
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>
-              <Ionicons name="arrow-back" size={20} color="#fff" />
-            </TouchableOpacity>
             <Text style={styles.headerTitle}>Settings</Text>
-            {/* Log Out sits at the top right, across from the title */}
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7} hitSlop={6}>
-              <Ionicons name="log-out-outline" size={16} color="#fff" />
-              <Text style={styles.logoutText}>Log Out</Text>
-            </TouchableOpacity>
           </View>
 
           <View style={styles.profileRow}>
@@ -194,8 +219,8 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </ScanFrame>
             <View style={styles.profileText}>
-              <Text style={styles.profileName} numberOfLines={2}>{studentData?.full_name || 'Student'}</Text>
-              <Text style={styles.profileSub}>{studentData?.student_number || '—'}</Text>
+              <Text style={styles.profileName} numberOfLines={2}>{displayName}</Text>
+              <Text style={styles.profileSub}>{idLine}</Text>
               {status && (
                 <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
                   <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
@@ -209,7 +234,7 @@ export default function SettingsScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: layout.horizontalPadding, width: '100%', alignSelf: 'center', maxWidth: layout.contentWidth, paddingBottom: 40 + insets.bottom },
+          { paddingHorizontal: layout.horizontalPadding, width: '100%', alignSelf: 'center', maxWidth: layout.contentWidth, paddingBottom: 24 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -304,18 +329,35 @@ export default function SettingsScreen({ navigation }) {
             <Text style={styles.aboutSub}>{LIBRARY_INFO.school}</Text>
           </View>
         </View>
+
+        {/* LOG OUT: last thing on the page, after the version */}
+        <TouchableOpacity
+          style={styles.logoutRow}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+        >
+          <Ionicons name="log-out-outline" size={19} color="#B3261E" />
+          <Text style={styles.logoutRowText}>Log Out</Text>
+        </TouchableOpacity>
       </ScrollView>
 
-      <PrivacyNoticeModal visible={privacyOpen} onClose={() => setPrivacyOpen(false)} />
+      <PrivacyNoticeModal visible={privacyOpen} onClose={() => setPrivacyOpen(false)} userType={isFaculty ? 'faculty' : 'student'} />
 
       <ChangePasswordModal
         visible={changePasswordOpen}
         onClose={() => setChangePasswordOpen(false)}
         studentNumber={studentData?.student_number}
+        employeeId={studentData?.employee_id}
+        isFaculty={isFaculty}
       />
 
       {/* Log out confirmation / link errors */}
       {dialog}
+
+      {/* Footer navigation: Home | Settings */}
+      <BottomNav active="Settings" navigation={navigation} />
     </View>
   );
 }
@@ -364,13 +406,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   headerInner: { paddingBottom: 24 },
-  topBar: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  // Seal + title on the left, the round Log Out button on the right.
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 38, marginTop: 6 },
   backBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center', justifyContent: 'center',
-    marginRight: 12,
   },
+  titleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
 
   profileRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 16 },
@@ -419,15 +462,20 @@ const styles = StyleSheet.create({
   aboutVersion: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   aboutSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
-  // Small see-through pill at the top right of the green header.
+  // Full-width Log Out button at the bottom of the page.
+  logoutRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 48, borderRadius: 12, marginTop: 24,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E7',
+  },
+  logoutRowText: { color: '#B3261E', fontSize: 14.5, fontWeight: '700' },
+  // (old header button styles, no longer used)
   logoutBtn: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
+    width: 38,
+    height: 38,
     alignItems: 'center',
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 14,
-    borderRadius: 17,
+    justifyContent: 'center',
+    borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   logoutText: { color: '#fff', fontSize: 13, fontWeight: '700' },

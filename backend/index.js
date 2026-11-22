@@ -120,7 +120,14 @@ function generateResetToken() {
     return { token, tokenHash, expiresAt };
 }
 
-const VALID_SEX_VALUES = ['male', 'female', 'prefer_not_to_say'];
+const VALID_SEX_VALUES = ['male', 'female'];
+
+// Student number = exactly 9 digits. (Faculty have their own table and routes in faculty.js,
+// with their own Employee ID rule, so nothing in this file handles faculty.)
+const STUDENT_NUMBER_ERROR = "Student number must be exactly 9 digits.";
+const isValidStudentNumber = (id) => /^\d{9}$/.test(id);
+// Student numbers are kept as text (never converted to a number).
+const cleanId = (id) => String(id || '').trim();
 
 // Only CvSU school emails can register, e.g. juan.delacruz@cvsu.edu.ph
 // Names: letters only (incl. ñ and accented letters), plus spaces, hyphens,
@@ -231,6 +238,14 @@ async function ensurePrivacyConsentColumn() {
     }
 }
 ensurePrivacyConsentColumn().catch((err) => console.error('ensurePrivacyConsentColumn error:', err.message));
+
+// Students + faculty currently inside the library, per college (scanner live board).
+const INSIDE_BY_COLLEGE_SQL = `
+    SELECT college, COUNT(*) AS count FROM (
+        SELECT s.college FROM student_logs sl JOIN students s ON sl.user_id = s.user_id WHERE sl.status = 'inside'
+        UNION ALL
+        SELECT f.college FROM faculty_logs fl JOIN faculty f ON fl.faculty_id = f.faculty_id WHERE fl.status = 'inside'
+    ) inside_now GROUP BY college`;
 
 // Adds registration_requests.cor_public_id if it isn't there yet: the Cloudinary ID
 // of the student's COR photo. Cleared (NULL) once the photo is deleted after review.
@@ -412,7 +427,7 @@ app.get('/api/settings/semester-active', async (req, res) => {
 // once the correct code is sent with it to /api/register.
 app.post('/api/register/send-otp', otpLimiter, async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
-    const student_number = String(req.body.student_number || '');
+    const student_number = cleanId(req.body.student_number);
     if (!CVSU_EMAIL_REGEX.test(email)) {
         return res.status(400).json({ message: "Please use your CvSU email ending in @cvsu.edu.ph." });
     }
@@ -473,9 +488,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     const {
         surname, first_name, middle_name,
         phone_number, address, sex,
-        student_number, password,
-        college, program, year_level
+        password, college, program, year_level
     } = req.body;
+    const student_number = cleanId(req.body.student_number);
     // Emails are compared in lowercase everywhere (login too), so save them that way.
     const email = (req.body.email || '').trim().toLowerCase();
 
@@ -504,8 +519,8 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     if (!CVSU_EMAIL_REGEX.test(email)) {
         return res.status(400).json({ message: "Please use your CvSU email ending in @cvsu.edu.ph." });
     }
-    if (!/^\d{9}$/.test(student_number)) {
-        return res.status(400).json({ message: "Student number must be exactly 9 digits." });
+    if (!isValidStudentNumber(student_number)) {
+        return res.status(400).json({ message: STUDENT_NUMBER_ERROR });
     }
     if (!isValidYearLevel(college, year_level)) {
         return res.status(400).json({ message: "Invalid year level for the selected college." });
@@ -633,9 +648,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
 // never returns whose account it is.
 // A previously REJECTED account counts as free, since /api/register lets it resubmit.
 app.get('/api/register/check-student-number/:student_number', availabilityLimiter, async (req, res) => {
-    const { student_number } = req.params;
-    if (!/^\d{9}$/.test(student_number)) {
-        return res.status(400).json({ available: false, message: "Student number must be exactly 9 digits." });
+    const student_number = cleanId(req.params.student_number);
+    if (!isValidStudentNumber(student_number)) {
+        return res.status(400).json({ available: false, message: STUDENT_NUMBER_ERROR });
     }
     try {
         const [rows] = await db.query('SELECT status FROM students WHERE student_number = ?', [student_number]);
@@ -894,11 +909,11 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
         }
 
         // Did the student correct their student number?
-        const newNumber = String(req.body.new_student_number || '').trim();
+        const newNumber = cleanId(req.body.new_student_number);
         const changingNumber = newNumber !== '' && newNumber !== student_number;
         if (changingNumber) {
-            if (!/^\d{9}$/.test(newNumber)) {
-                return res.status(400).json({ message: "Student number must be exactly 9 digits." });
+            if (!isValidStudentNumber(newNumber)) {
+                return res.status(400).json({ message: STUDENT_NUMBER_ERROR });
             }
             if (!(await canChangeStudentNumber(student.user_id, student_number))) {
                 return res.status(403).json({ message: "Your student number was already verified, so it can't be changed here. Please visit the library front desk." });
@@ -1007,15 +1022,12 @@ app.put('/api/registration/:student_number', verifyStudentToken, async (req, res
 // phone, address, sex, or password: those simply aren't in this payload.
 // Needs the student's login pass, and only renews THAT student's own account.
 app.post('/api/renew', verifyStudentToken, async (req, res) => {
-    const { student_number, college, program, year_level } = req.body;
-    if (!student_number || !college || !program || !year_level) {
+    const { student_number, college } = req.body;
+    if (!student_number || !college) {
         return res.status(400).json({ message: "Please complete all academic info fields." });
     }
     if (req.student.student_number !== student_number) {
         return res.status(403).json({ message: "You can only renew your own account." });
-    }
-    if (!isValidYearLevel(college, year_level)) {
-        return res.status(400).json({ message: "Invalid year level for the selected college." });
     }
     // A photo of this semester's COR is required for renewal too.
     const corError = checkCorImage(req.body.cor_image);
@@ -1032,6 +1044,13 @@ app.post('/api/renew', verifyStudentToken, async (req, res) => {
         // Semester ended and the next one hasn't started yet: renewal isn't open.
         if (student.status === 'expired') {
             return res.status(403).json({ message: "Your pass expired when the semester ended. Renewal opens when the next semester starts." });
+        }
+        const { program, year_level } = req.body;
+        if (!program || !year_level) {
+            return res.status(400).json({ message: "Please complete all academic info fields." });
+        }
+        if (!isValidYearLevel(college, year_level)) {
+            return res.status(400).json({ message: "Invalid year level for the selected college." });
         }
         const currentPeriod = await getCurrentPeriod();
 
@@ -1164,23 +1183,29 @@ app.post('/api/student/forgot-password', forgotPasswordLimiter, async (req, res)
     };
 
     try {
-        const [students] = await db.query(
-            'SELECT student_number FROM students WHERE email = ?',
-            [email.trim().toLowerCase()]
-        );
+        // The email belongs to a student or to a faculty member (each has its own reset-token table).
+        const normalizedEmail = email.trim().toLowerCase();
+        let tokenTable = 'password_reset_tokens';
+        let ownerColumn = 'student_number';
+        let [owners] = await db.query('SELECT student_number AS owner_id FROM students WHERE email = ?', [normalizedEmail]);
+        if (owners.length === 0) {
+            [owners] = await db.query('SELECT employee_id AS owner_id FROM faculty WHERE email = ?', [normalizedEmail]);
+            tokenTable = 'faculty_password_reset_tokens';
+            ownerColumn = 'employee_id';
+        }
 
-        if (students.length === 0) {
+        if (owners.length === 0) {
             return res.json(genericResponse);
         }
 
-        const student_number = students[0].student_number;
+        const student_number = owners[0].owner_id; // student number, or Employee ID for faculty
 
         // Cooldown + daily limit: count this student's reset requests.
         const [[recent]] = await db.query(
             `SELECT COUNT(*) AS today_count,
                     COALESCE(MAX(created_at) > NOW() - INTERVAL ? SECOND, 0) AS too_soon
-             FROM password_reset_tokens
-             WHERE student_number = ? AND created_at > NOW() - INTERVAL 1 DAY`,
+             FROM ${tokenTable}
+             WHERE ${ownerColumn} = ? AND created_at > NOW() - INTERVAL 1 DAY`,
             [RESET_COOLDOWN_SECONDS, student_number]
         );
         if (Number(recent.too_soon) === 1 || Number(recent.today_count) >= RESET_DAILY_LIMIT) {
@@ -1191,13 +1216,13 @@ app.post('/api/student/forgot-password', forgotPasswordLimiter, async (req, res)
         // most recently requested email can ever work. (Marked as used instead
         // of deleted, so it still counts toward the daily limit.)
         await db.query(
-            'UPDATE password_reset_tokens SET used_at = NOW() WHERE student_number = ? AND used_at IS NULL',
+            `UPDATE ${tokenTable} SET used_at = NOW() WHERE ${ownerColumn} = ? AND used_at IS NULL`,
             [student_number]
         );
 
         const { token, tokenHash, expiresAt } = generateResetToken();
         await db.query(
-            'INSERT INTO password_reset_tokens (student_number, token_hash, expires_at) VALUES (?, ?, ?)',
+            `INSERT INTO ${tokenTable} (${ownerColumn}, token_hash, expires_at) VALUES (?, ?, ?)`,
             [student_number, tokenHash, expiresAt]
         );
 
@@ -1271,7 +1296,12 @@ app.get('/api/student/reset-password/check', async (req, res) => {
             'SELECT token_id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()',
             [tokenHash]
         );
-        res.json({ valid: rows.length > 0 });
+        if (rows.length > 0) return res.json({ valid: true });
+        const [facultyRows] = await db.query(
+            'SELECT token_id FROM faculty_password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()',
+            [tokenHash]
+        );
+        res.json({ valid: facultyRows.length > 0 });
     } catch (err) {
         res.json({ valid: false });
     }
@@ -1297,15 +1327,24 @@ app.post('/api/student/reset-password', async (req, res) => {
             [tokenHash]
         );
 
-        if (rows.length === 0) {
-            return res.status(400).json({ message: "This reset link is invalid or has expired. Please request a new one." });
-        }
-
-        const resetRequest = rows[0];
         const hashedPassword = await bcrypt.hash(new_password, 10);
 
-        await db.query('UPDATE students SET password = ? WHERE student_number = ?', [hashedPassword, resetRequest.student_number]);
-        await db.query('UPDATE password_reset_tokens SET used_at = NOW() WHERE token_id = ?', [resetRequest.token_id]);
+        if (rows.length > 0) {
+            const resetRequest = rows[0];
+            await db.query('UPDATE students SET password = ? WHERE student_number = ?', [hashedPassword, resetRequest.student_number]);
+            await db.query('UPDATE password_reset_tokens SET used_at = NOW() WHERE token_id = ?', [resetRequest.token_id]);
+        } else {
+            // Not a student's link: maybe a faculty member's.
+            const [facultyRows] = await db.query(
+                'SELECT * FROM faculty_password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()',
+                [tokenHash]
+            );
+            if (facultyRows.length === 0) {
+                return res.status(400).json({ message: "This reset link is invalid or has expired. Please request a new one." });
+            }
+            await db.query('UPDATE faculty SET password = ? WHERE employee_id = ?', [hashedPassword, facultyRows[0].employee_id]);
+            await db.query('UPDATE faculty_password_reset_tokens SET used_at = NOW() WHERE token_id = ?', [facultyRows[0].token_id]);
+        }
 
         res.json({ success: true, message: "Password reset successfully. You can now log in with your new password." });
     } catch (err) {
@@ -1393,6 +1432,23 @@ app.get('/api/admin/changes', verifyToken, async (req, res) => {
              FROM registration_requests`
         );
         const toReview = await getPendingToReview(); // for the sidebar badge
+        const [[fac]] = await db.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(approval_status = 'pending'), 0)     AS pending,
+                    COALESCE(SUM(approval_status = 'approved'), 0)    AS approved,
+                    COALESCE(SUM(approval_status = 'rejected'), 0)    AS rejected,
+                    COALESCE(SUM(approval_status = 'deactivated'), 0) AS deactivated,
+                    MAX(created_at) AS latest
+             FROM faculty_registration_requests`
+        );
+        const [[facAccounts]] = await db.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(status = 'approved'), 0)    AS approved,
+                    COALESCE(SUM(status = 'deactivated'), 0) AS deactivated,
+                    (SELECT COUNT(*) FROM faculty_edit_logs) AS edits,
+                    (SELECT MAX(edit_id) FROM faculty_edit_logs) AS last_edit
+             FROM faculty`
+        );
         const [[stu]] = await db.query(
             `SELECT COUNT(*) AS total,
                     COALESCE(SUM(status = 'approved'), 0)    AS approved,
@@ -1404,13 +1460,16 @@ app.get('/api/admin/changes', verifyToken, async (req, res) => {
         );
 
         res.json({
-            logs: await logSignature('student_logs', 'log_id'),
+            // Faculty are folded into the same keys, so pages that watch "logs" / "registrations" / "students" also refresh for faculty.
+            logs: [await logSignature('student_logs', 'log_id'), await logSignature('faculty_logs', 'log_id')].join('~'),
             guests: await logSignature('guest_logs', 'guest_log_id'),
             registrations: [reg.total, reg.pending, reg.approved, reg.rejected, reg.deactivated, reg.expired,
-                reg.latest ? new Date(reg.latest).getTime() : 0].join('|'),
-            students: [stu.total, stu.approved, stu.deactivated, stu.expired, stu.edits, stu.last_edit || 0].join('|'),
-            pending_count: toReview.length, // same rule as the Registrations page
-            registrations_total: Number(reg.total), // lets the Registrations page count new arrivals
+                reg.latest ? new Date(reg.latest).getTime() : 0].join('|') + '~' +
+                [fac.total, fac.pending, fac.approved, fac.rejected, fac.deactivated, fac.latest ? new Date(fac.latest).getTime() : 0].join('|'),
+            students: [stu.total, stu.approved, stu.deactivated, stu.expired, stu.edits, stu.last_edit || 0].join('|') + '~' +
+                [facAccounts.total, facAccounts.approved, facAccounts.deactivated, facAccounts.edits, facAccounts.last_edit || 0].join('|'),
+            pending_count: toReview.length + Number(fac.pending), // students + faculty waiting for review (sidebar badge)
+            registrations_total: Number(reg.total) + Number(fac.total), // lets the Registrations page count new arrivals
         });
     } catch (err) {
         console.error('Changes check error:', err.message);
@@ -1602,22 +1661,32 @@ const LIBRARY_CLOSED_MESSAGE = 'The library is closed for entry after 5:30 PM. E
 app.post('/api/logs/scan', async (req, res) => {
     const { qr_code } = req.body;
     try {
+        // A QR code belongs to a student OR a faculty member. Faculty visits are saved in faculty_logs.
+        let person = null;
         const [students] = await db.query('SELECT * FROM students WHERE qr_code = ?', [qr_code]);
+        if (students.length > 0) {
+            person = { id: students[0].user_id, col: 'user_id', table: 'student_logs', status: students[0].status,
+                       number: students[0].student_number, program: students[0].program };
+        } else if (qr_code) {
+            const [faculty] = await db.query('SELECT * FROM faculty WHERE qr_code = ?', [qr_code]);
+            if (faculty.length > 0) {
+                person = { id: faculty[0].faculty_id, col: 'faculty_id', table: 'faculty_logs', status: faculty[0].status,
+                           number: faculty[0].employee_id, program: 'Faculty' };
+            }
+        }
 
-        if (students.length === 0 || students[0].status !== 'approved') {
+        if (!person || person.status !== 'approved') {
             return res.status(403).json({ success: false, message: "Access Denied" });
         }
 
-        const student = students[0];
-
-        // Repeat-scan guard: if this student entered or exited in the last 5 seconds,
+        // Repeat-scan guard: if this person entered or exited in the last 5 seconds,
         // don't record anything (e.g. a quick second scan "to make sure").
         // The scanner page has the same 5-second rule; this catches it even after a page reload.
         // (Times are saved in whole seconds, so the real window here is about 5–6 seconds.)
         const [[recent]] = await db.query(
-            `SELECT COUNT(*) AS n FROM student_logs
-             WHERE user_id = ? AND (time_in >= NOW() - INTERVAL 5 SECOND OR time_out >= NOW() - INTERVAL 5 SECOND)`,
-            [student.user_id]
+            `SELECT COUNT(*) AS n FROM ${person.table}
+             WHERE ${person.col} = ? AND (time_in >= NOW() - INTERVAL 5 SECOND OR time_out >= NOW() - INTERVAL 5 SECOND)`,
+            [person.id]
         );
         if (recent.n > 0) {
             return res.status(409).json({
@@ -1627,22 +1696,22 @@ app.post('/api/logs/scan', async (req, res) => {
             });
         }
 
-        const [activeLogs] = await db.query('SELECT log_id FROM student_logs WHERE user_id = ? AND status = "inside"', [student.user_id]);
+        const [activeLogs] = await db.query(`SELECT log_id FROM ${person.table} WHERE ${person.col} = ? AND status = "inside"`, [person.id]);
 
         if (activeLogs.length > 0) {
-            await db.query('UPDATE student_logs SET time_out = NOW(), status = "exited" WHERE log_id = ?', [activeLogs[0].log_id]);
-            res.json({ success: true, action: 'exit', student_number: student.student_number, program: student.program });
+            await db.query(`UPDATE ${person.table} SET time_out = NOW(), status = "exited" WHERE log_id = ?`, [activeLogs[0].log_id]);
+            res.json({ success: true, action: 'exit', student_number: person.number, program: person.program });
         } else {
             // Not inside yet = this would be an entry, which is blocked after 5:30 PM.
             if (isPastEntryCutoff()) {
-                // Was this student logged out by the system today (5:31 PM auto logout or
+                // Was this person logged out by the system today (5:31 PM auto logout or
                 // an admin's Force Exit)? Then they're probably scanning to leave — tell them
                 // they're already logged out instead of just "Library Closed".
                 const [[forced]] = await db.query(
-                    `SELECT DATE_FORMAT(time_out, '%l:%i %p') AS out_time FROM student_logs
-                     WHERE user_id = ? AND visit_date = CURDATE() AND forced_exit = 1
+                    `SELECT DATE_FORMAT(time_out, '%l:%i %p') AS out_time FROM ${person.table}
+                     WHERE ${person.col} = ? AND visit_date = CURDATE() AND forced_exit = 1
                      ORDER BY time_out DESC LIMIT 1`,
-                    [student.user_id]
+                    [person.id]
                 );
                 if (forced) {
                     return res.status(403).json({
@@ -1654,8 +1723,8 @@ app.post('/api/logs/scan', async (req, res) => {
                 }
                 return res.status(403).json({ success: false, closed: true, message: LIBRARY_CLOSED_MESSAGE });
             }
-            await db.query('INSERT INTO student_logs (user_id, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")', [student.user_id]);
-            res.json({ success: true, action: 'entry', student_number: student.student_number, program: student.program });
+            await db.query(`INSERT INTO ${person.table} (${person.col}, time_in, visit_date, status) VALUES (?, NOW(), CURDATE(), "inside")`, [person.id]);
+            res.json({ success: true, action: 'entry', student_number: person.number, program: person.program });
         }
     } catch (err) {
         console.error("SQL ERROR during scan:", err.message);
@@ -1690,13 +1759,18 @@ app.patch('/api/patrons/force-exit-all', verifyToken, async (req, res) => {
         const [guestResult] = await db.query(
             'UPDATE guest_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
         );
+        const [facultyResult] = await db.query(
+            'UPDATE faculty_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
         const students = studentResult.affectedRows;
+        const faculty = facultyResult.affectedRows;
         const guests = guestResult.affectedRows;
         res.json({
             success: true,
             students,
+            faculty,
             guests,
-            message: `Logged out ${students} student(s) and ${guests} guest(s).`,
+            message: `Logged out ${students} student(s), ${faculty} faculty and ${guests} guest(s).`,
         });
     } catch (err) {
         console.error("Force exit all patrons error:", err.message);
@@ -1730,16 +1804,19 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ message: 'Please enter your email or student number and your password.' });
   }
   try {
-    // 9 digits = student number; anything else is treated as an email.
-    const isStudentNumber = /^\d{9}$/.test(identifier);
+    // Digits only (1-9) = student number or faculty Employee ID; anything else is treated as an email.
+    const isStudentNumber = /^\d{1,9}$/.test(identifier);
     const [students] = isStudentNumber
       ? await db.query('SELECT * FROM students WHERE student_number = ?', [identifier])
       : await db.query('SELECT * FROM students WHERE LOWER(email) = ?', [identifier]);
 
     if (!students || students.length === 0) {
+      // Not a student: maybe a faculty member (own table, own login pass).
+      const facultyResult = await faculty.login(identifier, password);
+      if (facultyResult) return res.status(facultyResult.status).json(facultyResult.body);
       return res.status(404).json({
         message: isStudentNumber
-          ? 'No account found for this student number.'
+          ? 'No account found for this student number or employee ID.'
           : 'No account found for this email.',
       });
     }
@@ -2391,15 +2468,22 @@ app.get('/api/student/profile/:student_number', verifyStudentToken, async (req, 
 });
 
 // SCANNER SCREEN LIVE NUMBERS in ONE request (public, counts only — no names):
-// students inside per college + guests inside. The scanner page asks every 5 s.
+//   colleges  everyone inside per college (students AND faculty, so the board shows each person's college)
+//   students  students inside     faculty  faculty inside     guests  guests inside
+// The scanner page shows Students | Faculty | Guests from the three totals.
 app.get('/api/scanner/live', async (req, res) => {
     try {
         const [colleges] = await db.query(`
-            SELECT s.college, COUNT(*) as count FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
-            WHERE sl.status = 'inside' GROUP BY s.college
+            ${INSIDE_BY_COLLEGE_SQL}
         `);
+        const [[{ students }]] = await db.query(
+            `SELECT COUNT(*) AS students FROM student_logs sl JOIN students s ON sl.user_id = s.user_id WHERE sl.status = 'inside'`
+        );
+        const [[{ faculty }]] = await db.query(
+            `SELECT COUNT(*) AS faculty FROM faculty_logs fl JOIN faculty f ON fl.faculty_id = f.faculty_id WHERE fl.status = 'inside'`
+        );
         const [[{ guests }]] = await db.query('SELECT COUNT(*) AS guests FROM guest_logs WHERE status = "inside"');
-        res.json({ colleges, guests: Number(guests) });
+        res.json({ colleges, students: Number(students), faculty: Number(faculty), guests: Number(guests) });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2410,8 +2494,7 @@ app.get('/api/scanner/live', async (req, res) => {
 app.get('/api/logs/live-board', async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT s.college, COUNT(*) as count FROM student_logs sl JOIN students s ON sl.user_id = s.user_id
-            WHERE sl.status = 'inside' GROUP BY s.college
+            ${INSIDE_BY_COLLEGE_SQL}
         `);
         res.json(rows);
     } catch (err) {
@@ -2639,7 +2722,7 @@ app.get('/api/student/analytics/:student_number', verifyStudentToken, async (req
         );
 
         const [[{ studentsInside }]] = await db.query(
-            `SELECT COUNT(*) AS studentsInside FROM student_logs WHERE status = "inside"`
+            `SELECT (SELECT COUNT(*) FROM student_logs WHERE status = "inside") + (SELECT COUNT(*) FROM faculty_logs WHERE status = "inside") AS studentsInside`
         );
         const [[{ guestsInside }]] = await db.query(
             `SELECT COUNT(*) AS guestsInside FROM guest_logs WHERE status = "inside"`
@@ -2766,7 +2849,11 @@ app.get('/api/library/peak-hours', async (req, res) => {
             'SELECT time_in, time_out FROM guest_logs WHERE visit_date >= ? AND visit_date < ?',
             [period.start, period.endExclusive]
         );
-        const entries = [...studentRows, ...guestRows];
+        const [facultyRows] = await db.query(
+            'SELECT time_in, time_out FROM faculty_logs WHERE visit_date >= ? AND visit_date < ?',
+            [period.start, period.endExclusive]
+        );
+        const entries = [...studentRows, ...facultyRows, ...guestRows];
 
         // Check-ins per hour of day (all 24 hours, like the web KPI).
         const hourCounts = new Array(24).fill(0);
@@ -2888,8 +2975,11 @@ const runAutoLogout = async (reason) => {
         const [guestResult] = await db.query(
             'UPDATE guest_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
         );
+        const [facultyResult] = await db.query(
+            'UPDATE faculty_logs SET time_out = NOW(), status = "exited", forced_exit = 1 WHERE status = "inside"'
+        );
         console.log(
-            `[Auto Logout - ${reason}] Force-exited ${studentResult.affectedRows} student(s) and ${guestResult.affectedRows} guest(s).`
+            `[Auto Logout - ${reason}] Force-exited ${studentResult.affectedRows} student(s), ${facultyResult.affectedRows} faculty and ${guestResult.affectedRows} guest(s).`
         );
     } catch (err) {
         console.error(`[Auto Logout - ${reason}] Failed to auto-exit active logs:`, err.message);
@@ -2933,8 +3023,17 @@ const closeStaleLogs = async () => {
     try {
         const [students] = await db.query(closeSql('student_logs'));
         const [guests] = await db.query(closeSql('guest_logs'));
-        if (students.affectedRows || guests.affectedRows) {
-            console.log(`[Auto Logout - earlier days] Closed ${students.affectedRows} student(s) and ${guests.affectedRows} guest(s) left inside from past days.`);
+        // Faculty last, in its own try: the faculty tables may still be being created at startup.
+        let facultyClosed = 0;
+        try {
+            const [faculty] = await db.query(closeSql('faculty_logs'));
+            facultyClosed = faculty.affectedRows;
+        } catch (err) {
+            console.error('Stale faculty logs check skipped:', err.message);
+        }
+        // One line for everyone, only when somebody was actually closed.
+        if (students.affectedRows || facultyClosed || guests.affectedRows) {
+            console.log(`[Auto Logout - earlier days] Closed ${students.affectedRows} student(s), ${facultyClosed} faculty and ${guests.affectedRows} guest(s) left inside from past days.`);
         }
     } catch (err) {
         console.error('[Auto Logout - earlier days] Failed:', err.message);
@@ -2945,6 +3044,17 @@ closeStaleLogs(); // once when the server starts
 cron.schedule('5 0 * * *', closeStaleLogs, { timezone: 'Asia/Manila' });
 
 // Offline mode for the entrance scanner (offline pack + syncing saved scans).
+// Faculty: own tables + routes (registration, login, profile, admin approval, logs). See faculty.js.
+const faculty = require('./faculty')(app, {
+    db, jwt, bcrypt, crypto, verifyToken, requireSuperAdmin, sendEmail, buildOtpEmail,
+    OTP_TTL_MINUTES, OTP_RESEND_SECONDS, OTP_MAX_PER_HOUR, OTP_MAX_ATTEMPTS,
+    buildFullName, getCurrentPeriod, isStrongPassword, PASSWORD_RULE_MESSAGE,
+    namesAreValid, NAME_RULE_MESSAGE, VALID_SEX_VALUES, CVSU_EMAIL_REGEX,
+    lockedSeconds, lockedMessage, recordWrongPassword, clearWrongPasswords, wrongPasswordMessage,
+    reportingSemester, checkCorImage, uploadCor, corViewUrl, deleteCor,
+    otpLimiter, registerLimiter, loginLimiter, availabilityLimiter,
+});
+
 require('./offlineScanner')(app, { db });
 
 // Starts the server. '0.0.0.0' lets phones on the same Wi-Fi reach it.
